@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { clientConfig } from "@/lib/client-config";
 import "./globals.css";
 
@@ -20,7 +21,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${space.variable}`}>{children}</body>
+      <body className={`${inter.variable} ${space.variable}`}>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
