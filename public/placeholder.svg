@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title description">
+  <title id="title">MH OP product placeholder</title>
+  <desc id="description">A neutral placeholder for a product photograph.</desc>
+  <rect width="1200" height="900" fill="#e9e7df"/>
+  <circle cx="600" cy="410" r="132" fill="#c7f36b" opacity=".75"/>
+  <path d="M505 433h190l41 104H464l41-104Zm35-104h120l28 70H512l28-70Z" fill="#171813"/>
+  <text x="600" y="690" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" font-weight="700" fill="#171813">MH / OP</text>
+  <text x="600" y="738" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" fill="#77776f">Product image coming soon</text>
+</svg>

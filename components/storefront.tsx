@@ -1,0 +1,444 @@
+"use client";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { formatMMK } from "@/lib/data";
+import type { PublicCatalogItem } from "@/lib/services/stock.service";
+import type { PublicBundleSet } from "@/lib/services/bundle.service";
+import { Logo } from "./logo";
+import { Search, ShoppingBag, ArrowRight, Check, Plus, X } from "lucide-react";
+import { clientConfig } from "@/lib/client-config";
+
+const departments = ["All", "PUBG Accounts", "Gaming Gadgets"] as const;
+const gadgetTypes = [
+  "All gadgets",
+  "Gaming Headphones",
+  "Cooling Fans",
+  "Controllers",
+  "Charging Gear",
+  "Gaming Earbuds",
+] as const;
+const accountTypes = [
+  "All accounts",
+  "Starter Accounts",
+  "Competitive Accounts",
+  "Collector Accounts",
+] as const;
+
+export function Storefront({
+  products,
+  bundles,
+}: {
+  products: PublicCatalogItem[];
+  bundles: PublicBundleSet[];
+}) {
+  const [department, setDepartment] =
+    useState<(typeof departments)[number]>("All");
+  const [gadgetType, setGadgetType] =
+    useState<(typeof gadgetTypes)[number]>("All gadgets");
+  const [accountType, setAccountType] =
+    useState<(typeof accountTypes)[number]>("All accounts");
+  const [query, setQuery] = useState("");
+  const [cart, setCart] = useState<string[]>([]);
+  const [compare, setCompare] = useState<string[]>([]);
+
+  const filtered = useMemo(
+    () =>
+      products.filter((p) => {
+        const matchesDept = department === "All" || p.category === department;
+        const matchesGadget =
+          department !== "Gaming Gadgets" ||
+          gadgetType === "All gadgets" ||
+          p.subcategory === gadgetType;
+        const matchesAccount =
+          department !== "PUBG Accounts" ||
+          accountType === "All accounts" ||
+          p.subcategory === accountType;
+        const matchesQuery =
+          `${p.name} ${p.brand} ${p.subcategory} ${p.tagline}`
+            .toLowerCase()
+            .includes(query.toLowerCase());
+        return matchesDept && matchesGadget && matchesAccount && matchesQuery;
+      }),
+    [products, department, gadgetType, accountType, query],
+  );
+
+  return (
+    <div className="min-h-screen bg-[#f4f2ec]">
+      {cart.length > 0 && (
+        <Link
+          href={`/shop/checkout?skus=${cart.join(",")}`}
+          className="fixed bottom-5 right-5 z-50 rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-bold shadow-2xl"
+        >
+          Checkout {cart.length} item{cart.length > 1 ? "s" : ""}{" "}
+          <ArrowRight size={14} className="ml-1 inline" />
+        </Link>
+      )}
+      <header className="sticky top-0 z-40 border-b border-[#dcd9cf] bg-[#f4f2ec]/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
+          <Logo />
+          <nav className="hidden gap-7 text-sm font-semibold md:flex">
+            <Link href="/shop">Shop</Link>
+            <a href="#products">Products</a>
+            <a href="#bundles">Bundles</a>
+            <Link href="/warranty">Warranty</Link>
+          </nav>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/warranty"
+              className="rounded-full border border-[#dcd9cf] bg-white/65 px-3 py-2 text-[11px] font-bold md:hidden"
+            >
+              Warranty
+            </Link>
+            {cart.length > 0 ? (
+              <Link
+                aria-label="Open checkout"
+                href={`/shop/checkout?skus=${cart.join(",")}`}
+                className="relative grid h-10 w-10 place-items-center rounded-full bg-black text-white"
+              >
+                <ShoppingBag size={17} />
+                <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-[#ff6b35] text-[10px]">
+                  {cart.length}
+                </span>
+              </Link>
+            ) : (
+              <span
+                aria-hidden="true"
+                className="grid h-10 w-10 place-items-center rounded-full bg-black text-white"
+              >
+                <ShoppingBag size={17} />
+              </span>
+            )}
+          </div>
+        </div>
+      </header>
+      <section className="mx-auto max-w-7xl px-5 pb-10 pt-12 md:pt-20">
+        <p className="eyebrow">{clientConfig.brand.fullName}</p>
+        <div className="mt-3 grid gap-6 md:grid-cols-[1fr_.45fr] md:items-end">
+          <h1 className="display max-w-4xl text-5xl font-semibold leading-[.95] md:text-7xl">
+            Play better.
+            <br />
+            <span className="text-[#77776f]">Shop with confidence.</span>
+          </h1>
+          <div>
+            <p className="text-sm leading-6 text-[#62635d]">
+              {clientConfig.brand.tagline}. Verified PUBG Mobile accounts and
+              gaming gadgets (cooling fans, headphones, controllers), selected
+              for Myanmar gamers.
+            </p>
+            <a
+              href="#products"
+              className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-bold text-black"
+            >
+              ပစ္စည်းများ ကြည့်ရှုမယ် <ArrowRight size={15} />
+            </a>
+          </div>
+        </div>
+      </section>
+      <section id="products" className="mx-auto max-w-7xl px-5">
+        <div className="space-y-4">
+          <div className="rounded-[24px] border border-white/80 bg-white/65 p-2 shadow-[8px_10px_24px_rgba(72,70,58,0.10),-6px_-6px_18px_rgba(255,255,255,0.85)] backdrop-blur-xl">
+            <label className="flex min-h-14 items-center gap-3 rounded-[18px] bg-[#f7f6f1] px-3 sm:px-4">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[#55584f] shadow-sm">
+                <Search size={16} />
+              </span>
+              <span className="sr-only">Search the MH OP shop</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="What are you looking for?"
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-[#8b8d85]"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Clear shop search"
+                  onClick={() => setQuery("")}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#666960] hover:bg-white"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </label>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {departments.map((category) => (
+                <button
+                  onClick={() => {
+                    setDepartment(category);
+                    setGadgetType("All gadgets");
+                    setAccountType("All accounts");
+                  }}
+                  key={category}
+                  className={`whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold transition ${department === category ? "bg-black text-white shadow-md" : "border border-[#dedbd1] bg-white/65 text-[#5e6158]"}`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+            <p className="shrink-0 text-[11px] font-semibold text-[#777a71]">
+              {filtered.length} result{filtered.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          {department === "Gaming Gadgets" && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {gadgetTypes.map((type) => (
+                <button
+                  onClick={() => setGadgetType(type)}
+                  key={type}
+                  className={`whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-bold ${gadgetType === type ? "bg-[#c7f36b]" : "bg-[#f1efe8]"}`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          )}
+          {department === "PUBG Accounts" && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {accountTypes.map((type) => (
+                <button
+                  onClick={() => setAccountType(type)}
+                  key={type}
+                  className={`whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-bold ${accountType === type ? "bg-[#c7f36b]" : "bg-[#f1efe8]"}`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+      <section className="mx-auto grid max-w-7xl gap-4 px-5 py-7 sm:grid-cols-2 lg:grid-cols-3">
+        {filtered.map((p, index) => (
+          <article
+            key={p.variantId}
+            className="group overflow-hidden rounded-[22px] border border-[#ddd9ce] bg-[#fffef9]"
+          >
+            <div className="relative aspect-[4/3] overflow-hidden bg-[#e8e6df]">
+              <Image
+                src={p.image}
+                alt={p.name}
+                fill
+                priority={index < 2}
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              />
+              <button
+                aria-label={`${compare.includes(p.sku) ? "Remove" : "Add"} ${p.name} ${compare.includes(p.sku) ? "from" : "to"} comparison`}
+                onClick={() =>
+                  setCompare((x) =>
+                    x.includes(p.sku)
+                      ? x.filter((i) => i !== p.sku)
+                      : x.length < 3
+                        ? [...x, p.sku]
+                        : x,
+                  )
+                }
+                className={`absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full ${compare.includes(p.sku) ? "bg-[#c7f36b]" : "bg-white/90"}`}
+              >
+                {compare.includes(p.sku) ? (
+                  <Check size={16} />
+                ) : (
+                  <Plus size={16} />
+                )}
+              </button>
+            </div>
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="eyebrow">
+                    {p.brand} · {p.subcategory}
+                  </p>
+                  <h2 className="display mt-1 text-2xl font-semibold">
+                    {p.name}
+                  </h2>
+                </div>
+                <span
+                  className={`pill ${p.availability === "sold_out" ? "bg-[#f1f0eb] text-[#73766d]" : p.availability === "low" ? "bg-[#fff1ec] text-[#a84422]" : "bg-[#effbdc] text-[#416c17]"}`}
+                >
+                  {p.availability === "sold_out"
+                    ? "Sold out"
+                    : p.availability === "low"
+                      ? "Only a few left"
+                      : "Available"}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-[#77776f]">{p.tagline}</p>
+              {p.specs.length > 0 && (
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  {p.specs.map((s) => (
+                    <div
+                      key={s.label}
+                      className="rounded-xl bg-[#f1efe8] p-2.5"
+                    >
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#888]">
+                        {s.label}
+                      </p>
+                      <p className="mt-1 text-xs font-bold">{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-5 flex items-end justify-between">
+                <div>
+                  <p className="text-[10px] text-[#888]">From</p>
+                  <p className="display text-xl font-bold">
+                    {formatMMK(p.price)}
+                  </p>
+                </div>
+                <button
+                  disabled={
+                    p.availability === "sold_out" || cart.includes(p.sku)
+                  }
+                  onClick={() =>
+                    setCart((x) => (x.includes(p.sku) ? x : [...x, p.sku]))
+                  }
+                  className="rounded-full bg-black px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"
+                >
+                  {p.availability === "sold_out"
+                    ? "Sold out"
+                    : cart.includes(p.sku)
+                      ? "In bag"
+                      : "Add to bag"}
+                </button>
+              </div>
+            </div>
+          </article>
+        ))}
+        {!filtered.length && (
+          <div className="rounded-[24px] border border-dashed border-[#d6d2c7] bg-white/45 px-6 py-14 text-center sm:col-span-2 lg:col-span-3">
+            <p className="display text-xl font-bold">No products found</p>
+            <p className="mt-2 text-sm text-[#777a71]">
+              Try a different search or browse all products.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setDepartment("All");
+                setGadgetType("All gadgets");
+                setAccountType("All accounts");
+              }}
+              className="mt-5 rounded-full bg-black px-5 py-2.5 text-xs font-bold text-white"
+            >
+              Show all products
+            </button>
+          </div>
+        )}
+      </section>
+      {bundles.length > 0 && (
+        <section id="bundles" className="mx-auto mb-14 max-w-7xl px-5">
+          <div className="mb-5">
+            <p className="eyebrow">Better together</p>
+            <h2 className="display mt-2 text-4xl font-semibold">Bundle Sets</h2>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {bundles.map((bundle) => (
+              <article
+                key={bundle.id}
+                className="overflow-hidden rounded-[24px] bg-[#181914] p-7 text-white"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="eyebrow !text-[#c7f36b]">
+                      Save {formatMMK(bundle.savings)}
+                    </p>
+                    <h3 className="display mt-2 text-3xl font-semibold">
+                      {bundle.name}
+                    </h3>
+                  </div>
+                  <span className="pill border-white/10 bg-white/10 text-white">
+                    {bundle.availability === "sold_out"
+                      ? "Sold out"
+                      : bundle.availability === "low"
+                        ? "Limited availability"
+                        : "Available"}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-white/60">
+                  {bundle.description}
+                </p>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  {bundle.items.map((item) => (
+                    <div
+                      key={item.sku}
+                      className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs"
+                    >
+                      <b>
+                        {item.quantity}× {item.name}
+                      </b>
+                      <p className="mt-1 font-mono text-[9px] text-white/40">
+                        {item.sku}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-6 flex items-end justify-between">
+                  <div>
+                    <p className="text-xs text-white/35 line-through">
+                      {formatMMK(bundle.retailValue)}
+                    </p>
+                    <p className="display text-2xl font-bold">
+                      {formatMMK(bundle.bundlePrice)}
+                    </p>
+                  </div>
+                  <Link
+                    aria-disabled={bundle.availability === "sold_out"}
+                    href={
+                      bundle.availability !== "sold_out"
+                        ? `/shop/checkout?bundleIds=${bundle.id}`
+                        : "#"
+                    }
+                    className={`rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-bold text-black ${bundle.availability === "sold_out" ? "pointer-events-none opacity-40" : ""}`}
+                  >
+                    {bundle.availability !== "sold_out"
+                      ? "Buy bundle"
+                      : "Sold out"}
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      <footer className="border-t bg-white/45 px-5 py-8 text-center text-xs text-[#77776f]">
+        {clientConfig.brand.fullName} · Built by{" "}
+        <span className="font-bold text-black">
+          {clientConfig.developer.name}
+        </span>
+      </footer>
+      {compare.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center gap-3 rounded-2xl bg-black p-3 text-white shadow-2xl">
+          <div className="flex -space-x-2">
+            {compare.map((sku) => {
+              const p = products.find((x) => x.sku === sku)!;
+              return (
+                <Image
+                  key={sku}
+                  src={p.image}
+                  width={40}
+                  height={40}
+                  className="h-10 w-10 rounded-full border-2 border-black object-cover"
+                  alt=""
+                />
+              );
+            })}
+          </div>
+          <p className="flex-1 text-xs font-bold">
+            {compare.length} selected for comparison
+          </p>
+          <Link
+            href={`/shop/compare?skus=${compare.join(",")}`}
+            className="rounded-full bg-[#c7f36b] px-4 py-2 text-xs font-bold text-black"
+          >
+            Compare
+          </Link>
+          <button aria-label="Clear comparison" onClick={() => setCompare([])}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

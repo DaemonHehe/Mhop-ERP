@@ -1,0 +1,69 @@
+{
+  "name": "MH OP Automation Error Handler",
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Yangon",
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": false,
+    "executionTimeout": 60
+  },
+  "nodes": [
+    {
+      "id": "error-note",
+      "name": "Error Handler Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -220],
+      "parameters": {
+        "width": 900,
+        "height": 190,
+        "content": "## MH OP automation failure alerts\nAttach the MH OP Ops Telegram credential, activate this workflow, then select it as the Error Workflow for MH OP Operations Automation. The alert excludes full execution payloads and customer data."
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Automation Failed",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 20],
+      "parameters": {}
+    },
+    {
+      "id": "error-normalize",
+      "name": "Build Safe Failure Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 20],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const execution = $json.execution ?? {};\nconst workflow = $json.workflow ?? {};\nconst error = execution.error ?? {};\nconst message = String(error.message ?? $json.message ?? 'Unknown automation failure').slice(0, 500);\nreturn { json: { workflow_name: String(workflow.name ?? 'Unknown workflow'), execution_id: String(execution.id ?? 'Unavailable'), last_node: String(execution.lastNodeExecuted ?? 'Unavailable'), message, execution_url: String(execution.url ?? '') } };"
+      }
+    },
+    {
+      "id": "error-send",
+      "name": "Notify Operations Team",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [480, 20],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_STAFF_CHAT_ID }}",
+        "text": "=MH OP AUTOMATION FAILED\nWorkflow: {{ $json.workflow_name }}\nLast node: {{ $json.last_node }}\nExecution: {{ $json.execution_id }}\nReason: {{ $json.message }}\n{{ $json.execution_url }}",
+        "additionalFields": { "appendAttribution": false, "disable_web_page_preview": true }
+      }
+    }
+  ],
+  "connections": {
+    "Automation Failed": { "main": [[{ "node": "Build Safe Failure Alert", "type": "main", "index": 0 }]] },
+    "Build Safe Failure Alert": { "main": [[{ "node": "Notify Operations Team", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": []
+}

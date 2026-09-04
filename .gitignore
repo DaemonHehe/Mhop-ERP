@@ -1,0 +1,34 @@
+# Dependencies and generated builds
+node_modules/
+.next/
+.next-stale-*/
+.vercel/
+out/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Test, coverage, and compiler output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.nyc_output/
+*.tsbuildinfo
+*.log
+
+# Local service state and temporary files
+.local/
+.n8n/
+drizzle/meta/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

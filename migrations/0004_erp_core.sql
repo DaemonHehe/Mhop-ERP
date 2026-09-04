@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS suppliers (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(180) NOT NULL, phone varchar(40), email varchar(255), address text, notes text, is_active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS purchase_orders (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), po_code varchar(40) UNIQUE NOT NULL, supplier_id uuid NOT NULL REFERENCES suppliers(id), status varchar(30) NOT NULL DEFAULT 'ordered', total_cost numeric(14,2) NOT NULL CHECK(total_cost>=0), notes text, created_at timestamptz NOT NULL DEFAULT now(), received_at timestamptz);
+CREATE TABLE IF NOT EXISTS purchase_items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), purchase_order_id uuid NOT NULL REFERENCES purchase_orders(id), variant_id uuid NOT NULL REFERENCES product_variants(id), quantity integer NOT NULL CHECK(quantity>0), unit_cost numeric(14,2) NOT NULL CHECK(unit_cost>=0));
+CREATE TABLE IF NOT EXISTS expenses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), expense_code varchar(40) UNIQUE NOT NULL, category varchar(80) NOT NULL, description text NOT NULL, amount numeric(14,2) NOT NULL CHECK(amount>=0), payment_method varchar(40) NOT NULL, expense_date timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS suppliers_active_idx ON suppliers(is_active);
+CREATE INDEX IF NOT EXISTS purchase_orders_supplier_idx ON purchase_orders(supplier_id);
+CREATE INDEX IF NOT EXISTS purchase_orders_status_idx ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS purchase_items_order_idx ON purchase_items(purchase_order_id);
+CREATE INDEX IF NOT EXISTS purchase_items_variant_idx ON purchase_items(variant_id);
+CREATE INDEX IF NOT EXISTS expenses_date_idx ON expenses(expense_date DESC);
+CREATE INDEX IF NOT EXISTS expenses_category_idx ON expenses(category);

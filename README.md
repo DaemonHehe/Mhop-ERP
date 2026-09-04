@@ -1,0 +1,102 @@
+# MH OP Commerce Operations
+
+Developed by **Daemon**.
+
+MH OP is a Next.js 15 omnichannel commerce and operations platform for gaming gadgets and verified PUBG Mobile accounts: a customer storefront, ERP operations, payment-slip review, serial/IMEI assignment, secure digital handover, RMA, thermal receipts, and an AI-assisted Telegram sales channel.
+
+Client-specific identity, Telegram copy, payment destinations, Royal Express delivery rules, and reminder settings live in `lib/client-config.ts`. Apply `migrations/0003_mhop_client_setup.sql` to an existing database before using the updated checkout.
+
+## Run locally
+
+Requirements: Node.js 20+, npm, and PostgreSQL 15+ (or Neon).
+
+```bash
+npm install
+copy .env.example .env.local
+npm run dev
+```
+
+Open `http://localhost:3000`. The root route sends customers to `/shop`; staff sign in at `/login`. The storefront can display demonstration catalog data without a database, but authentication, orders, stock synchronization, ERP, customer records, and integrations require `DATABASE_URL`.
+
+## Access model
+
+- `/shop`, `/shop/compare`, `/shop/checkout`, and `/warranty` are customer-facing routes.
+- `/dashboard` and all operational routes require a valid signed staff session in every environment.
+- `/staff` additionally requires the `admin` role.
+- `/api/internal/*` is for authenticated n8n service-to-service traffic and is never a browser-admin shortcut.
+- Telegram customers use the bot and hosted Mini App storefront; they never receive access to the ERP dashboard.
+
+## Database
+
+For a new PostgreSQL database, run the consolidated schema and choose one seed:
+
+```bash
+psql "$DATABASE_URL" -f init.sql
+psql "$DATABASE_URL" -f seed.sql       # starter catalog
+# or
+psql "$DATABASE_URL" -f seed-test.sql  # complete interactive test dataset
+```
+
+`seed-test.sql` is for development or staging only. It can be rerun to restore
+its predefined test records after exercising the UI. For an existing
+installation, apply the numbered migrations in order through
+`migrations/0008_customer_master.sql`.
+
+Or generate/manage migrations from `db/schema.ts` with Drizzle Kit. Before running `seed.sql`, generate the administrator hash with `node scripts/hash-password.mjs "your-long-password"` and replace `REPLACE_WITH_A_REAL_BCRYPT_HASH` in the seed file.
+
+## Routes
+
+- `/dashboard` command center and financial snapshot
+- `/shop`, `/shop/compare`, `/shop/checkout` customer commerce surfaces
+- `/warranty` public order-and-phone warranty lookup
+- `/inventory`, `/orders`, `/receipts`, `/tickets` live core operations and verified RMA intake
+- `/bundles` bundle-set catalog, pricing, and availability management
+- `/erp` suppliers, purchasing, stock receiving, expenses, and profitability
+- `/ai-studio` no-API commercial image prompt composer
+- `/customers`, `/leads`, `/bot`, `/logs` CRM, editable sales pipeline, automation, and audit views
+- `/staff`, `/alerts` role-based staff administration and operational alert inbox
+- `/login` secure staff authentication
+- `/api/n8n/webhook` signed automation ingress
+- `/api/telegram/webhook` Telegram command/media ingress
+- `/api/events` live Server-Sent Event stream
+- `/api/internal/*` authenticated n8n adapters for briefings, recovery, cross-sell, and AI replies
+
+## Automation
+
+Import `gadgetos-error-handler.json` and `gadgetos-master-suite.json` into n8n. Both workflows are intentionally inactive on import. Configure the following credentials before testing:
+
+- `MH OP Internal API`: HTTP Header Auth with name `Authorization` and value `Bearer <ADMIN_API_TOKEN>`.
+- `MH OP Event Webhook`: HTTP Header Auth with name `x-mhop-automation-key` and value matching `N8N_WEBHOOK_SECRET`.
+- `MH OP Customer Telegram`: the customer bot credential, used only for outbound cart and cross-sell messages.
+- `MH OP Ops Telegram`: the operations bot credential for staff alerts, briefings, digests, and failure alerts.
+
+Set `GADGETOS_URL` and `TELEGRAM_STAFF_CHAT_ID` in the n8n environment. Activate the error handler first, then select it under **MH OP Operations Automation → Workflow Settings → Error Workflow**. Attach the matching credential to every imported node, test each trigger branch, publish the primary workflow, and set `N8N_WEBHOOK_URL` in the application to the primary workflow's production `/webhook/mhop-operations-events` URL. Production webhook URLs must use HTTPS.
+
+The application is the sole inbound Telegram webhook owner for the customer bot. Do not add a Telegram Trigger using the same bot token in n8n. Application events use pre-execution Header Auth and also include `x-gadgetos-signature`, an HMAC-SHA256 digest of the raw body. Event delivery has a ten-second timeout and three attempts. n8n internal calls have credential-based authentication, explicit 15-second timeouts, and transient retries. Cart reminders, business events, and vouchers are deduplicated across workflow executions.
+
+Free-form customer Telegram messages are routed to the shared sales agent. It uses the OpenAI Responses API with live customer-safe catalog and policy tools, a bounded conversation history in `bot_sessions`, per-customer rate limiting, a 15-second provider timeout, and staff handoff alerts for payment disputes, refunds, complaints, warranty decisions, or explicit human requests. Exact quantities, costs, margins, internal IDs, and PUBG credentials are not supplied to the model. Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` (defaults to `gpt-5.4-mini`) to enable AI replies. Without a configured key or when the provider is unavailable, deterministic catalog search and human handoff remain operational.
+
+## Deployment and Telegram Mini App
+
+Host the Next.js application, PostgreSQL database, and n8n on stable HTTPS endpoints before production bot testing. Configure the Telegram bot menu button or Web App button with the public `/shop` URL; Telegram Mini Apps cannot use `localhost` on customer devices. Validate Telegram `initData` on the server before trusting a Telegram identity or attaching it to a customer record.
+
+Keep `.env.local` and all service credentials outside Git. Start from `.env.example`, configure the production database and integration URLs in the hosting provider, apply the schema or migrations once, and use staging data for acceptance testing before activating real customer webhooks.
+
+## Security baseline
+
+- Secrets are ignored and represented only by generic placeholders.
+- Protected staff routes always require a signed, HTTP-only session cookie and bcrypt-verified account.
+- Role checks prevent non-admin staff and misrouted customers from opening administrative screens.
+- Webhook input is signed and event types are allow-listed.
+- Serial assignment uses a row lock and transaction to prevent double allocation.
+- Payment state changes and staff alerts are committed together.
+- Database-backed pages are rendered dynamically so current stock, orders, receipts, alerts, and financial data cannot be frozen into a build.
+- Production deployments must still add object-storage upload scanning, distributed rate limits, CSRF review, audit retention, and encrypted backups.
+
+See `USER_MANUAL.md` for operations and `USER_TESTING.md` for acceptance checks. Open `CLIENT_ONBOARDING_FORM.html` directly in a browser for the implementation intake.
+
+Run `npm run check` for lint, type, and unit checks. Run `npm run test:e2e` against a development or staging database to verify customer and staff workflows. Run `scripts/api-smoke.ps1` while the development server is active to verify the daily-stats adapter, Telegram catalog command, and rejection of unsigned n8n traffic.
+
+Run `npm run test:n8n` after editing either exported workflow to validate JSON, node identity, connections, authentication, retries, timeouts, execution settings, and the single-Telegram-webhook rule. Run `npm run build` before deployment.
+
+The AI Creative Studio does not call an image API or store prompts. Its product selector and reference image come directly from live physical gaming-gadget listings in Products & Stock; digital PUBG accounts are excluded and there is no redundant local upload. Its curated shortcuts cover commercial photography, camera and lighting direction, advertising layouts, editorial design, packaging, branding mockups, and photorealistic visualization. The administrator opens the catalog image, attaches it in their preferred image generator, and pastes the reference-aware prompt, which locks product identity while allowing the surrounding campaign environment, lighting, composition, and copy layout to change.

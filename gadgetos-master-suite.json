@@ -1,0 +1,674 @@
+{
+  "name": "MH OP Operations Automation",
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Yangon",
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": false,
+    "executionTimeout": 300
+  },
+  "nodes": [
+    {
+      "id": "setup-note",
+      "name": "Setup Guide",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -300
+      ],
+      "parameters": {
+        "width": 1120,
+        "height": 240,
+        "content": "## MH OP Operations Automation\n\nAttach these credentials after import: `MH OP Internal API` (HTTP Header Auth: Authorization / Bearer ADMIN_API_TOKEN), `MH OP Event Webhook` (HTTP Header Auth: x-mhop-automation-key / N8N_WEBHOOK_SECRET), `MH OP Customer Telegram`, and `MH OP Ops Telegram`. Set GADGETOS_URL and TELEGRAM_STAFF_CHAT_ID. Import the separate error handler and select it in Workflow Settings. The application remains the only customer-bot Telegram webhook owner."
+      }
+    },
+    {
+      "id": "cart-note",
+      "name": "Cart Recovery Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -20
+      ],
+      "parameters": {
+        "width": 1260,
+        "height": 280,
+        "content": "### Cart recovery · scans every 15 minutes\nValid private Telegram recipients only; one reminder attempt per lead, including after stage changes. This scan cadence does not guarantee a 15-minute delay after cart creation."
+      }
+    },
+    {
+      "id": "cart-schedule",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        100
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cart-fetch",
+      "name": "Fetch Recoverable Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "parameters": {
+        "url": "={{ $env.GADGETOS_URL.replace(/\\/$/, '') }}/api/internal/leads/recoverable",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cart-normalize",
+      "name": "Keep Valid Cart Recipients",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all().flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]);\nconst seen = new Set();\nreturn rows.filter(Boolean).map((row) => ({ ...row, telegram_user_id: String(row.telegram_user_id ?? row.telegramUserId ?? '') })).filter((row) => {\n  if (!row.id || !/^[1-9][0-9]*$/.test(row.telegram_user_id) || !/^https?:\\/\\//.test(String(row.checkout_url ?? ''))) return false;\n  const key = String(row.id);\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n}).map((row) => ({ json: row }));"
+      }
+    },
+    {
+      "id": "cart-dedupe",
+      "name": "Do Not Repeat Cart Reminder",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        720,
+        100
+      ],
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "logic": "removeItemsWithAlreadySeenKeyValues",
+        "dedupeValue": "={{ String($json.id) }}",
+        "options": {
+          "scope": "node",
+          "historySize": 10000
+        }
+      }
+    },
+    {
+      "id": "cart-send",
+      "name": "Send Cart Recovery DM",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        100
+      ],
+      "retryOnFail": false,
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $json.telegram_user_id }}",
+        "text": "={{ ('မင်္ဂလာပါ ' + ($json.customerName || 'အကို/အမ') + '။ MH OP မှ ရွေးထားတဲ့ Gadget / Account တွေကို ဆက်လက်မှာယူနိုင်ပါတယ်။\\n\\n' + $json.checkout_url + '\\n\\nမလိုအပ်တော့ပါက ဒီစာကို လျစ်လျူရှုနိုင်ပါတယ်ခင်ဗျာ။').slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "notes": "Automatic retries are disabled because Telegram sendMessage has no idempotency key. Check Telegram before manually retrying an ambiguous failure."
+    },
+    {
+      "id": "event-note",
+      "name": "Event Alert Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        320
+      ],
+      "parameters": {
+        "width": 1080,
+        "height": 300,
+        "content": "### Authenticated operational events\nAttach the MH OP Event Webhook Header Auth credential. This workflow verifies the shared header, not the additional HMAC signature. Use HTTPS in production. Cross-run deduplication records processing attempts before sending: review failed executions manually; it is not guaranteed delivery."
+      }
+    },
+    {
+      "id": "event-hook",
+      "name": "MH OP Signed Events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        470
+      ],
+      "webhookId": "mhop-operations-events",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mhop-operations-events",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "event-normalize",
+      "name": "Normalize Critical Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        470
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const source = $input.first().json;\nconst envelope = source.body ?? source;\nconst type = String(envelope.type ?? envelope.event ?? '');\nconst data = envelope.data ?? {};\nconst critical = new Set(['order.created','order.dispatched','payment.verified','payment.rejected','payment.slip_uploaded','inventory.low_stock','ticket.created','ticket.resolved','purchase.received']);\nif (!critical.has(type)) return [];\nconst labels = {'order.created':'New order','order.dispatched':'Order dispatched','payment.verified':'Payment verified','payment.rejected':'Payment rejected','payment.slip_uploaded':'Payment slip uploaded','inventory.low_stock':'Low stock warning','ticket.created':'New warranty ticket','ticket.resolved':'Warranty ticket resolved','purchase.received':'Purchase received'};\nconst target = String(data.targetCode ?? data.target_code ?? 'No reference');\nconst timestamp = String(envelope.timestamp ?? new Date().toISOString());\nreturn [{ json: { event_key: `${type}:${target}:${timestamp}`, title: labels[type] ?? type, body: String(data.details ?? data.body ?? 'Open MH OP ERP for details.'), target_code: target, timestamp } }];"
+      }
+    },
+    {
+      "id": "event-dedupe",
+      "name": "Deduplicate Retried Event",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        480,
+        470
+      ],
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "logic": "removeItemsWithAlreadySeenKeyValues",
+        "dedupeValue": "={{ $json.event_key }}",
+        "options": {
+          "scope": "node",
+          "historySize": 20000
+        }
+      }
+    },
+    {
+      "id": "event-send",
+      "name": "Post Staff Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        470
+      ],
+      "retryOnFail": false,
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_STAFF_CHAT_ID }}",
+        "text": "={{ ('MH OP · ' + $json.title + '\\n' + $json.body + '\\nReference: ' + $json.target_code + '\\n' + $json.timestamp).slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "notes": "Automatic retries are disabled because Telegram sendMessage has no idempotency key. Check Telegram before manually retrying an ambiguous failure."
+    },
+    {
+      "id": "digest-note",
+      "name": "Digest Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        680
+      ],
+      "parameters": {
+        "width": 900,
+        "height": 570,
+        "content": "### Staff briefings and financial close\nInternal requests use Header Auth, explicit 15-second timeouts, and three retries. Failed executions are retained; successful production payloads are not."
+      }
+    },
+    {
+      "id": "morning",
+      "name": "09:00 Morning Briefing",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        820
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "briefing-fetch",
+      "name": "Fetch Daily Briefing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        820
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "parameters": {
+        "url": "={{ $env.GADGETOS_URL.replace(/\\/$/, '') }}/api/internal/stats/daily",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "briefing-send",
+      "name": "Send Morning Briefing",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        820
+      ],
+      "retryOnFail": false,
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_STAFF_CHAT_ID }}",
+        "text": "={{ ('GOOD MORNING · MH OP\\nUnshipped orders: ' + $json.unshipped + '\\nPending payments: ' + $json.pending_slips + '\\nCumulative verified revenue: ' + Number($json.revenue || 0).toLocaleString() + ' MMK\\nLow-stock listings: ' + (Array.isArray($json.low_stock) ? $json.low_stock.length : 0) + '\\n\\n' + (Array.isArray($json.low_stock) && $json.low_stock.length ? $json.low_stock.slice(0, 8).map((item) => '• ' + item.name + ' (' + item.sku + '): ' + item.stock).join('\\n') : 'No low-stock listings.')).slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "notes": "Automatic retries are disabled because Telegram sendMessage has no idempotency key. Check Telegram before manually retrying an ambiguous failure."
+    },
+    {
+      "id": "night",
+      "name": "22:00 Financial Digest",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1060
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 22 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "night-fetch",
+      "name": "Fetch Financial Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        1060
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "parameters": {
+        "url": "={{ $env.GADGETOS_URL.replace(/\\/$/, '') }}/api/internal/stats/daily",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "night-send",
+      "name": "Send Financial Digest",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        1060
+      ],
+      "retryOnFail": false,
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_STAFF_CHAT_ID }}",
+        "text": "={{ ('NIGHTLY SNAPSHOT · MH OP\\nCumulative verified revenue: ' + Number($json.revenue || 0).toLocaleString() + ' MMK\\nCumulative gross profit: ' + Number($json.gross_profit || 0).toLocaleString() + ' MMK\\nOpen fulfillment: ' + $json.unshipped + '\\nPending payments: ' + $json.pending_slips).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "notes": "Automatic retries are disabled because Telegram sendMessage has no idempotency key. Check Telegram before manually retrying an ambiguous failure."
+    },
+    {
+      "id": "cross-note",
+      "name": "Cross Sell Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        1300
+      ],
+      "parameters": {
+        "width": 1260,
+        "height": 280,
+        "content": "### 21–30 day follow-up\nOnly verified Telegram orders inside the API purchase-age window qualify. No coupon promise: checkout does not implement voucher redemption. Recipients are deduplicated within each scan and order references across executions."
+      }
+    },
+    {
+      "id": "cross-sell",
+      "name": "13:00 Cross Sell Scan",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1420
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 13 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cross-fetch",
+      "name": "Find 21–30 Day Buyers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        1420
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "parameters": {
+        "url": "={{ $env.GADGETOS_URL.replace(/\\/$/, '') }}/api/internal/customers/cross-sell?minDays=21&maxDays=30",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cross-normalize",
+      "name": "Keep Valid Follow Up Recipients",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        1420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all().flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]);\nconst seen = new Set();\nreturn rows.filter(Boolean).map((row) => ({ ...row, telegram_user_id: String(row.telegram_user_id ?? row.telegramUserId ?? '') })).filter((row) => {\n  if (!/^[1-9][0-9]*$/.test(row.telegram_user_id) || !row.order_code || seen.has(row.telegram_user_id)) return false;\n  seen.add(row.telegram_user_id);\n  return true;\n}).map((row) => ({ json: row }));"
+      }
+    },
+    {
+      "id": "cross-dedupe",
+      "name": "Do Not Repeat Follow Up",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        720,
+        1420
+      ],
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "logic": "removeItemsWithAlreadySeenKeyValues",
+        "dedupeValue": "={{ String($json.order_code) }}",
+        "options": {
+          "scope": "node",
+          "historySize": 10000
+        }
+      }
+    },
+    {
+      "id": "cross-send",
+      "name": "Send Accessory Follow Up",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        1420
+      ],
+      "retryOnFail": false,
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $json.telegram_user_id }}",
+        "text": "={{ ('မင်္ဂလာပါ ' + ($json.customer || 'အကို/အမ') + '။ MH OP မှာ ဝယ်ယူအားပေးထားတာ ကျေးဇူးတင်ပါတယ်ခင်ဗျာ။ Gaming accessories သို့မဟုတ် upgrade ရှာနေပါက အသုံးပြုမယ့် device နဲ့ budget ကို ပြောပေးပါ။ ရရှိနိုင်တဲ့ ပစ္စည်းများကို ရွေးချယ်ပေးပါမယ်ခင်ဗျာ။').slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "notes": "Automatic retries are disabled because Telegram sendMessage has no idempotency key. Check Telegram before manually retrying an ambiguous failure."
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recoverable Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recoverable Leads": {
+      "main": [
+        [
+          {
+            "node": "Keep Valid Cart Recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Valid Cart Recipients": {
+      "main": [
+        [
+          {
+            "node": "Do Not Repeat Cart Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Do Not Repeat Cart Reminder": {
+      "main": [
+        [
+          {
+            "node": "Send Cart Recovery DM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "MH OP Signed Events": {
+      "main": [
+        [
+          {
+            "node": "Normalize Critical Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Critical Event": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Retried Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Retried Event": {
+      "main": [
+        [
+          {
+            "node": "Post Staff Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "09:00 Morning Briefing": {
+      "main": [
+        [
+          {
+            "node": "Fetch Daily Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Daily Briefing": {
+      "main": [
+        [
+          {
+            "node": "Send Morning Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "22:00 Financial Digest": {
+      "main": [
+        [
+          {
+            "node": "Fetch Financial Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Financial Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Financial Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13:00 Cross Sell Scan": {
+      "main": [
+        [
+          {
+            "node": "Find 21–30 Day Buyers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find 21–30 Day Buyers": {
+      "main": [
+        [
+          {
+            "node": "Keep Valid Follow Up Recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Valid Follow Up Recipients": {
+      "main": [
+        [
+          {
+            "node": "Do Not Repeat Follow Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Do Not Repeat Follow Up": {
+      "main": [
+        [
+          {
+            "node": "Send Accessory Follow Up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
