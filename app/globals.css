@@ -418,41 +418,81 @@ a[class*="bg-[#c7f36b]"] {
     animation: none !important;
   }
 }
+@page {
+  size: A4 portrait;
+  margin: 6mm 8mm;
+}
 @media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   .no-print,
   .app-sidebar,
   .app-topbar {
     display: none !important;
   }
-  body {
-    background: white;
-  }
   body::before,
   .card::after {
-    display: none;
+    display: none !important;
   }
   .card {
-    border: 0;
-    box-shadow: none;
-    background: white;
-    backdrop-filter: none;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    backdrop-filter: none !important;
   }
   .receipt-print-root {
     display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   .receipt-stage {
     display: block !important;
     overflow: visible !important;
     border-radius: 0 !important;
-    background: white !important;
+    background: transparent !important;
     padding: 0 !important;
+    margin: 0 !important;
   }
   .receipt-document {
     margin: 0 auto !important;
     box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
   .receipt-voucher {
     width: 100% !important;
-    max-width: none !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .receipt-voucher-inner {
+    padding: 14px 20px !important;
+  }
+  .receipt-voucher header {
+    padding-bottom: 8px !important;
+  }
+  .receipt-voucher .voucher-section {
+    margin-top: 8px !important;
+  }
+  .receipt-voucher table th,
+  .receipt-voucher table td {
+    padding-top: 3px !important;
+    padding-bottom: 3px !important;
+  }
+  .receipt-voucher ol {
+    margin-top: 4px !important;
+    line-height: 1.4 !important;
+  }
+  .receipt-voucher footer {
+    margin-top: 8px !important;
+    padding-top: 8px !important;
   }
 }

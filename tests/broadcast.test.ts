@@ -152,4 +152,70 @@ describe("sendTelegramBroadcast", () => {
       global.fetch = originalFetch;
     }
   });
+
+  it("filters recipients by delivered segment", async () => {
+    process.env.TELEGRAM_CUSTOMER_BOT_TOKEN = "test-token";
+
+    mocks.from
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { telegramUserId: "2001", customerName: "U Ba", fulfillmentStatus: "delivered" },
+        { telegramUserId: "2002", customerName: "Daw Mya", fulfillmentStatus: "packing" },
+      ]);
+
+    const sentTo: number[] = [];
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockImplementation(async (url, init) => {
+      const body = JSON.parse(init.body);
+      sentTo.push(body.chat_id);
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 2 } }), { status: 200 });
+    });
+
+    try {
+      const res = await sendTelegramBroadcast("Checking in on your delivered order!", "admin", {
+        segment: "delivered",
+      });
+
+      expect(res.total).toBe(1);
+      expect(res.sent).toBe(1);
+      expect(sentTo).toEqual([2001]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("filters recipients by custom selected user IDs", async () => {
+    process.env.TELEGRAM_CUSTOMER_BOT_TOKEN = "test-token";
+
+    mocks.from
+      .mockResolvedValueOnce([
+        { telegramUserId: "3001" },
+        { telegramUserId: "3002" },
+        { telegramUserId: "3003" },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const sentTo: number[] = [];
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockImplementation(async (url, init) => {
+      const body = JSON.parse(init.body);
+      sentTo.push(body.chat_id);
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 3 } }), { status: 200 });
+    });
+
+    try {
+      const res = await sendTelegramBroadcast("Targeted message", "admin", {
+        segment: "custom",
+        selectedTelegramUserIds: ["3002"],
+      });
+
+      expect(res.total).toBe(1);
+      expect(res.sent).toBe(1);
+      expect(sentTo).toEqual([3002]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

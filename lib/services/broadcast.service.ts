@@ -5,12 +5,25 @@ import { audit } from "./audit.service";
 export interface BroadcastRecipient {
   telegramUserId: string;
   name?: string;
+  phone?: string;
+  orderCount: number;
+  hasDelivered: boolean;
+  hasActive: boolean;
+  latestStatus?: string;
+  latestOrderCode?: string;
 }
 
 export interface BroadcastAudience {
   totalCount: number;
+  deliveredCount: number;
+  activeCount: number;
   recipients: BroadcastRecipient[];
   botConfigured: boolean;
+}
+
+export interface BroadcastTargetOptions {
+  segment?: "all" | "delivered" | "active" | "custom";
+  selectedTelegramUserIds?: string[];
 }
 
 export interface BroadcastResult {
@@ -26,47 +39,122 @@ export interface BroadcastResult {
 
 export async function getTelegramBroadcastAudience(): Promise<BroadcastAudience> {
   const botConfigured = Boolean(process.env.TELEGRAM_CUSTOMER_BOT_TOKEN);
-  if (!db) return { totalCount: 0, recipients: [], botConfigured };
+  if (!db)
+    return {
+      totalCount: 0,
+      deliveredCount: 0,
+      activeCount: 0,
+      recipients: [],
+      botConfigured,
+    };
 
   const [sessions, people, purchases] = await Promise.all([
     db.select({ telegramUserId: botSessions.telegramUserId }).from(botSessions),
-    db.select({ telegramUserId: customers.telegramUserId, name: customers.name }).from(customers),
-    db.select({ telegramUserId: orders.telegramUserId, customerName: orders.customerName }).from(orders),
+    db
+      .select({
+        telegramUserId: customers.telegramUserId,
+        name: customers.name,
+        phone: customers.phone,
+      })
+      .from(customers),
+    db
+      .select({
+        telegramUserId: orders.telegramUserId,
+        customerName: orders.customerName,
+        phone: orders.phone,
+        fulfillmentStatus: orders.fulfillmentStatus,
+        orderCode: orders.orderCode,
+      })
+      .from(orders),
   ]);
 
-  const map = new Map<string, string | undefined>();
+  interface RecipientAccumulator {
+    name?: string;
+    phone?: string;
+    orderCount: number;
+    hasDelivered: boolean;
+    hasActive: boolean;
+    latestStatus?: string;
+    latestOrderCode?: string;
+  }
+
+  const map = new Map<string, RecipientAccumulator>();
+
+  const getOrCreate = (id: string): RecipientAccumulator => {
+    let rec = map.get(id);
+    if (!rec) {
+      rec = {
+        orderCount: 0,
+        hasDelivered: false,
+        hasActive: false,
+      };
+      map.set(id, rec);
+    }
+    return rec;
+  };
 
   // Add from bot sessions
   for (const s of sessions) {
     const id = s.telegramUserId?.trim();
     if (id && /^[0-9]+$/.test(id)) {
-      map.set(id, undefined);
+      getOrCreate(id);
     }
   }
 
-  // Enrich with names from customers
+  // Enrich with names and phones from customers
   for (const p of people) {
     const id = p.telegramUserId?.trim();
     if (id && /^[0-9]+$/.test(id)) {
-      map.set(id, p.name || map.get(id));
+      const rec = getOrCreate(id);
+      if (p.name && !rec.name) rec.name = p.name;
+      if (p.phone && !rec.phone) rec.phone = p.phone;
     }
   }
 
-  // Enrich with names from orders
+  // Enrich with orders (detecting delivered vs active)
   for (const o of purchases) {
     const id = o.telegramUserId?.trim();
     if (id && /^[0-9]+$/.test(id)) {
-      map.set(id, o.customerName || map.get(id));
+      const rec = getOrCreate(id);
+      rec.orderCount += 1;
+      if (o.customerName && !rec.name) rec.name = o.customerName;
+      if (o.phone && !rec.phone) rec.phone = o.phone;
+      if (o.orderCode) rec.latestOrderCode = o.orderCode;
+      if (o.fulfillmentStatus) rec.latestStatus = o.fulfillmentStatus;
+
+      if (o.fulfillmentStatus === "delivered") {
+        rec.hasDelivered = true;
+      }
+      if (
+        ["confirmed", "packing", "packed", "dispatched"].includes(
+          o.fulfillmentStatus || "",
+        )
+      ) {
+        rec.hasActive = true;
+      }
     }
   }
 
-  const recipients = Array.from(map.entries()).map(([telegramUserId, name]) => ({
-    telegramUserId,
-    name,
-  }));
+  const recipients: BroadcastRecipient[] = Array.from(map.entries()).map(
+    ([telegramUserId, data]) => ({
+      telegramUserId,
+      name: data.name,
+      phone: data.phone,
+      orderCount: data.orderCount,
+      hasDelivered: data.hasDelivered,
+      hasActive: data.hasActive,
+      latestStatus: data.latestStatus,
+      latestOrderCode: data.latestOrderCode,
+    }),
+  );
+
+  const deliveredCount = recipients.filter((r) => r.hasDelivered).length;
+  const activeCount = recipients.filter((r) => r.hasActive).length;
 
   return {
     totalCount: recipients.length,
+    deliveredCount,
+    activeCount,
     recipients,
     botConfigured,
   };
@@ -133,6 +221,7 @@ async function sendSingleBroadcast(
 export async function sendTelegramBroadcast(
   text: string,
   actor = "staff",
+  target?: BroadcastTargetOptions,
 ): Promise<BroadcastResult> {
   const content = text?.trim();
   if (!content) {
@@ -172,7 +261,18 @@ export async function sendTelegramBroadcast(
     };
   }
 
-  const { recipients } = await getTelegramBroadcastAudience();
+  const audience = await getTelegramBroadcastAudience();
+  let recipients = audience.recipients;
+
+  if (target?.segment === "delivered") {
+    recipients = recipients.filter((r) => r.hasDelivered);
+  } else if (target?.segment === "active") {
+    recipients = recipients.filter((r) => r.hasActive);
+  } else if (target?.segment === "custom" && target.selectedTelegramUserIds) {
+    const selectedSet = new Set(target.selectedTelegramUserIds);
+    recipients = recipients.filter((r) => selectedSet.has(r.telegramUserId));
+  }
+
   if (recipients.length === 0) {
     return {
       ok: false,
@@ -181,7 +281,7 @@ export async function sendTelegramBroadcast(
       blocked: 0,
       unreachable: 0,
       failed: 0,
-      error: "No reachable Telegram customers found in database.",
+      error: "No reachable Telegram customers found for the selected segment.",
     };
   }
 
@@ -219,10 +319,11 @@ export async function sendTelegramBroadcast(
 
   try {
     const snippet = content.slice(0, 80).replace(/\n/g, " ");
+    const segmentLabel = target?.segment ? `[${target.segment}] ` : "";
     await audit(
       "telegram.broadcast_sent",
       undefined,
-      `Broadcast delivered to ${sent}/${recipients.length} customers (${blocked} blocked, ${unreachable} unreachable, ${failed} failed): "${snippet}..."`,
+      `Broadcast delivered to ${sent}/${recipients.length} customers ${segmentLabel}(${blocked} blocked, ${unreachable} unreachable, ${failed} failed): "${snippet}..."`,
       actor,
     );
   } catch (auditErr) {

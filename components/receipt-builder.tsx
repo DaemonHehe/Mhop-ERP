@@ -13,6 +13,8 @@ import type { ReceiptOrder } from "@/app/actions/store";
 export function ReceiptBuilder({ orders }: { orders: ReceiptOrder[] }) {
   const [paper, setPaper] = useState<"voucher" | 58 | 80>("voucher");
   const [selectedId, setSelectedId] = useState(orders[0]?.id || "");
+  const [isDownloading, setIsDownloading] = useState(false);
+
   const order = orders.find((item) => item.id === selectedId) || orders[0];
   if (!order)
     return (
@@ -23,6 +25,22 @@ export function ReceiptBuilder({ orders }: { orders: ReceiptOrder[] }) {
         </p>
       </div>
     );
+
+  const handleDownload = () => {
+    try {
+      setIsDownloading(true);
+      const link = document.createElement("a");
+      link.href = `/api/orders/${encodeURIComponent(order.id)}/receipt`;
+      link.download = `${order.code}-receipt.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("[Download receipt error]", err);
+    } finally {
+      setTimeout(() => setIsDownloading(false), 2000);
+    }
+  };
 
   return (
     <div className="receipt-print-root grid gap-4 xl:grid-cols-[300px_1fr]">
@@ -78,16 +96,20 @@ export function ReceiptBuilder({ orders }: { orders: ReceiptOrder[] }) {
         ))}
         <div className="mt-6 grid grid-cols-2 gap-2">
           <button
+            type="button"
             onClick={() => window.print()}
-            className="rounded-xl bg-black py-3 text-xs font-bold text-white"
+            className="rounded-xl bg-black py-3 text-xs font-bold text-white transition hover:bg-[#252a20]"
           >
             <Printer size={14} className="mr-1 inline" /> Print
           </button>
           <button
-            onClick={() => window.print()}
-            className="rounded-xl border py-3 text-xs font-bold"
+            type="button"
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="rounded-xl border border-[#dedbd0] bg-white py-3 text-xs font-bold text-[#171914] transition hover:border-black disabled:opacity-50"
           >
-            <Download size={14} className="mr-1 inline" /> Save PDF
+            <Download size={14} className="mr-1 inline" />
+            {isDownloading ? "Saving…" : "Save Receipt"}
           </button>
         </div>
       </div>
@@ -164,7 +186,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
   return (
     <article className="receipt-document receipt-voucher relative w-full max-w-[780px] overflow-hidden bg-white text-[11px] text-[#20221d] shadow-2xl">
       <div className="h-2 bg-[#252a20]" />
-      <div className="p-5 sm:p-9">
+      <div className="receipt-voucher-inner p-5 sm:p-9">
         <header className="grid gap-5 border-b-2 border-[#252a20] pb-6 sm:grid-cols-[1fr_auto] sm:items-start">
           <div className="flex items-center gap-3.5">
             <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-black/15 shadow-sm">
@@ -210,7 +232,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
           </span>
         </div>
 
-        <section className="mt-6 grid gap-3 sm:grid-cols-[1.3fr_1fr]">
+        <section className="voucher-section mt-6 grid gap-3 sm:grid-cols-[1.3fr_1fr]">
           <div className="rounded-xl border border-[#dfe1da] bg-[#f7f8f4] p-4">
             <p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#777b70]">
               Sold to
@@ -243,7 +265,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
           </dl>
         </section>
 
-        <div className="mt-6 overflow-hidden rounded-xl border border-[#d8dad3]">
+        <div className="voucher-section mt-6 overflow-hidden rounded-xl border border-[#d8dad3]">
           <table className="w-full table-fixed text-left text-[10px] sm:text-[11px]">
             <thead className="!bg-[#252a20] text-white">
               <tr>
@@ -308,7 +330,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
           </table>
         </div>
 
-        <section className="mt-5 grid gap-5 sm:grid-cols-[1fr_290px]">
+        <section className="voucher-section mt-5 grid gap-5 sm:grid-cols-[1fr_290px]">
           <div>
             <p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#777b70]">
               Payment
@@ -348,7 +370,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
           </dl>
         </section>
 
-        <section className="mt-6 rounded-xl border border-[#dfe1da] bg-[#fafbf8] p-4 font-sans text-[9px] leading-[1.65] text-[#4c5047]">
+        <section className="voucher-section mt-6 rounded-xl border border-[#dfe1da] bg-[#fafbf8] p-4 font-sans text-[9px] leading-[1.65] text-[#4c5047]">
           <div className="flex items-center justify-between gap-3 border-b border-[#e2e4dd] pb-2">
             <p className="font-black text-[#252820]">
               Warranty Claim စည်းကမ်းချက်များ
@@ -363,7 +385,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
             ))}
           </ol>
         </section>
-        <footer className="mt-6 grid items-end gap-5 border-t border-[#dfe1da] pt-5 sm:grid-cols-[1fr_auto]">
+        <footer className="voucher-section mt-6 grid items-end gap-5 border-t border-[#dfe1da] pt-5 sm:grid-cols-[1fr_auto]">
           <div>
             <p className="font-sans text-sm font-black text-[#252820]">
               ကျေးဇူးတင်ပါတယ်ခင်ဗျာ

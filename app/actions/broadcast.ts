@@ -7,9 +7,10 @@ import {
   sendTelegramBroadcast,
   type BroadcastAudience,
   type BroadcastResult,
+  type BroadcastTargetOptions,
 } from "@/lib/services/broadcast.service";
 
-export type { BroadcastAudience, BroadcastResult };
+export type { BroadcastAudience, BroadcastResult, BroadcastTargetOptions };
 
 export async function getBroadcastAudienceAction(): Promise<BroadcastAudience> {
   await requireStaff(["admin", "staff"]);
@@ -18,6 +19,7 @@ export async function getBroadcastAudienceAction(): Promise<BroadcastAudience> {
 
 export async function sendTelegramBroadcastAction(
   message: string,
+  target?: BroadcastTargetOptions,
 ): Promise<BroadcastResult> {
   const staff = await authorizeStaff(["admin", "staff"]);
   if (!staff) {
@@ -33,7 +35,7 @@ export async function sendTelegramBroadcastAction(
   }
 
   const actor = `${staff.name} (${staff.email})`;
-  const result = await sendTelegramBroadcast(message, actor);
+  const result = await sendTelegramBroadcast(message, actor, target);
   revalidatePath("/customers");
   revalidatePath("/logs");
   return result;
