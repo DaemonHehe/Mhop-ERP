@@ -1,9 +1,26 @@
-import { readFile } from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { clientConfig } from "@/lib/client-config";
 import { formatMMK } from "@/lib/data";
 import type { ReceiptSummaryInput } from "./receipt-summary";
+
+// Configure Fontconfig to discover Noto Sans and Noto Sans Myanmar in assets/fonts on Linux/Vercel
+const fontsDir = path.join(process.cwd(), "assets", "fonts");
+const fontsConfPath = path.join(fontsDir, "fonts.conf");
+if (!process.env.FONTCONFIG_PATH) {
+  process.env.FONTCONFIG_PATH = fontsDir;
+}
+if (!process.env.FONTCONFIG_FILE) {
+  process.env.FONTCONFIG_FILE = fontsConfPath;
+}
+if (process.platform !== "win32") {
+  try {
+    fs.mkdirSync("/tmp/fonts-cache", { recursive: true });
+  } catch {
+    // ignore
+  }
+}
 
 const WIDTH = 1080;
 const LEFT = 86;
@@ -44,18 +61,12 @@ function paymentDetails(method: string) {
 }
 
 export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
-  const fontPath = path.join(process.cwd(), "assets", "fonts", "NotoSansMyanmar.ttf");
-  const latinFontPath = path.join(process.cwd(), "assets", "fonts", "NotoSans.ttf");
   const logoPath = path.join(process.cwd(), "public", "mhop-logo-minimal.jpg");
-  const [font, latinFont, logo] = await Promise.all([
-    readFile(fontPath),
-    readFile(latinFontPath),
-    sharp(logoPath)
-      .extract({ left: 115, top: 295, width: 790, height: 430 })
-      .resize({ width: 250, height: 120, fit: "fill" })
-      .png()
-      .toBuffer(),
-  ]);
+  const logo = await sharp(logoPath)
+    .extract({ left: 115, top: 295, width: 790, height: 430 })
+    .resize({ width: 250, height: 120, fit: "fill" })
+    .png()
+    .toBuffer();
 
   const itemLines: Array<{ left: string; right?: string; muted?: boolean }> = [];
   for (const bundle of order.bundles || []) {
@@ -126,7 +137,11 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
 
   const svg = Buffer.from(`
     <svg width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <style>@font-face{font-family:ReceiptLatin;src:url(data:font/ttf;base64,${latinFont.toString("base64")}) format("truetype");font-weight:100 900;}@font-face{font-family:ReceiptMyanmar;src:url(data:font/ttf;base64,${font.toString("base64")}) format("truetype");font-weight:100 900;}.body{font-family:ReceiptLatin,ReceiptMyanmar,sans-serif;}</style>
+      <style>
+        .body {
+          font-family: 'Noto Sans', 'Noto Sans Myanmar', sans-serif;
+        }
+      </style>
       <rect width="${WIDTH}" height="${height}" fill="#eceae3"/>
       <rect x="42" y="42" width="996" height="${height - 84}" rx="34" fill="#fffdf8"/>
       <rect x="42" y="42" width="996" height="18" rx="9" fill="#ff572c"/>

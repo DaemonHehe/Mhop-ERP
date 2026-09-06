@@ -871,6 +871,33 @@ export async function recordTelegramPaymentSlip(
   }
 }
 
+export async function getLatestPendingOrderByTelegramUser(
+  telegramUserId: string,
+): Promise<{ orderCode: string; totalAmount: string } | null> {
+  if (!db || !telegramUserId) return null;
+  try {
+    const [recent] = await db
+      .select({
+        orderCode: orders.orderCode,
+        totalAmount: orders.totalAmount,
+      })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.telegramUserId, telegramUserId),
+          eq(orders.paymentStatus, "pending"),
+        ),
+      )
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+
+    return recent || null;
+  } catch (err) {
+    console.error("[getLatestPendingOrderByTelegramUser error]", err);
+    return null;
+  }
+}
+
 export async function updateFulfillment(
   orderId: string,
   status:

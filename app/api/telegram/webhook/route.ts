@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPublicCatalog } from "@/lib/services/stock.service";
-import { recordTelegramPaymentSlip } from "@/lib/services/order.service";
+import {
+  getLatestPendingOrderByTelegramUser,
+  recordTelegramPaymentSlip,
+} from "@/lib/services/order.service";
 import {
   createSalesHandoffAlert,
   getBotSessionState,
@@ -84,22 +87,38 @@ export async function POST(request: NextRequest) {
   });
 
   if (message?.photo?.length) {
-    const orderCode = text.match(/MHOP-\d{6}-[A-Z0-9]{4}/i)?.[0];
+    let orderCode = text.match(/MHOP-\d{6}-[A-Z0-9]{4}/i)?.[0];
+    let autoResolved = false;
+
+    if (!orderCode) {
+      const pendingOrder = await getLatestPendingOrderByTelegramUser(telegramUserId);
+      if (pendingOrder) {
+        orderCode = pendingOrder.orderCode;
+        autoResolved = true;
+      }
+    }
+
     if (!orderCode)
       return reply(
         chatId,
         "Payment Slip ပုံ၏ caption တွင် Order Code (ဥပမာ MHOP-260829-AB12) ကို ထည့်ပေးပါခင်ဗျာ။",
       );
+
     const fileId = message.photo.at(-1)?.file_id || "";
     const stored = await recordTelegramPaymentSlip(
       orderCode,
       fileId,
       String(userId),
     );
+
+    const confirmationText = autoResolved
+      ? `✅ Order <b>${orderCode}</b> အတွက် Payment Slip ကို ချိတ်ဆက်လက်ခံရရှိပါသည်ခင်ဗျာ။\n\n${clientConfig.telegram.slipAcknowledgment}`
+      : `✅ Order <b>${orderCode}</b>\n\n${clientConfig.telegram.slipAcknowledgment}`;
+
     return reply(
       chatId,
       stored.ok
-        ? clientConfig.telegram.slipAcknowledgment
+        ? confirmationText
         : `Payment Slip ကို ချိတ်ဆက်၍မရပါခင်ဗျာ။ ${stored.error}`,
       { order_code: orderCode, stored: stored.ok },
     );
