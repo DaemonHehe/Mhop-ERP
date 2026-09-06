@@ -86,10 +86,11 @@ const GEMINI_MODELS = [
 ];
 
 const OPENROUTER_MODELS = [
-  { id: "google/gemini-2.0-flash-exp:free", name: "Google Gemini 2.0 Flash (Free - Best for Burmese)" },
-  { id: "google/gemini-flash-1.5:free", name: "Google Gemini 1.5 Flash (Free)" },
-  { id: "qwen/qwen-2.5-72b-instruct:free", name: "Qwen 2.5 72B Instruct (Free - Multilingual)" },
-  { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B Instruct (Free)" },
+  { id: "google/gemma-4-31b-it:free", name: "Google Gemma 4 31B (Free - Multilingual & Burmese)" },
+  { id: "google/gemma-4-26b-a4b-it:free", name: "Google Gemma 4 26B (Free)" },
+  { id: "google/gemini-2.5-flash", name: "Google Gemini 2.5 Flash" },
+  { id: "google/gemini-2.5-flash-lite", name: "Google Gemini 2.5 Flash Lite" },
+  { id: "minimax/minimax-m2.7:free", name: "MiniMax M2.7 (Free)" },
 ];
 
 // Helper to strip markdown before speech synthesis
@@ -142,9 +143,9 @@ export function AdminCopilotDrawer() {
 
   const [openRouterConfigured, setOpenRouterConfigured] = useState(false);
   const [openRouterMaskedKey, setOpenRouterMaskedKey] = useState<string | null>(null);
-  const [openRouterActiveModel, setOpenRouterActiveModel] = useState("google/gemini-2.0-flash-exp:free");
+  const [openRouterActiveModel, setOpenRouterActiveModel] = useState("google/gemma-4-31b-it:free");
   const [openRouterInputKey, setOpenRouterInputKey] = useState("");
-  const [openRouterSelectedModel, setOpenRouterSelectedModel] = useState("google/gemini-2.0-flash-exp:free");
+  const [openRouterSelectedModel, setOpenRouterSelectedModel] = useState("google/gemma-4-31b-it:free");
 
   const [showKeyText, setShowKeyText] = useState(false);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
@@ -783,8 +784,16 @@ export function AdminCopilotDrawer() {
                     Fallback Model Selection
                   </label>
                   <select
-                    value={openRouterSelectedModel}
-                    onChange={(e) => setOpenRouterSelectedModel(e.target.value)}
+                    value={
+                      OPENROUTER_MODELS.some((m) => m.id === openRouterSelectedModel)
+                        ? openRouterSelectedModel
+                        : "custom"
+                    }
+                    onChange={(e) => {
+                      if (e.target.value !== "custom") {
+                        setOpenRouterSelectedModel(e.target.value);
+                      }
+                    }}
                     className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-2.5 py-1.5 text-xs focus:outline-hidden focus:ring-2 focus:ring-purple-500"
                   >
                     {OPENROUTER_MODELS.map((m) => (
@@ -792,7 +801,18 @@ export function AdminCopilotDrawer() {
                         {m.name}
                       </option>
                     ))}
+                    <option value="custom">Type Custom Model ID...</option>
                   </select>
+                  {(!OPENROUTER_MODELS.some((m) => m.id === openRouterSelectedModel) ||
+                    openRouterSelectedModel === "custom") && (
+                    <input
+                      type="text"
+                      value={openRouterSelectedModel === "custom" ? "" : openRouterSelectedModel}
+                      placeholder="e.g. google/gemma-4-31b-it:free"
+                      onChange={(e) => setOpenRouterSelectedModel(e.target.value)}
+                      className="mt-1.5 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-1.5 text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+                  )}
                 </div>
               </div>
             )}

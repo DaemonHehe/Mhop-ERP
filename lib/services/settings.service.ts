@@ -167,7 +167,7 @@ export async function getOpenRouterConfig(clientProvidedKey?: string, clientProv
     clientProvidedModel ||
     dbModel ||
     process.env.OPENROUTER_MODEL ||
-    "google/gemini-2.0-flash-exp:free"
+    "google/gemma-4-31b-it:free"
   ).trim();
 
   const isConfigured = Boolean(
@@ -193,7 +193,7 @@ export async function getOpenRouterConfig(clientProvidedKey?: string, clientProv
   };
 }
 
-export async function testOpenRouterConnection(apiKey: string, model = "google/gemini-2.0-flash-exp:free") {
+export async function testOpenRouterConnection(apiKey: string, model = "google/gemma-4-31b-it:free") {
   const key = apiKey.trim();
   if (!key) return { ok: false, error: "OpenRouter API key is required" };
 

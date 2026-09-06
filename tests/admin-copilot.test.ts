@@ -115,9 +115,9 @@ describe("Admin Copilot Internal Query Engine", () => {
     expect(config).toHaveProperty("source");
   });
 
-  it("should read openrouter config with default google/gemini-2.0-flash-exp:free model", async () => {
+  it("should read openrouter config with default google/gemma-4-31b-it:free model", async () => {
     const config = await getOpenRouterConfig();
-    expect(config.model).toBe("google/gemini-2.0-flash-exp:free");
+    expect(config.model).toBe("google/gemma-4-31b-it:free");
     expect(config).toHaveProperty("isConfigured");
     expect(config).toHaveProperty("source");
   });

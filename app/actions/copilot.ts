@@ -188,7 +188,7 @@ export async function saveOpenRouterKeyAction(input: {
     const staff = await requireStaff(["admin", "staff"]);
 
     const key = (input.apiKey || "").trim();
-    const model = (input.model || "google/gemini-2.0-flash-exp:free").trim();
+    const model = (input.model || "google/gemma-4-31b-it:free").trim();
 
     if (!key) {
       return { ok: false as const, error: "OpenRouter API key is required" };
@@ -245,7 +245,7 @@ export async function testOpenRouterKeyAction(input: {
   try {
     await requireStaff(["admin", "staff"]);
     const key = (input.apiKey || "").trim();
-    const model = (input.model || "google/gemini-2.0-flash-exp:free").trim();
+    const model = (input.model || "google/gemma-4-31b-it:free").trim();
     return await testOpenRouterConnection(key, model);
   } catch (err) {
     return {
