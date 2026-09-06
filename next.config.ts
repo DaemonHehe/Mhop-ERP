@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/*": ["./assets/fonts/**/*", "./public/mhop-logo-minimal.jpg"],
   },
-  serverExternalPackages: ["@neondatabase/serverless", "ws"],
+  serverExternalPackages: ["@neondatabase/serverless", "ws", "sharp"],
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [{ protocol: "https", hostname: "images.unsplash.com" }],

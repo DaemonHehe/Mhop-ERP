@@ -48,10 +48,6 @@ export default async function Checkout({
         </div>
         <div className="mt-12 grid gap-8 lg:grid-cols-[1fr_420px]">
           <section>
-            <p className="eyebrow">Secure checkout</p>
-            <h1 className="display mt-2 text-5xl font-semibold">
-              Complete your order.
-            </h1>
             <CheckoutForm
               total={total}
               skus={selected.map((p) => p.sku)}

@@ -28,7 +28,10 @@ import {
   sendTelegramOpsMessage,
   sendTelegramPhoto,
 } from "@/lib/telegram/bot";
-import { formatManagerOrderAlert } from "./receipt-summary";
+import {
+  formatCustomerReceipt,
+  formatManagerOrderAlert,
+} from "./receipt-summary";
 import { renderCustomerReceiptImage } from "./receipt-image";
 
 export interface OperationalOrder {
@@ -704,7 +707,15 @@ export async function createOrder(
           parse_mode: "HTML",
         });
       } catch (custErr) {
-        console.error("[Telegram Customer Receipt Error]", custErr);
+        console.error("[Telegram Customer Receipt Image Error]", custErr);
+        try {
+          const customerReceiptText = formatCustomerReceipt(receiptData);
+          await sendTelegramMessage(parsed.data.telegramUserId, customerReceiptText, {
+            parse_mode: "HTML",
+          });
+        } catch (fallbackErr) {
+          console.error("[Telegram Customer Receipt Fallback Error]", fallbackErr);
+        }
       }
     }
 
