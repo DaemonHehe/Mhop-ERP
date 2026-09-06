@@ -12,7 +12,7 @@ import {
   products,
   staffAlerts,
 } from "@/db/schema";
-import { orders as demoOrders } from "@/lib/data";
+import { formatMMK, orders as demoOrders } from "@/lib/data";
 import {
   calculateOrderShipping,
   clientConfig,
@@ -23,11 +23,13 @@ import { audit } from "./audit.service";
 import type { ActionResult } from "./stock.service";
 import { allocateDiscountedUnits } from "@/lib/order-pricing";
 import { evaluateWarrantyPolicy } from "@/lib/warranty-policy";
-import { sendTelegramMessage, sendTelegramOpsMessage } from "@/lib/telegram/bot";
 import {
-  formatCustomerReceipt,
-  formatManagerOrderAlert,
-} from "./receipt-summary";
+  sendTelegramMessage,
+  sendTelegramOpsMessage,
+  sendTelegramPhoto,
+} from "@/lib/telegram/bot";
+import { formatManagerOrderAlert } from "./receipt-summary";
+import { renderCustomerReceiptImage } from "./receipt-image";
 
 export interface OperationalOrder {
   id: string;
@@ -695,8 +697,10 @@ export async function createOrder(
     // 2. Generate and dispatch receipt back to customer via Customer Bot (if linked)
     if (parsed.data.telegramUserId) {
       try {
-        const customerReceiptText = formatCustomerReceipt(receiptData);
-        await sendTelegramMessage(parsed.data.telegramUserId, customerReceiptText, {
+        const receiptImage = await renderCustomerReceiptImage(receiptData);
+        await sendTelegramPhoto(parsed.data.telegramUserId, receiptImage, {
+          filename: `${orderSummary.orderCode}-receipt.png`,
+          caption: `🧾 <b>${orderSummary.orderCode}</b> · ${formatMMK(orderSummary.total)}\nငွေလွှဲပြီးပါက Payment Slip ပုံနှင့် Order Code ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။`,
           parse_mode: "HTML",
         });
       } catch (custErr) {

@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   outputFileTracingRoot: process.cwd(),
+  outputFileTracingIncludes: {
+    "/*": ["./assets/fonts/**/*", "./public/mhop-logo-minimal.jpg"],
+  },
   serverExternalPackages: ["@neondatabase/serverless", "ws"],
   images: {
     formats: ["image/avif", "image/webp"],

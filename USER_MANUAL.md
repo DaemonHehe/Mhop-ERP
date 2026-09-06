@@ -23,7 +23,7 @@ Use **Sale status** to mark a listing Available, Sold, or Withdrawn. Reserved is
 
 ## Orders and payment
 
-Customers create orders through the shop. A Telegram payment-slip photo must include the order code in its caption, for example `MHOP-260829-A1B2`. Staff must compare the slip with the payment provider's actual transaction before approving it. A photo alone is not proof of settlement.
+Customers create orders through the shop. A checkout linked to a Telegram user sends a branded receipt image through the customer bot, with the order code, purchased items, total, payment account, and slip instructions. A Telegram payment-slip photo must include the order code in its caption, for example `MHOP-260829-A1B2`. Staff must compare the slip with the payment provider's actual transaction before approving it. A photo alone is not proof of settlement.
 
 In **Orders**, select an order and review its payment evidence. Approval moves the order into packing. While packing a physical order, assign its serial or IMEI if applicable, then mark it packed. Physical dispatch uses the courier/tracking controls. For PUBG-only orders, use the digital handover controls; no courier or shipping fee is required. Mark delivered after confirming completion. Do not assume that changing order status automatically sends a customer tracking message.
 
