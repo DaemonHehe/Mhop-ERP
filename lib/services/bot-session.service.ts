@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { botSessions, staffAlerts } from "@/db/schema";
+import { sendTelegramOpsMessage } from "@/lib/telegram/bot";
 
 export type BotConversationMessage = {
   role: "user" | "assistant";
@@ -112,6 +113,7 @@ export async function saveBotConversationTurn(
 export async function createSalesHandoffAlert(
   telegramUserId: string,
   customerMessage: string,
+  extra?: { orderCode?: string; customerName?: string },
 ) {
   if (!db) return;
   try {
@@ -126,12 +128,34 @@ export async function createSalesHandoffAlert(
         ),
       )
       .limit(1);
-    if (existing) return;
-    await db.insert(staffAlerts).values({
-      type: "sales_agent_handoff",
-      title: "Customer requested sales support",
-      body: `Telegram ${telegramUserId}: ${cleanText(customerMessage, 300)}`,
-      targetCode: telegramUserId.slice(0, 80),
+
+    if (!existing) {
+      await db.insert(staffAlerts).values({
+        type: "sales_agent_handoff",
+        title: extra?.orderCode
+          ? `Support Request: Order ${extra.orderCode}`
+          : "Customer requested sales support",
+        body: `Telegram ${telegramUserId}${extra?.customerName ? ` (${extra.customerName})` : ""}: ${cleanText(customerMessage, 300)}`,
+        targetCode: telegramUserId.slice(0, 80),
+      });
+    }
+
+    const cleanMsg = cleanText(customerMessage, 500) || "Requested customer support (/support)";
+    const opsMessageLines = [
+      "🆘 <b>Customer Support Request</b>",
+      "",
+      `👤 <b>Telegram User ID:</b> <code>${telegramUserId}</code>`,
+      ...(extra?.customerName ? [`👤 <b>Customer Name:</b> ${extra.customerName}`] : []),
+      ...(extra?.orderCode ? [`📦 <b>Order Code:</b> <code>${extra.orderCode}</code>`] : []),
+      `💬 <b>Inquiry:</b> ${cleanMsg}`,
+      "",
+      "⚡️ Please check /alerts in admin or contact customer directly.",
+    ];
+
+    await sendTelegramOpsMessage(opsMessageLines.join("\n"), {
+      parse_mode: "HTML",
+    }).catch((err) => {
+      console.error("[sendTelegramOpsMessage support error]", err);
     });
   } catch (error) {
     console.error("[MH OP sales handoff]", error);

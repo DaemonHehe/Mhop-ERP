@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPublicCatalog } from "@/lib/services/stock.service";
 import {
   getLatestPendingOrderByTelegramUser,
+  getLatestOrderByTelegramUser,
   recordTelegramPaymentSlip,
 } from "@/lib/services/order.service";
 import {
@@ -28,6 +29,7 @@ async function reply(
 ) {
   try {
     const delivery = await sendTelegramMessage(chatId, text, {
+      parse_mode: extra.parse_mode as "HTML" | "Markdown" | "MarkdownV2" | undefined,
       reply_markup: extra.reply_markup as Record<string, unknown> | undefined,
     });
     return NextResponse.json({
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
       stored.ok
         ? confirmationText
         : `Payment Slip ကို ချိတ်ဆက်၍မရပါခင်ဗျာ။ ${stored.error}`,
-      { order_code: orderCode, stored: stored.ok },
+      { order_code: orderCode, stored: stored.ok, parse_mode: "HTML" },
     );
   }
   if (message?.voice)
@@ -191,11 +193,92 @@ export async function POST(request: NextRequest) {
       "Order code နှင့် ဝယ်ယူစဉ်သုံးခဲ့သော ဖုန်းနံပါတ်ကို ပေးပို့ပါခင်ဗျာ။ Warranty record ကို စစ်ဆေးပေးပါမယ်။",
     );
   if (text.startsWith("/support")) {
-    await createSalesHandoffAlert(telegramUserId, text || "Support command");
-    return reply(
-      chatId,
-      "ကြုံတွေ့နေသော ပြဿနာနှင့် order code ကို ပေးပို့ပါခင်ဗျာ။ Admin Team က ဆက်သွယ်ပေးပါမယ်။",
+    const supportQuery = text.replace(/^\/support(@\w+)?\s*/i, "").trim();
+    let orderCode = supportQuery.match(/MHOP-\d{6}-[A-Z0-9]{4}/i)?.[0];
+    const latestOrder = await getLatestOrderByTelegramUser(telegramUserId);
+
+    if (!orderCode && latestOrder) {
+      orderCode = latestOrder.orderCode;
+    }
+
+    await createSalesHandoffAlert(
+      telegramUserId,
+      supportQuery || "Customer requested support (/support)",
+      { orderCode },
     );
+
+    const adminUsername = clientConfig.receipt.telegram.replace(/^@/, "");
+    const adminChatUrl = `https://t.me/${adminUsername}`;
+    const viberPhone = clientConfig.receipt.viber;
+
+    let orderInfoText = "";
+    if (latestOrder) {
+      const statusLabels: Record<string, string> = {
+        new: "အော်ဒါအသစ် (New)",
+        confirmed: "အတည်ပြုပြီး (Confirmed)",
+        packing: "ပစ္စည်းထုပ်ပိုးဆဲ (Packing)",
+        packed: "ထုပ်ပိုးပြီး (Packed)",
+        dispatched: "ပို့ဆောင်ရေးသို့ လွှဲပြောင်းထားပြီး (Dispatched)",
+        delivered: "ပို့ဆောင်ပြီး (Delivered)",
+        cancelled: "ပယ်ဖျက်ထားသည် (Cancelled)",
+      };
+      const fulfillmentText =
+        statusLabels[latestOrder.fulfillmentStatus] ||
+        latestOrder.fulfillmentStatus;
+      const paymentText =
+        latestOrder.paymentStatus === "pending"
+          ? "ငွေလွှဲစစ်ဆေးဆဲ (Pending)"
+          : "ငွေပေးချေပြီး (Paid)";
+
+      orderInfoText = [
+        "📦 <b>လူကြီးမင်း၏ နောက်ဆုံး အော်ဒါ:</b>",
+        `• Order Code: <code>${latestOrder.orderCode}</code>`,
+        `• ငွေပေးချေမှု: ${paymentText}`,
+        `• ပို့ဆောင်မှု: ${fulfillmentText}`,
+        ...(latestOrder.trackingNumber
+          ? [`• Tracking No: <code>${latestOrder.trackingNumber}</code>`]
+          : []),
+        "",
+      ].join("\n");
+    }
+
+    const messageLines = [
+      "🤝 <b>MH OP Customer Support</b>",
+      "",
+      supportQuery
+        ? "လူကြီးမင်း ပေးပို့ထားသော မေးမြန်းချက်/ပြဿနာကို Customer Support Team ထံ လွှဲပြောင်းပေးထားပါပြီခင်ဗျာ။ Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ်ပေးပါမည်။"
+        : "ကြုံတွေ့နေသော ပြဿနာ သို့မဟုတ် မေးမြန်းလိုသည်များကို စာတိုပေးပို့ထားနိုင်ပါသည်ခင်ဗျာ။ Support Team မှ အမြန်ဆုံး စစ်ဆေးပေးပါမည်။",
+      "",
+      ...(orderInfoText ? [orderInfoText] : []),
+      "📞 <b>တိုက်ရိုက် ဆက်သွယ်ရန် လိုင်းများ:</b>",
+      `• Telegram Admin: ${clientConfig.receipt.telegram}`,
+      `• Viber / Phone: <code>${viberPhone}</code>`,
+      "• ဝန်ဆောင်မှုအချိန်: 9:00 AM – 8:00 PM",
+    ];
+
+    return reply(chatId, messageLines.join("\n"), {
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "💬 Chat with Admin",
+              url: adminChatUrl,
+            },
+            {
+              text: "🛍️ MH OP Store",
+              web_app: { url: shopMiniAppUrl },
+            },
+          ],
+          [
+            {
+              text: "🛡️ Check Warranty",
+              callback_data: "/warranty",
+            },
+          ],
+        ],
+      },
+    });
   }
   if (!text)
     return reply(chatId, "မေးလိုသည့် ပစ္စည်း သို့မဟုတ် budget ကို စာသားဖြင့် ပေးပို့ပါခင်ဗျာ။");

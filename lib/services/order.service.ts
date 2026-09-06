@@ -909,6 +909,39 @@ export async function getLatestPendingOrderByTelegramUser(
   }
 }
 
+export async function getLatestOrderByTelegramUser(
+  telegramUserId: string,
+): Promise<{
+  orderCode: string;
+  totalAmount: string;
+  paymentStatus: string;
+  fulfillmentStatus: string;
+  trackingNumber: string | null;
+  createdAt: Date;
+} | null> {
+  if (!db || !telegramUserId) return null;
+  try {
+    const [recent] = await db
+      .select({
+        orderCode: orders.orderCode,
+        totalAmount: orders.totalAmount,
+        paymentStatus: orders.paymentStatus,
+        fulfillmentStatus: orders.fulfillmentStatus,
+        trackingNumber: orders.trackingNumber,
+        createdAt: orders.createdAt,
+      })
+      .from(orders)
+      .where(eq(orders.telegramUserId, telegramUserId))
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+
+    return recent || null;
+  } catch (err) {
+    console.error("[getLatestOrderByTelegramUser error]", err);
+    return null;
+  }
+}
+
 export async function updateFulfillment(
   orderId: string,
   status:
