@@ -1,19 +1,26 @@
 import { getReceiptOrdersAction } from "@/app/actions/store";
+import { getPaymentAccountsAction } from "@/app/actions/payment-accounts";
 import { PageHeading } from "@/components/page-heading";
-import { ReceiptBuilder } from "@/components/receipt-builder";
+import { ReceiptsConsole } from "@/components/receipts-console";
+
 export const dynamic = "force-dynamic";
+
 export default async function Receipts() {
-  const orders = await getReceiptOrdersAction();
+  const [orders, accounts] = await Promise.all([
+    getReceiptOrdersAction(),
+    getPaymentAccountsAction(),
+  ]);
+
   return (
     <>
       <div className="no-print">
         <PageHeading
           eyebrow="Point of sale"
-          title="Sales voucher studio"
-          description="Print the MH OP sales voucher or choose a compact 80mm/58mm thermal receipt."
+          title="Sales vouchers & payments"
+          description="Print sales vouchers, customize thermal receipts, and manage transfer bank accounts."
         />
       </div>
-      <ReceiptBuilder orders={orders} />
+      <ReceiptsConsole orders={orders} accounts={accounts} />
     </>
   );
 }

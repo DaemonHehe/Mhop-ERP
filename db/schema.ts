@@ -423,3 +423,28 @@ export const expenses = pgTable(
     index("expenses_category_idx").on(table.category),
   ],
 );
+
+// --- Payment Accounts ---
+export const paymentAccounts = pgTable(
+  "payment_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bankName: varchar("bank_name", { length: 120 }).notNull(),
+    accountHolder: varchar("account_holder", { length: 120 }).notNull(),
+    accountNumber: varchar("account_number", { length: 120 }).notNull(),
+    instructions: text("instructions"),
+    qrCodeUrl: text("qr_code_url"),
+    isActive: boolean("is_active").notNull().default(true),
+    displayOrder: integer("display_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("payment_accounts_active_idx").on(table.isActive),
+    index("payment_accounts_order_idx").on(table.displayOrder),
+  ],
+);

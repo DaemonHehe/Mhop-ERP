@@ -33,6 +33,7 @@ import {
   formatManagerOrderAlert,
 } from "./receipt-summary";
 import { renderCustomerReceiptImage } from "./receipt-image";
+import { formatBankAccountsTelegramMessage } from "./payment-account.service";
 
 export interface OperationalOrder {
   id: string;
@@ -699,6 +700,8 @@ export async function createOrder(
 
     // 2. Generate and dispatch receipt back to customer via Customer Bot (if linked)
     if (parsed.data.telegramUserId) {
+      const bankInfoMessage = await formatBankAccountsTelegramMessage(parsed.data.paymentMethod);
+
       try {
         const receiptImage = await renderCustomerReceiptImage(receiptData);
         await sendTelegramPhoto(parsed.data.telegramUserId, receiptImage, {
@@ -706,11 +709,19 @@ export async function createOrder(
           caption: `🧾 <b>${orderSummary.orderCode}</b> · ${formatMMK(orderSummary.total)}\nငွေလွှဲပြီးပါက Payment Slip ပုံနှင့် Order Code ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။`,
           parse_mode: "HTML",
         });
+        // Also send bank transfer details
+        await sendTelegramMessage(parsed.data.telegramUserId, bankInfoMessage, {
+          parse_mode: "HTML",
+        });
       } catch (custErr) {
         console.error("[Telegram Customer Receipt Image Error]", custErr);
         try {
           const customerReceiptText = formatCustomerReceipt(receiptData);
           await sendTelegramMessage(parsed.data.telegramUserId, customerReceiptText, {
+            parse_mode: "HTML",
+          });
+          // Also send bank transfer details on fallback
+          await sendTelegramMessage(parsed.data.telegramUserId, bankInfoMessage, {
             parse_mode: "HTML",
           });
         } catch (fallbackErr) {

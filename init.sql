@@ -20,6 +20,7 @@ CREATE TABLE bot_sessions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), telegr
 CREATE TABLE suppliers (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(180) NOT NULL, phone varchar(40), email varchar(255), address text, notes text, is_active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE purchase_orders (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), po_code varchar(40) UNIQUE NOT NULL, supplier_id uuid NOT NULL REFERENCES suppliers(id), status varchar(30) NOT NULL DEFAULT 'ordered', total_cost numeric(14,2) NOT NULL CHECK(total_cost>=0), notes text, created_at timestamptz NOT NULL DEFAULT now(), received_at timestamptz);
 CREATE TABLE purchase_items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), purchase_order_id uuid NOT NULL REFERENCES purchase_orders(id), variant_id uuid NOT NULL REFERENCES product_variants(id), quantity integer NOT NULL CHECK(quantity>0), unit_cost numeric(14,2) NOT NULL CHECK(unit_cost>=0));
+CREATE TABLE payment_accounts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bank_name varchar(120) NOT NULL, account_holder varchar(120) NOT NULL, account_number varchar(120) NOT NULL, instructions text, qr_code_url text, is_active boolean NOT NULL DEFAULT true, display_order integer NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE expenses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), expense_code varchar(40) UNIQUE NOT NULL, category varchar(80) NOT NULL, description text NOT NULL, amount numeric(14,2) NOT NULL CHECK(amount>=0), payment_method varchar(40) NOT NULL, expense_date timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX device_units_variant_status_idx ON device_units(variant_id,status);
 CREATE INDEX product_variants_product_id_idx ON product_variants(product_id);
@@ -51,3 +52,5 @@ CREATE INDEX purchase_items_order_idx ON purchase_items(purchase_order_id);
 CREATE INDEX purchase_items_variant_idx ON purchase_items(variant_id);
 CREATE INDEX expenses_date_idx ON expenses(expense_date DESC);
 CREATE INDEX expenses_category_idx ON expenses(category);
+CREATE INDEX payment_accounts_active_idx ON payment_accounts(is_active);
+CREATE INDEX payment_accounts_order_idx ON payment_accounts(display_order);

@@ -89,12 +89,27 @@ async function generateQr(code: string, size = 80) {
  * Renders the official MH OP Sales Voucher (အရောင်းဘောက်ချာ) matching the ERP Receipts Studio format.
  */
 export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
-  const logoPath = path.join(process.cwd(), "public", "mhop-logo-minimal.jpg");
-  const logoBuf = await sharp(logoPath)
-    .extract({ left: 115, top: 295, width: 790, height: 430 })
-    .resize({ width: 44, height: 44, fit: "fill" })
-    .png()
-    .toBuffer();
+  let logoBuf: Buffer;
+  try {
+    const logoPath = path.join(process.cwd(), "public", "mhop-logo-minimal.jpg");
+    logoBuf = await sharp(logoPath)
+      .extract({ left: 115, top: 295, width: 790, height: 430 })
+      .resize({ width: 44, height: 44, fit: "fill" })
+      .png()
+      .toBuffer();
+  } catch (err) {
+    console.error("[renderCustomerReceiptImage logo load error, using blank]", err);
+    logoBuf = await sharp({
+      create: {
+        width: 44,
+        height: 44,
+        channels: 4,
+        background: { r: 32, g: 34, b: 29, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+  }
 
   const WIDTH = 920;
   const PAD = 48;
