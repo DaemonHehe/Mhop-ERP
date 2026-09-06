@@ -16,8 +16,8 @@ describe("Telegram receipt image", () => {
     });
     const metadata = await sharp(image).metadata();
     expect(metadata.format).toBe("png");
-    expect(metadata.width).toBe(1080);
-    expect(metadata.height).toBeGreaterThanOrEqual(1420);
+    expect(metadata.width).toBe(920);
+    expect(metadata.height).toBeGreaterThanOrEqual(800);
     expect(image.byteLength).toBeGreaterThan(20_000);
   });
 });

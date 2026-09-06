@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
+import QRCode from "qrcode";
+import JsBarcode from "jsbarcode";
 import { clientConfig } from "@/lib/client-config";
-import { formatMMK } from "@/lib/data";
 import type { ReceiptSummaryInput } from "./receipt-summary";
 
 // Configure Fontconfig to discover Noto Sans and Noto Sans Myanmar in assets/fonts on Linux/Vercel
@@ -22,11 +23,8 @@ if (process.platform !== "win32") {
   }
 }
 
-const WIDTH = 1080;
-const LEFT = 86;
-
 function xml(value: unknown) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -34,7 +32,7 @@ function xml(value: unknown) {
     .replaceAll("'", "&apos;");
 }
 
-function wrap(value: string, limit = 42) {
+function wrap(value: string, limit = 36) {
   const words = value.trim().split(/\s+/u);
   const lines: string[] = [];
   let current = "";
@@ -53,106 +51,312 @@ function wrap(value: string, limit = 42) {
   return lines.length ? lines : [""];
 }
 
-function paymentDetails(method: string) {
-  const key = method.toLowerCase();
-  if (key.includes("kbz") || key === "kbzpay") return clientConfig.payments.kbzPay;
-  if (key.includes("wave") || key === "wavepay") return clientConfig.payments.wavePay;
-  return clientConfig.payments.bank;
+function generateBarcode(code: string, width = 250, height = 36) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const CODE128 = (JsBarcode as any).getModule("CODE128");
+  const encoder = new CODE128(code, {});
+  const { data } = encoder.encode();
+  const barWidth = width / data.length;
+  let rects = "";
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] === "1") {
+      rects += `<rect x="${(i * barWidth).toFixed(2)}" y="0" width="${barWidth.toFixed(2)}" height="${height}" fill="#20221d"/>`;
+    }
+  }
+  return {
+    width,
+    height: height + 16,
+    svg: `<g transform="translate(0, 0)">${rects}<text x="${width / 2}" y="${height + 12}" text-anchor="middle" font-family="'Noto Sans', monospace" font-size="9" font-weight="700" fill="#20221d">${xml(code)}</text></g>`,
+  };
 }
 
+async function generateQr(code: string, size = 80) {
+  const appUrl = (
+    process.env.NEXT_PUBLIC_APP_URL || "https://mhop-erp-daemon.vercel.app"
+  ).replace(/\/+$/, "");
+  const url = `${appUrl}/orders?code=${encodeURIComponent(code)}`;
+  const qrSvg = await QRCode.toString(url, {
+    type: "svg",
+    width: size,
+    margin: 0,
+    color: { dark: "#20221d", light: "#ffffff" },
+  });
+  const match = qrSvg.match(/<svg[^>]*>([\s\S]*?)<\/svg>/);
+  return match ? match[1] : "";
+}
+
+/**
+ * Renders the official MH OP Sales Voucher (အရောင်းဘောက်ချာ) matching the ERP Receipts Studio format.
+ */
 export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
   const logoPath = path.join(process.cwd(), "public", "mhop-logo-minimal.jpg");
-  const logo = await sharp(logoPath)
+  const logoBuf = await sharp(logoPath)
     .extract({ left: 115, top: 295, width: 790, height: 430 })
-    .resize({ width: 250, height: 120, fit: "fill" })
+    .resize({ width: 44, height: 44, fit: "fill" })
     .png()
     .toBuffer();
 
-  const itemLines: Array<{ left: string; right?: string; muted?: boolean }> = [];
+  const WIDTH = 920;
+  const PAD = 48;
+  const CONTENT_W = WIDTH - PAD * 2;
+
+  const barcode = generateBarcode(order.orderCode, 250, 36);
+  const qrSvg = await generateQr(order.orderCode, 80);
+
+  const allRows: Array<{
+    no: number;
+    name: string;
+    sku: string;
+    warrantyMonths: number;
+    qty: number;
+    unit: string;
+    price: number;
+    disc: number;
+    amount: number;
+  }> = [];
+
+  let count = 1;
   for (const bundle of order.bundles || []) {
-    const lines = wrap(`Bundle · ${bundle.name}`, 38);
-    lines.forEach((line, index) => itemLines.push({
-      left: line,
-      right: index === lines.length - 1 ? formatMMK(bundle.price) : undefined,
-      muted: index > 0,
-    }));
+    allRows.push({
+      no: count++,
+      name: `Bundle · ${bundle.name}`,
+      sku: "BUNDLE",
+      warrantyMonths: 6,
+      qty: 1,
+      unit: "Set",
+      price: bundle.price,
+      disc: 0,
+      amount: bundle.price,
+    });
   }
   for (const item of order.items) {
-    const lines = wrap(`${item.name}  × ${item.quantity}`, 38);
-    lines.forEach((line, index) => itemLines.push({
-      left: line,
-      right: index === lines.length - 1
-        ? formatMMK(item.unitPrice * item.quantity)
-        : undefined,
-      muted: index > 0,
-    }));
+    allRows.push({
+      no: count++,
+      name: item.name,
+      sku: item.sku || "MH-GADGET",
+      warrantyMonths: 6,
+      qty: item.quantity,
+      unit: "Unit",
+      price: item.unitPrice,
+      disc: 0,
+      amount: item.unitPrice * item.quantity,
+    });
   }
 
-  const addressLines = order.shippingAddress === "Secure digital handover"
-    ? ["Secure digital handover"]
-    : wrap(order.shippingAddress, 48);
-  const payment = paymentDetails(order.paymentMethod);
-  const height = Math.max(1420, 1160 + itemLines.length * 56 + addressLines.length * 42);
-  let y = 400;
-  const rows: string[] = [];
-  const line = (label: string, value: string, options: { strong?: boolean; right?: boolean; size?: number; color?: string } = {}) => {
-    const weight = options.strong ? 700 : 450;
-    const anchor = options.right ? "end" : "start";
-    const x = options.right ? WIDTH - LEFT : LEFT;
-    rows.push(`<text x="${x}" y="${y}" text-anchor="${anchor}" class="body" font-size="${options.size || 29}" font-weight="${weight}" fill="${options.color || "#20211f"}">${xml(label)}${value ? ` ${xml(value)}` : ""}</text>`);
-    y += 46;
-  };
+  const rowH = 48;
+  const tableH = 34 + allRows.length * rowH;
 
-  line("Customer", order.customerName, { strong: true });
-  line("Phone", order.phone);
-  line("Delivery", addressLines[0]);
-  for (const continuation of addressLines.slice(1)) line("", continuation, { color: "#62645e" });
-  y += 22;
-  rows.push(`<line x1="${LEFT}" y1="${y}" x2="${WIDTH - LEFT}" y2="${y}" stroke="#ddd9cf" stroke-width="2"/>`);
-  y += 58;
-  line("ITEMS", "", { strong: true, size: 24, color: "#ff572c" });
-  for (const item of itemLines) {
-    const rowY = y;
-    rows.push(`<text x="${LEFT}" y="${rowY}" class="body" font-size="28" font-weight="${item.muted ? 400 : 600}" fill="#20211f">${xml(item.left)}</text>`);
-    if (item.right) rows.push(`<text x="${WIDTH - LEFT}" y="${rowY}" text-anchor="end" class="body" font-size="27" font-weight="650" fill="#20211f">${xml(item.right)}</text>`);
-    y += 52;
-  }
-  y += 10;
-  if (order.shippingFee > 0) {
-    rows.push(`<text x="${LEFT}" y="${y}" class="body" font-size="27" fill="#62645e">Delivery fee</text><text x="${WIDTH - LEFT}" y="${y}" text-anchor="end" class="body" font-size="27" fill="#62645e">${xml(formatMMK(order.shippingFee))}</text>`);
-    y += 54;
-  }
-  rows.push(`<rect x="${LEFT}" y="${y - 35}" width="${WIDTH - LEFT * 2}" height="88" rx="18" fill="#20211f"/>`);
-  rows.push(`<text x="${LEFT + 28}" y="${y + 22}" class="body" font-size="30" font-weight="700" fill="#fff">TOTAL</text><text x="${WIDTH - LEFT - 28}" y="${y + 22}" text-anchor="end" class="body" font-size="32" font-weight="750" fill="#fff">${xml(formatMMK(order.totalAmount))}</text>`);
-  y += 128;
-  line("PAYMENT", "", { strong: true, size: 24, color: "#ff572c" });
-  line(payment.label, "", { strong: true });
-  line("Account name", payment.holder);
-  line("Account number", payment.account, { strong: true });
-  y += 18;
-  rows.push(`<rect x="${LEFT}" y="${y}" width="${WIDTH - LEFT * 2}" height="150" rx="22" fill="#fff0e9"/>`);
-  rows.push(`<text x="${LEFT + 28}" y="${y + 45}" class="body" font-size="25" font-weight="700" fill="#d8421e">PAYMENT SLIP</text>`);
-  rows.push(`<text x="${LEFT + 28}" y="${y + 87}" class="body" font-size="25" fill="#3a3b37">ငွေလွှဲပြီးပါက Slip ပုံနှင့် Order Code ကို</text>`);
-  rows.push(`<text x="${LEFT + 28}" y="${y + 124}" class="body" font-size="25" fill="#3a3b37">ဤ Telegram Bot သို့ ပေးပို့ပါခင်ဗျာ။</text>`);
+  const addressLines =
+    order.shippingAddress === "Secure digital handover"
+      ? ["Secure digital handover"]
+      : wrap(order.shippingAddress, 38);
 
-  const svg = Buffer.from(`
-    <svg width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <style>
-        .body {
-          font-family: 'Noto Sans', 'Noto Sans Myanmar', sans-serif;
-        }
-      </style>
-      <rect width="${WIDTH}" height="${height}" fill="#eceae3"/>
-      <rect x="42" y="42" width="996" height="${height - 84}" rx="34" fill="#fffdf8"/>
-      <rect x="42" y="42" width="996" height="18" rx="9" fill="#ff572c"/>
-      <image href="data:image/png;base64,${logo.toString("base64")}" x="${LEFT}" y="92" width="250" height="120" preserveAspectRatio="xMidYMid meet"/>
-      <text x="${WIDTH - LEFT}" y="136" text-anchor="end" class="body" font-size="24" font-weight="700" fill="#ff572c">SALES RECEIPT</text>
-      <text x="${WIDTH - LEFT}" y="184" text-anchor="end" class="body" font-size="34" font-weight="750" fill="#20211f">${xml(order.orderCode)}</text>
-      <text x="${LEFT}" y="286" class="body" font-size="42" font-weight="750" fill="#20211f">Thank you for your order</text>
-      <text x="${LEFT}" y="334" class="body" font-size="25" fill="#62645e">${xml(clientConfig.receipt.storeName)} · ${xml(clientConfig.receipt.telegram)}</text>
-      ${rows.join("\n")}
-      <text x="${WIDTH / 2}" y="${height - 92}" text-anchor="middle" class="body" font-size="22" fill="#777971">Keep this receipt for payment and warranty reference.</text>
-    </svg>`);
+  const customerBoxY = 174;
+  const customerBoxH = Math.max(106, 68 + addressLines.length * 18);
+  const tableY = customerBoxY + customerBoxH + 16;
+  const paymentBoxY = tableY + tableH + 18;
+  const paymentBoxH = 140;
+  const warrantyBoxY = paymentBoxY + paymentBoxH + 16;
+  const warrantyBoxH = 142;
+  const footerY = warrantyBoxY + warrantyBoxH + 18;
+  const footerH = 136;
+  const totalHeight = footerY + footerH + 36;
 
-  return sharp(svg).png({ compressionLevel: 9 }).toBuffer();
+  const now = new Date();
+  const issuedDate = now.toLocaleDateString("en-GB", { timeZone: "Asia/Yangon" });
+  const issuedTime = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Yangon",
+  });
+  const courier =
+    order.shippingAddress === "Secure digital handover"
+      ? "Digital handover"
+      : clientConfig.shipping?.courier || "Royal Express";
+
+  const pMethod = order.paymentMethod.toLowerCase();
+  const paymentLabel =
+    pMethod.includes("kbz") || pMethod === "kbzpay"
+      ? "KPay"
+      : pMethod.includes("wave") || pMethod === "wavepay"
+        ? "WavePay"
+        : "KBZ Bank";
+  const subtotal = order.totalAmount - order.shippingFee;
+
+  const svg = `
+  <svg width="${WIDTH}" height="${totalHeight}" viewBox="0 0 ${WIDTH} ${totalHeight}" xmlns="http://www.w3.org/2000/svg">
+    <style>
+      .txt { font-family: 'Noto Sans', 'Noto Sans Myanmar', sans-serif; }
+      .mono { font-family: 'Noto Sans', monospace; }
+    </style>
+    <!-- Outer backdrop -->
+    <rect width="${WIDTH}" height="${totalHeight}" fill="#f5f4ef"/>
+    <!-- Document Card -->
+    <rect x="24" y="24" width="${WIDTH - 48}" height="${totalHeight - 48}" rx="8" fill="#ffffff" stroke="#e3e5de" stroke-width="1"/>
+    <!-- Top accent bar -->
+    <rect x="24" y="24" width="${WIDTH - 48}" height="8" rx="4" fill="#252a20"/>
+
+    <!-- Header -->
+    <g transform="translate(${PAD}, 56)">
+      <!-- Logo image -->
+      <rect x="0" y="0" width="48" height="48" rx="8" fill="#ffffff" stroke="#e0e2db" stroke-width="1"/>
+      <image href="data:image/png;base64,${logoBuf.toString("base64")}" x="4" y="4" width="40" height="40" preserveAspectRatio="xMidYMid meet"/>
+
+      <!-- Store Name & Tagline -->
+      <text x="62" y="22" class="txt" font-size="22" font-weight="900" fill="#171914" letter-spacing="-0.5">${xml(clientConfig.receipt.storeName)}</text>
+      <text x="62" y="38" class="txt" font-size="9" font-weight="700" fill="#707469" letter-spacing="1.6">MOBILE GAMING ONE STOP SERVICE</text>
+
+      <!-- Right Header: Title & Code -->
+      <text x="${CONTENT_W}" y="12" text-anchor="end" class="txt" font-size="9" font-weight="700" fill="#73776d" letter-spacing="2">OFFICIAL SALES DOCUMENT</text>
+      <text x="${CONTENT_W}" y="36" text-anchor="end" class="txt" font-size="22" font-weight="900" fill="#20221d">${xml(clientConfig.receipt.voucherTitle)}</text>
+      <text x="${CONTENT_W}" y="52" text-anchor="end" class="mono" font-size="11" font-weight="700" fill="#20221d">${xml(order.orderCode)}</text>
+    </g>
+
+    <!-- Divider line -->
+    <line x1="${PAD}" y1="128" x2="${WIDTH - PAD}" y2="128" stroke="#252a20" stroke-width="2"/>
+
+    <!-- Socials bar -->
+    <g transform="translate(${PAD}, 150)">
+      <text x="0" y="0" class="txt" font-size="10" fill="#666a60">
+        <tspan font-weight="800" fill="#292c26">Telegram </tspan>${xml(clientConfig.receipt.telegram)}
+      </text>
+      <text x="170" y="0" class="txt" font-size="10" fill="#666a60">
+        <tspan font-weight="800" fill="#292c26">Viber </tspan>${xml(clientConfig.receipt.viber)}
+      </text>
+      <text x="330" y="0" class="txt" font-size="10" fill="#666a60">
+        <tspan font-weight="800" fill="#292c26">TikTok </tspan>${xml(clientConfig.receipt.tiktok)}
+      </text>
+    </g>
+
+    <!-- Two-column: SOLD TO & ISSUED/TIME/COURIER -->
+    <g transform="translate(${PAD}, ${customerBoxY})">
+      <!-- Left Card: Sold to -->
+      <rect x="0" y="0" width="${CONTENT_W * 0.58}" height="${customerBoxH}" rx="10" fill="#f7f8f4" stroke="#dfe1da" stroke-width="1"/>
+      <text x="16" y="24" class="txt" font-size="9" font-weight="900" fill="#777b70" letter-spacing="1.5">SOLD TO</text>
+      <text x="16" y="48" class="txt" font-size="15" font-weight="900" fill="#1f211d">${xml(order.customerName)}</text>
+      <text x="16" y="68" class="txt" font-size="11" fill="#565a51">${xml(order.phone)}</text>
+      ${addressLines.map((line, i) => `<text x="16" y="${86 + i * 18}" class="txt" font-size="11" fill="#565a51">${xml(line)}</text>`).join("")}
+
+      <!-- Right Card: Metadata -->
+      <rect x="${CONTENT_W * 0.60}" y="0" width="${CONTENT_W * 0.40}" height="${customerBoxH}" rx="10" fill="#ffffff" stroke="#dfe1da" stroke-width="1"/>
+      <g transform="translate(${CONTENT_W * 0.60 + 16}, 0)">
+        <text x="0" y="32" class="txt" font-size="11" font-weight="600" fill="#777b70">Issued</text>
+        <text x="${CONTENT_W * 0.40 - 32}" y="32" text-anchor="end" class="txt" font-size="11" font-weight="700" fill="#1f211d">${issuedDate}</text>
+
+        <text x="0" y="60" class="txt" font-size="11" font-weight="600" fill="#777b70">Time</text>
+        <text x="${CONTENT_W * 0.40 - 32}" y="60" text-anchor="end" class="txt" font-size="11" font-weight="700" fill="#1f211d">${issuedTime}</text>
+
+        <text x="0" y="88" class="txt" font-size="11" font-weight="600" fill="#777b70">Courier</text>
+        <text x="${CONTENT_W * 0.40 - 32}" y="88" text-anchor="end" class="txt" font-size="11" font-weight="700" fill="#1f211d">${xml(courier)}</text>
+      </g>
+    </g>
+
+    <!-- Items Table -->
+    <g transform="translate(${PAD}, ${tableY})">
+      <rect x="0" y="0" width="${CONTENT_W}" height="${tableH}" rx="10" fill="#ffffff" stroke="#d8dad3" stroke-width="1"/>
+      <!-- Header background -->
+      <path d="M 0,10 A 10,10 0 0,1 10,0 L ${CONTENT_W - 10},0 A 10,10 0 0,1 ${CONTENT_W},10 L ${CONTENT_W},34 L 0,34 Z" fill="#252a20"/>
+      
+      <!-- Table Headers -->
+      <text x="16" y="22" class="txt" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">NO.</text>
+      <text x="60" y="22" class="txt" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">DESCRIPTION</text>
+      <text x="490" y="22" text-anchor="middle" class="txt" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">QTY</text>
+      <text x="540" y="22" text-anchor="middle" class="txt" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">UNIT</text>
+      <text x="640" y="22" text-anchor="end" class="txt" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">PRICE</text>
+      <text x="710" y="22" text-anchor="middle" class="txt" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">DISC</text>
+      <text x="${CONTENT_W - 16}" y="22" text-anchor="end" class="txt" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">AMOUNT</text>
+
+      <!-- Table Rows -->
+      ${allRows.map((item, idx) => {
+        const rY = 34 + idx * rowH;
+        const bg = idx % 2 === 1 ? `<rect x="1" y="${rY}" width="${CONTENT_W - 2}" height="${rowH}" fill="#fafbf8"/>` : "";
+        return `
+          ${bg}
+          <line x1="0" y1="${rY}" x2="${CONTENT_W}" y2="${rY}" stroke="#e1e3dc" stroke-width="1"/>
+          <text x="16" y="${rY + 22}" class="txt" font-size="11" fill="#74786e">${item.no}</text>
+          <text x="60" y="${rY + 20}" class="txt" font-size="12" font-weight="700" fill="#1f211d">${xml(item.name)}</text>
+          <text x="60" y="${rY + 36}" class="txt" font-size="9" fill="#74786e">${xml(item.sku)} · Warranty ${item.warrantyMonths} months</text>
+          <text x="490" y="${rY + 22}" text-anchor="middle" class="txt" font-size="11" fill="#1f211d">${item.qty}</text>
+          <text x="540" y="${rY + 22}" text-anchor="middle" class="txt" font-size="11" fill="#74786e">${item.unit}</text>
+          <text x="640" y="${rY + 22}" text-anchor="end" class="txt" font-size="11" fill="#1f211d">${item.price.toLocaleString()}</text>
+          <text x="710" y="${rY + 22}" text-anchor="middle" class="txt" font-size="11" fill="#74786e">${item.disc}%</text>
+          <text x="${CONTENT_W - 16}" y="${rY + 22}" text-anchor="end" class="txt" font-size="11" font-weight="700" fill="#1f211d">${item.amount.toLocaleString()}</text>
+        `;
+      }).join("")}
+    </g>
+
+    <!-- Payment & Totals Section -->
+    <g transform="translate(${PAD}, ${paymentBoxY})">
+      <!-- Left: Payment details -->
+      <g transform="translate(0, 0)">
+        <text x="0" y="14" class="txt" font-size="9" font-weight="900" fill="#777b70" letter-spacing="1.5">PAYMENT</text>
+        <text x="0" y="40" class="txt" font-size="15" font-weight="900" fill="#1f211d">${xml(paymentLabel)}</text>
+        <!-- Status badge -->
+        <rect x="52" y="27" width="70" height="18" rx="9" fill="#fff0cc"/>
+        <text x="87" y="40" text-anchor="middle" class="txt" font-size="8" font-weight="900" fill="#74530b" letter-spacing="1">PENDING</text>
+        <text x="0" y="64" class="txt" font-size="11" fill="#666a60">Received: <tspan font-weight="700" fill="#252820">0 MMK</tspan></text>
+      </g>
+
+      <!-- Right: Totals Breakdown Box -->
+      <g transform="translate(${CONTENT_W - 320}, 0)">
+        <rect x="0" y="0" width="320" height="136" rx="10" fill="#f3f4ef"/>
+        <g transform="translate(16, 0)">
+          <text x="0" y="28" class="txt" font-size="11" fill="#666a60">Subtotal</text>
+          <text x="288" y="28" text-anchor="end" class="txt" font-size="11" fill="#1f211d">${subtotal.toLocaleString()} MMK</text>
+
+          <text x="0" y="52" class="txt" font-size="11" fill="#666a60">Delivery fee</text>
+          <text x="288" y="52" text-anchor="end" class="txt" font-size="11" fill="#1f211d">${order.shippingFee.toLocaleString()} MMK</text>
+
+          <line x1="0" y1="64" x2="288" y2="64" stroke="#ccd0c5" stroke-width="1"/>
+
+          <text x="0" y="86" class="txt" font-size="14" font-weight="900" fill="#1f211d">Total</text>
+          <text x="288" y="86" text-anchor="end" class="txt" font-size="14" font-weight="900" fill="#1f211d">${order.totalAmount.toLocaleString()} MMK</text>
+
+          <text x="0" y="106" class="txt" font-size="10" fill="#666a60">Paid</text>
+          <text x="288" y="106" text-anchor="end" class="txt" font-size="10" fill="#1f211d">0 MMK</text>
+
+          <text x="0" y="124" class="txt" font-size="11" font-weight="900" fill="#1f211d">Balance due</text>
+          <text x="288" y="124" text-anchor="end" class="txt" font-size="11" font-weight="900" fill="#1f211d">${order.totalAmount.toLocaleString()} MMK</text>
+        </g>
+      </g>
+    </g>
+
+    <!-- Warranty Box -->
+    <g transform="translate(${PAD}, ${warrantyBoxY})">
+      <rect x="0" y="0" width="${CONTENT_W}" height="142" rx="10" fill="#fafbf8" stroke="#dfe1da" stroke-width="1"/>
+      <text x="16" y="24" class="txt" font-size="11" font-weight="900" fill="#252820">Warranty Claim စည်းကမ်းချက်များ</text>
+      <text x="${CONTENT_W - 16}" y="24" text-anchor="end" class="txt" font-size="8" font-weight="700" fill="#7c8075" letter-spacing="1.5">KEEP THIS VOUCHER</text>
+      <line x1="16" y1="36" x2="${CONTENT_W - 16}" y2="36" stroke="#e2e4dd" stroke-width="1"/>
+
+      ${clientConfig.receipt.warrantyTerms.map((term, i) => `
+        <text x="16" y="${56 + i * 20}" class="txt" font-size="9.5" fill="#4c5047">${i + 1}. ${xml(term)}</text>
+      `).join("")}
+    </g>
+
+    <!-- Footer -->
+    <g transform="translate(${PAD}, ${footerY})">
+      <line x1="0" y1="0" x2="${CONTENT_W}" y2="0" stroke="#dfe1da" stroke-width="1"/>
+
+      <!-- Left: Thank you & Barcode -->
+      <text x="0" y="28" class="txt" font-size="15" font-weight="900" fill="#252820">ကျေးဇူးတင်ပါတယ်ခင်ဗျာ</text>
+      <text x="0" y="46" class="txt" font-size="9.5" fill="#70746a">Thank you for choosing MH OP. Keep this original voucher as your proof of purchase and warranty record.</text>
+
+      <g transform="translate(0, 58)">
+        ${barcode.svg}
+      </g>
+
+      <!-- Right: QR Code & Reference text -->
+      <g transform="translate(${CONTENT_W - 190}, 45)">
+        <text x="0" y="16" text-anchor="end" class="txt" font-size="9" font-weight="800" fill="#30332c">Order reference</text>
+        <text x="0" y="30" text-anchor="end" class="txt" font-size="8" fill="#777b70">Scan to identify</text>
+        <text x="0" y="42" text-anchor="end" class="txt" font-size="8" fill="#777b70">this transaction</text>
+      </g>
+      <g transform="translate(${CONTENT_W - 80}, 20)">
+        ${qrSvg}
+      </g>
+    </g>
+  </svg>
+  `;
+
+  return sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
 }
