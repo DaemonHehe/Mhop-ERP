@@ -11,7 +11,7 @@ import { evaluateWarrantyPolicy } from "@/lib/warranty-policy";
 import { getCustomers } from "@/lib/services/customer.service";
 import { getInventory } from "@/lib/services/stock.service";
 import { getOrders } from "@/lib/services/order.service";
-import { getGeminiConfig } from "@/lib/services/settings.service";
+import { getGeminiConfig, getOpenRouterConfig } from "@/lib/services/settings.service";
 import { eq, sql } from "drizzle-orm";
 
 export interface CopilotMessage {
@@ -27,7 +27,7 @@ export interface CopilotToolCall {
 
 export interface CopilotResponse {
   answer: string;
-  mode: "gemini" | "pattern_fallback";
+  mode: "gemini" | "openrouter" | "pattern_fallback";
   model: string;
   toolCalls: CopilotToolCall[];
 }
@@ -807,7 +807,249 @@ async function executeTool(name: string, args: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
-// Main AI Copilot Entrypoint
+// OpenRouter OpenAI-Compatible Tools Schema
+// ---------------------------------------------------------------------------
+
+const OPENAI_COMPATIBLE_TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "search_orders",
+      description:
+        "Search internal orders by order code (MHOP-...), customer name, phone number, or fulfillment/payment status.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search term: order code, customer name, or phone",
+          },
+          status: {
+            type: "string",
+            description: "Optional status filter: pending, verified, packed, dispatched, delivered",
+          },
+          limit: {
+            type: "number",
+            description: "Max results to return (1-10)",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "search_customers",
+      description:
+        "Search customer profiles by name, phone, or Telegram ID, including lifetime spend, total orders, and address.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Customer name, phone number, or Telegram ID",
+          },
+          limit: {
+            type: "number",
+            description: "Max results to return (1-10)",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "lookup_warranty",
+      description:
+        "Check warranty status, device IMEI/serial, and expiration date for an order code, customer phone, or serial number.",
+      parameters: {
+        type: "object",
+        properties: {
+          orderCode: {
+            type: "string",
+            description: "MH OP order code (e.g. MHOP-260906-AB12)",
+          },
+          phone: {
+            type: "string",
+            description: "Customer phone number (e.g. 09772601762)",
+          },
+          identifier: {
+            type: "string",
+            description: "Device serial number or IMEI",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "check_inventory",
+      description:
+        "Check warehouse inventory stock levels, low-stock alerts, pricing, and specs.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Product name, SKU, brand, or category",
+          },
+          lowStockOnly: {
+            type: "boolean",
+            description: "Set to true to show only low stock or out of stock items",
+          },
+          limit: {
+            type: "number",
+            description: "Max items to return (1-15)",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "get_business_summary",
+      description:
+        "Get real-time business KPIs: today's revenue, pending payment slips needing review, pending dispatches, low stock counts, and open tickets.",
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+  },
+];
+
+async function queryOpenRouterCopilot(input: {
+  question: string;
+  history?: CopilotMessage[];
+  apiKey: string;
+  model: string;
+}): Promise<CopilotResponse | null> {
+  const recordedToolCalls: CopilotToolCall[] = [];
+
+  try {
+    const messages: Array<{
+      role: string;
+      content?: string | null;
+      tool_calls?: Array<Record<string, unknown>>;
+      tool_call_id?: string;
+      name?: string;
+    }> = [{ role: "system", content: SYSTEM_INSTRUCTION }];
+
+    if (input.history && input.history.length > 0) {
+      for (const msg of input.history.slice(-6)) {
+        messages.push({
+          role: msg.role === "assistant" ? "assistant" : "user",
+          content: msg.content,
+        });
+      }
+    }
+
+    messages.push({ role: "user", content: input.question });
+
+    const firstRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.apiKey}`,
+        "HTTP-Referer": "https://mhop-erp.local",
+        "X-Title": "MH OP Operations Copilot",
+      },
+      body: JSON.stringify({
+        model: input.model,
+        messages,
+        tools: OPENAI_COMPATIBLE_TOOLS,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(18_000),
+    });
+
+    if (!firstRes.ok) {
+      console.warn(`[OpenRouter API returned ${firstRes.status}]`);
+      return null;
+    }
+
+    const firstJson = await firstRes.json();
+    const firstChoice = firstJson?.choices?.[0]?.message;
+
+    if (firstChoice?.tool_calls && firstChoice.tool_calls.length > 0) {
+      messages.push(firstChoice);
+
+      for (const tc of firstChoice.tool_calls) {
+        const fnName = tc.function?.name;
+        let fnArgs: Record<string, unknown> = {};
+        try {
+          fnArgs = JSON.parse(tc.function?.arguments || "{}");
+        } catch {
+          fnArgs = {};
+        }
+
+        const toolResult = await executeTool(fnName, fnArgs);
+        recordedToolCalls.push({
+          name: fnName,
+          args: fnArgs,
+          summary: `Called ${fnName}`,
+        });
+
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          name: fnName,
+          content: JSON.stringify(toolResult),
+        });
+      }
+
+      const secondRes = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${input.apiKey}`,
+            "HTTP-Referer": "https://mhop-erp.local",
+            "X-Title": "MH OP Operations Copilot",
+          },
+          body: JSON.stringify({
+            model: input.model,
+            messages,
+            temperature: 0.2,
+          }),
+          signal: AbortSignal.timeout(18_000),
+        },
+      );
+
+      if (secondRes.ok) {
+        const secondJson = await secondRes.json();
+        const reply = secondJson?.choices?.[0]?.message?.content;
+        if (reply) {
+          return {
+            answer: reply.trim(),
+            mode: "openrouter",
+            model: input.model,
+            toolCalls: recordedToolCalls,
+          };
+        }
+      }
+    } else if (firstChoice?.content) {
+      return {
+        answer: firstChoice.content.trim(),
+        mode: "openrouter",
+        model: input.model,
+        toolCalls: recordedToolCalls,
+      };
+    }
+
+    return null;
+  } catch (err) {
+    console.error("[queryOpenRouterCopilot error]", err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main AI Copilot Entrypoint (Tier 1: Gemini -> Tier 2: OpenRouter -> Tier 3: DB Pattern)
 // ---------------------------------------------------------------------------
 
 export async function askAdminCopilot(input: {
@@ -815,155 +1057,166 @@ export async function askAdminCopilot(input: {
   history?: CopilotMessage[];
   clientApiKey?: string;
   clientModel?: string;
+  clientOpenRouterKey?: string;
+  clientOpenRouterModel?: string;
 }): Promise<CopilotResponse> {
-  const config = await getGeminiConfig(input.clientApiKey, input.clientModel);
+  const geminiConfig = await getGeminiConfig(
+    input.clientApiKey,
+    input.clientModel,
+  );
+  const openRouterConfig = await getOpenRouterConfig(
+    input.clientOpenRouterKey,
+    input.clientOpenRouterModel,
+  );
+
   const recordedToolCalls: CopilotToolCall[] = [];
 
-  // If no Gemini key is provided, use the zero-key pattern engine
-  if (!config.isConfigured) {
-    return await synthesizePatternResponse(input.question);
-  }
+  // Tier 1: Try Primary Google Gemini Direct API
+  if (geminiConfig.isConfigured) {
+    const model = geminiConfig.model || "gemini-2.5-flash";
+    const apiKey = geminiConfig.apiKey;
 
-  const model = config.model || "gemini-2.5-flash";
-  const apiKey = config.apiKey;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const contents: Array<{
+        role: string;
+        parts: Array<Record<string, unknown>>;
+      }> = [];
 
-    // Build initial prompt contents
-    const contents: Array<{
-      role: string;
-      parts: Array<Record<string, unknown>>;
-    }> = [];
-
-    // Add previous history turns if available (last 6 messages max)
-    if (input.history && input.history.length > 0) {
-      for (const msg of input.history.slice(-6)) {
-        contents.push({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: msg.content }],
-        });
+      if (input.history && input.history.length > 0) {
+        for (const msg of input.history.slice(-6)) {
+          contents.push({
+            role: msg.role === "assistant" ? "model" : "user",
+            parts: [{ text: msg.content }],
+          });
+        }
       }
-    }
 
-    // Add current user prompt
-    contents.push({
-      role: "user",
-      parts: [{ text: input.question }],
-    });
+      contents.push({
+        role: "user",
+        parts: [{ text: input.question }],
+      });
 
-    const requestBody = {
-      system_instruction: {
-        parts: [{ text: SYSTEM_INSTRUCTION }],
-      },
-      contents,
-      tools: [
-        {
-          function_declarations: GEMINI_FUNCTION_DECLARATIONS,
+      const requestBody = {
+        system_instruction: {
+          parts: [{ text: SYSTEM_INSTRUCTION }],
         },
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 1024,
-      },
-    };
-
-    const firstRes = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!firstRes.ok) {
-      console.warn(
-        `[Gemini API returned ${firstRes.status}, falling back to pattern engine]`,
-      );
-      return await synthesizePatternResponse(input.question);
-    }
-
-    const firstJson = await firstRes.json();
-    const candidate = firstJson?.candidates?.[0];
-    const firstPart = candidate?.content?.parts?.[0];
-
-    // Check if Gemini invoked a function call
-    if (firstPart?.functionCall) {
-      const fnName = firstPart.functionCall.name;
-      const fnArgs = (firstPart.functionCall.args || {}) as Record<
-        string,
-        unknown
-      >;
-
-      const toolResult = await executeTool(fnName, fnArgs);
-      recordedToolCalls.push({
-        name: fnName,
-        args: fnArgs,
-        summary: `Called ${fnName}`,
-      });
-
-      // Prepare multi-turn request with tool result
-      contents.push({
-        role: "model",
-        parts: [{ functionCall: firstPart.functionCall }],
-      });
-
-      contents.push({
-        role: "function",
-        parts: [
+        contents,
+        tools: [
           {
-            functionResponse: {
-              name: fnName,
-              response: {
-                name: fnName,
-                content: toolResult,
-              },
-            },
+            function_declarations: GEMINI_FUNCTION_DECLARATIONS,
           },
         ],
-      });
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1024,
+        },
+      };
 
-      const secondRes = await fetch(url, {
+      const firstRes = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: SYSTEM_INSTRUCTION }],
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 1024,
-          },
-        }),
+        body: JSON.stringify(requestBody),
         signal: AbortSignal.timeout(15_000),
       });
 
-      if (secondRes.ok) {
-        const secondJson = await secondRes.json();
-        const secondText =
-          secondJson?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (secondText) {
+      if (firstRes.ok) {
+        const firstJson = await firstRes.json();
+        const candidate = firstJson?.candidates?.[0];
+        const firstPart = candidate?.content?.parts?.[0];
+
+        if (firstPart?.functionCall) {
+          const fnName = firstPart.functionCall.name;
+          const fnArgs = (firstPart.functionCall.args || {}) as Record<
+            string,
+            unknown
+          >;
+
+          const toolResult = await executeTool(fnName, fnArgs);
+          recordedToolCalls.push({
+            name: fnName,
+            args: fnArgs,
+            summary: `Called ${fnName}`,
+          });
+
+          contents.push({
+            role: "model",
+            parts: [{ functionCall: firstPart.functionCall }],
+          });
+
+          contents.push({
+            role: "function",
+            parts: [
+              {
+                functionResponse: {
+                  name: fnName,
+                  response: {
+                    name: fnName,
+                    content: toolResult,
+                  },
+                },
+              },
+            ],
+          });
+
+          const secondRes = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              system_instruction: {
+                parts: [{ text: SYSTEM_INSTRUCTION }],
+              },
+              contents,
+              generationConfig: {
+                temperature: 0.2,
+                maxOutputTokens: 1024,
+              },
+            }),
+            signal: AbortSignal.timeout(15_000),
+          });
+
+          if (secondRes.ok) {
+            const secondJson = await secondRes.json();
+            const secondText =
+              secondJson?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (secondText) {
+              return {
+                answer: secondText.trim(),
+                mode: "gemini",
+                model,
+                toolCalls: recordedToolCalls,
+              };
+            }
+          }
+        } else if (firstPart?.text) {
           return {
-            answer: secondText.trim(),
+            answer: firstPart.text.trim(),
             mode: "gemini",
             model,
             toolCalls: recordedToolCalls,
           };
         }
       }
-    } else if (firstPart?.text) {
-      return {
-        answer: firstPart.text.trim(),
-        mode: "gemini",
-        model,
-        toolCalls: recordedToolCalls,
-      };
+    } catch (err) {
+      console.warn("[Google Gemini attempt failed, trying OpenRouter fallback]", err);
     }
-
-    // Fallback if model returned empty or unexpected structure
-    return await synthesizePatternResponse(input.question);
-  } catch (err) {
-    console.error("[askAdminCopilot Gemini error]", err);
-    return await synthesizePatternResponse(input.question);
   }
+
+  // Tier 2: Try OpenRouter Fallback Model (google/gemini-2.0-flash-exp:free)
+  if (openRouterConfig.isConfigured) {
+    const openRouterResult = await queryOpenRouterCopilot({
+      question: input.question,
+      history: input.history,
+      apiKey: openRouterConfig.apiKey,
+      model: openRouterConfig.model || "google/gemini-2.0-flash-exp:free",
+    });
+
+    if (openRouterResult) {
+      return openRouterResult;
+    }
+  }
+
+  // Tier 3: Zero-Key Pattern Matching Engine
+  return await synthesizePatternResponse(input.question);
 }

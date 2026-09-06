@@ -8,7 +8,7 @@ import {
   synthesizePatternResponse,
   askAdminCopilot,
 } from "@/lib/ai/admin-copilot";
-import { getGeminiConfig } from "@/lib/services/settings.service";
+import { getGeminiConfig, getOpenRouterConfig } from "@/lib/services/settings.service";
 
 describe("Admin Copilot Internal Query Engine", () => {
   it("should search orders by keyword and status", async () => {
@@ -111,6 +111,13 @@ describe("Admin Copilot Internal Query Engine", () => {
   it("should read gemini config with default model", async () => {
     const config = await getGeminiConfig();
     expect(config.model).toBe("gemini-2.5-flash");
+    expect(config).toHaveProperty("isConfigured");
+    expect(config).toHaveProperty("source");
+  });
+
+  it("should read openrouter config with default google/gemini-2.0-flash-exp:free model", async () => {
+    const config = await getOpenRouterConfig();
+    expect(config.model).toBe("google/gemini-2.0-flash-exp:free");
     expect(config).toHaveProperty("isConfigured");
     expect(config).toHaveProperty("source");
   });

@@ -151,3 +151,91 @@ export async function testGeminiConnection(apiKey: string, model = "gemini-2.5-f
     };
   }
 }
+
+export async function getOpenRouterConfig(clientProvidedKey?: string, clientProvidedModel?: string) {
+  const dbKey = await getSystemSetting("openrouter_api_key");
+  const dbModel = await getSystemSetting("openrouter_model");
+
+  const apiKey = (
+    clientProvidedKey ||
+    dbKey ||
+    process.env.OPENROUTER_API_KEY ||
+    ""
+  ).trim();
+
+  const model = (
+    clientProvidedModel ||
+    dbModel ||
+    process.env.OPENROUTER_MODEL ||
+    "google/gemini-2.0-flash-exp:free"
+  ).trim();
+
+  const isConfigured = Boolean(
+    apiKey && !/^(replace|your[-_]?key|test)/i.test(apiKey),
+  );
+
+  const maskedKey = isConfigured
+    ? `${apiKey.slice(0, 9)}••••••••${apiKey.slice(-4)}`
+    : null;
+
+  return {
+    apiKey,
+    maskedKey,
+    model,
+    isConfigured,
+    source: clientProvidedKey
+      ? "client"
+      : dbKey
+        ? "database"
+        : process.env.OPENROUTER_API_KEY
+          ? "environment"
+          : "none",
+  };
+}
+
+export async function testOpenRouterConnection(apiKey: string, model = "google/gemini-2.0-flash-exp:free") {
+  const key = apiKey.trim();
+  if (!key) return { ok: false, error: "OpenRouter API key is required" };
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+        "HTTP-Referer": "https://mhop-erp.local",
+        "X-Title": "MH OP Operations Copilot",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: "Respond with the single word: OK" }],
+        max_tokens: 10,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      const message =
+        errJson?.error?.message ||
+        `OpenRouter returned status ${res.status}`;
+      return { ok: false, error: message };
+    }
+
+    const json = await res.json().catch(() => null);
+    const replyText =
+      json?.choices?.[0]?.message?.content?.trim() || "OK";
+
+    return {
+      ok: true,
+      model,
+      sampleResponse: replyText,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Connection timed out or failed",
+    };
+  }
+}
+
