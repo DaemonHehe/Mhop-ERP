@@ -77,6 +77,15 @@ const [state] = await sql(
     ) as has_customer_id`,
 );
 
+const [workflowState] = await sql(
+  `select exists(
+    select 1
+    from pg_enum e
+    join pg_type t on t.oid=e.enumtypid
+    where t.typname='fulfillment_status' and e.enumlabel='packed'
+  ) as has_packed_status`,
+);
+
 const setup = [];
 let mode;
 if (!state.has_admin_users && !state.has_orders) {
@@ -93,8 +102,18 @@ if (!state.has_admin_users && !state.has_orders) {
   mode = "current database detected";
 }
 
+if (!workflowState.has_packed_status)
+  setup.push(
+    ...(await statementsFrom("migrations/0009_guarded_order_workflow.sql")),
+  );
+
+setup.push(
+  ...(await statementsFrom("migrations/0010_categorized_audit_history.sql")),
+);
+
 setup.push(...(await statementsFrom("seed-test.sql")));
 await sql.transaction((tx) => setup.map((statement) => tx(statement)));
+await import("./migrate-audit.mjs");
 
 const [summary] = await sql(
   `select

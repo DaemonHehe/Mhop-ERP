@@ -1,8 +1,10 @@
+import { Logo } from "@/components/logo";
 import Link from "next/link";
 export default function NotFound() {
   return (
     <main className="grid min-h-screen place-items-center bg-[#171813] p-6 text-white">
       <div className="text-center">
+        <Logo light className="mb-8" href="/shop" />
         <p className="eyebrow !text-[#c7f36b]">404 · Route missing</p>
         <h1 className="display mt-4 text-6xl font-bold">
           Nothing stocked here.

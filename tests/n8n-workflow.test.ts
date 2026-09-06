@@ -18,15 +18,19 @@ function render(expression: string, row: Row) {
 }
 
 describe("n8n workflow data contracts", () => {
-  it("maps the app's camelCase Telegram ID and filters invalid cart recipients", () => {
-    const result = runCode("Keep Valid Cart Recipients", [
-      { id: "a", telegramUserId: "12345", checkout_url: "https://shop.example/shop" },
-      { id: "a", telegramUserId: "12345", checkout_url: "https://shop.example/shop" },
-      { id: "b", telegramUserId: null, checkout_url: "https://shop.example/shop" },
-      { id: "c", telegramUserId: "-12345", checkout_url: "https://shop.example/shop" },
-    ]);
-    expect(result).toHaveLength(1);
-    expect(result[0].json.telegram_user_id).toBe("12345");
+  it("uses current recovery stages and passes only the lead identity to the sender", () => {
+    const id = "order:20000000-0000-4000-8000-000000000006";
+    const activityAt = "2026-09-03T01:00:00Z";
+    const valid = { id, stage: "unpaid", telegramUserId: "12345", activityAt };
+    const result = runCode("Keep Valid Cart Recipients", [valid, valid,
+      { ...valid, telegramUserId: null }, { ...valid, telegramUserId: "-12345" },
+      { ...valid, stage: "converted" }, { ...valid, activityAt: "bad" },
+      { ...valid, id: "legacy-lead" }]);
+    expect(result).toEqual([{ json: { id, activityAt } }]);
+    const send = nodes.find((node) => node.name === "Send Cart Recovery DM")!;
+    expect(send.type).toBe("n8n-nodes-base.httpRequest");
+    expect(send.parameters.url).toContain("/api/internal/leads/remind");
+    expect(send.retryOnFail).toBe(false);
   });
 
   it("uses the real emitted payment event and a stable replay key", () => {

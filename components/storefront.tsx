@@ -1,4 +1,5 @@
 "use client";
+import { brandAssets } from "@/lib/brand-assets";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -132,6 +133,32 @@ export function Storefront({
             >
               ပစ္စည်းများ ကြည့်ရှုမယ် <ArrowRight size={15} />
             </a>
+          </div>
+        </div>
+        <div className="relative mt-8 aspect-[16/7] w-full overflow-hidden rounded-[26px] border border-[#ddd9ce] shadow-xl md:aspect-[2.6/1]">
+          <Image
+            src={brandAssets.store}
+            alt="MH OP Minimalist Flagship Store & Showroom"
+            fill
+            priority
+            sizes="(max-width: 1280px) 100vw, 1280px"
+            className="object-cover"
+          />
+          <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/85 via-black/30 to-transparent p-5 sm:p-8 md:p-10">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff6b35] px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
+                Official Store Direct
+              </span>
+              <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold text-white backdrop-blur-md">
+                100% Authentic Warranty
+              </span>
+            </div>
+            <h2 className="mt-2 text-lg font-bold text-white sm:text-xl md:text-2xl">
+              MH OP Mobile Gaming Experience & Hardware Boutique
+            </h2>
+            <p className="mt-0.5 text-xs text-white/75 sm:text-sm">
+              Premium cooling tech, esports accessories & instant digital account transfers
+            </p>
           </div>
         </div>
       </section>

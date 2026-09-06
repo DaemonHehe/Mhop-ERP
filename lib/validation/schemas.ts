@@ -14,6 +14,7 @@ export const loginSchema = z.object({
 export const orderSchema = z.object({
   customerName: text(120),
   phone: text(40),
+  telegramUserId: z.string().trim().max(80).optional(),
   shippingAddress: z.string().trim().max(500).default(""),
   shippingZone: z
     .enum(["yangonInner", "yangonOuter", "otherCities"])
@@ -106,14 +107,17 @@ export const catalogItemSchema = z
         "Use 3-80 letters, numbers, dots, dashes or underscores for SKU",
       ),
     color: optionalText(80),
-    condition: text(60),
     price: money,
     costPrice: money,
     warrantyMonths: z.coerce.number().int().min(0).max(120),
-    stockQuantity: z.coerce.number().int().min(0).max(1_000_000),
+    stockQuantity: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    listingStatus: z.enum(["available", "reserved", "sold", "withdrawn"]).default("available"),
     lowStockThreshold: z.coerce.number().int().min(0).max(100_000),
   })
   .superRefine((value, ctx) => {
+    if (value.category === "PUBG Accounts") {
+      if (value.stockQuantity !== 0) ctx.addIssue({ code: "custom", path: ["stockQuantity"], message: "PUBG accounts do not hold stock" });
+    }
     if (value.costPrice > value.price)
       ctx.addIssue({
         code: "custom",
@@ -121,25 +125,6 @@ export const catalogItemSchema = z
         message: "Cost cannot be higher than retail price",
       });
   });
-export const accountUnitSchema = z.object({
-  variantId: z.string().uuid(),
-  identifier: z.string().trim().min(3).max(120),
-  loginProvider: optionalText(60),
-  rebindStatus: z.enum([
-    "pending",
-    "ready",
-    "in_progress",
-    "completed",
-    "locked",
-  ]),
-  status: z.enum([
-    "in_stock",
-    "reserved",
-    "sold",
-    "rma_under_repair",
-    "written_off",
-  ]),
-});
 export const supplierSchema = z.object({
   name: text(180),
   phone: optionalText(40),
@@ -156,6 +141,25 @@ export const purchaseSchema = z.object({
   unitCost: money,
   notes: optionalText(1000),
 });
+export const leadSchema = z
+  .object({
+    customerName: text(120),
+    phone: optionalText(40),
+    telegramUserId: optionalText(80),
+    interestedIn: text(500),
+    stage: z
+      .enum(["new", "contacted", "reserved", "converted", "lost"])
+      .default("new"),
+    reserveExpiresAt: z.union([z.literal(""), z.coerce.date()]).default(""),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.phone && !value.telegramUserId)
+      ctx.addIssue({
+        code: "custom",
+        path: ["phone"],
+        message: "Enter a phone number or Telegram user ID",
+      });
+  });
 export const expenseSchema = z.object({
   category: z.enum([
     "Rent",

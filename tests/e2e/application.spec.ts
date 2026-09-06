@@ -4,7 +4,6 @@ import { db } from "@/db";
 import {
   bundles as bundleTable,
   customers,
-  deviceUnits,
   orderBundleSets,
   orderItems,
   orders,
@@ -14,6 +13,23 @@ import {
 
 const email = process.env.E2E_ADMIN_EMAIL;
 const password = process.env.E2E_ADMIN_PASSWORD;
+
+test("activity history groups weeks and filters records", async ({ page }) => {
+  await signIn(page, "/logs");
+  await expect(
+    page.getByRole("heading", { name: "Activity logs" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Filter week")).toBeVisible();
+  await expect(page.getByLabel("Filter category")).toBeVisible();
+  await page.getByLabel("Search activity").fill("nonexistent-audit-record-xyz");
+  await expect(page.getByText("No matching activity")).toBeVisible();
+  await page.getByLabel("Search activity").fill("");
+  await expect(page.locator("summary").first()).toBeVisible();
+  await page.getByLabel("Filter category").selectOption("inventory");
+  await expect(page.locator("article").first()).toContainText(
+    "Products & Stock",
+  );
+});
 
 test("customer entry stays public and cannot fall through to operations", async ({
   page,
@@ -34,7 +50,9 @@ test("customer entry stays public and cannot fall through to operations", async 
   await expect(page).toHaveURL(/\/shop\/compare$/);
 });
 
-test("staff role cannot enter admin-only access management", async ({ page }) => {
+test("staff role cannot enter admin-only access management", async ({
+  page,
+}) => {
   await page.goto("/login?next=%2Fstaff");
   await page.getByLabel("Email").fill("staff@mhop.test");
   await page.getByLabel("Password").fill("adminadminadmin");
@@ -65,25 +83,6 @@ async function cleanupCatalogFixture(sku: string) {
   }
 }
 
-async function cleanupAccountFixture(identifier: string) {
-  if (!db) return;
-  await db.transaction(async (tx) => {
-    const [unit] = await tx
-      .select()
-      .from(deviceUnits)
-      .where(eq(deviceUnits.serialNumber, identifier));
-    if (!unit) return;
-    await tx.delete(deviceUnits).where(eq(deviceUnits.id, unit.id));
-    if (unit.status === "in_stock") {
-      await tx
-        .update(productVariants)
-        .set({
-          stockQuantity: sql`greatest(0, ${productVariants.stockQuantity} - 1)`,
-        })
-        .where(eq(productVariants.id, unit.variantId));
-    }
-  });
-}
 
 async function cleanupOrderFixture(phone: string) {
   if (!db) return;
@@ -186,7 +185,6 @@ test("staff authentication protects and opens every operations route", async ({
     ["/receipts", /Sales voucher studio/i],
     ["/erp", /ERP & Finance/i],
     ["/ai-studio", /AI Creative Studio/i],
-    ["/bot", /Bot studio/i],
     ["/alerts", /Staff alerts/i],
     ["/logs", /Activity logs/i],
     ["/staff", /Staff & access/i],
@@ -203,6 +201,37 @@ test("staff authentication protects and opens every operations route", async ({
       0,
     );
   }
+});
+
+test("admin navigation preserves the shell and streams a content skeleton", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop-chrome",
+    "Desktop shell persistence audit",
+  );
+  await signIn(page);
+
+  const sidebar = page.locator(".app-sidebar");
+  await sidebar.evaluate((element) => {
+    element.setAttribute("data-e2e-shell", "persistent");
+  });
+
+  await page.route(/\/inventory\?.*_rsc=/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.continue();
+  });
+
+  const navigation = page
+    .getByRole("link", { name: "Products & Stock" })
+    .click();
+  await expect(page.locator(".route-skeleton")).toBeVisible();
+  await navigation;
+  await expect(
+    page.getByRole("heading", { name: "Products & Stock" }),
+  ).toBeVisible();
+  await expect(sidebar).toHaveAttribute("data-e2e-shell", "persistent");
+  await expect(page.locator(".route-skeleton")).toHaveCount(0);
 });
 
 test("staff global search opens, searches, clears, and closes", async ({
@@ -243,13 +272,13 @@ test("staff control surfaces open, switch, reset, and close", async ({
   };
 
   await page.goto("/inventory");
-  await page.getByRole("button", { name: "Add listing" }).click();
+  await page.getByRole("button", { name: "Add gadget" }).click();
   await closeDialog();
-  await page.getByRole("button", { name: "Account vault" }).click();
+  await page.getByRole("button", { name: /^PUBG accounts/ }).click();
   await page.getByRole("button", { name: "Add PUBG account" }).click();
   await closeDialog();
-  await page.getByPlaceholder(/Search account reference/i).fill("TEST");
-  await expect(page.getByPlaceholder(/Search account reference/i)).toHaveValue(
+  await page.getByPlaceholder(/Search PUBG accounts/i).fill("TEST");
+  await expect(page.getByPlaceholder(/Search PUBG accounts/i)).toHaveValue(
     "TEST",
   );
 
@@ -281,6 +310,10 @@ test("staff control surfaces open, switch, reset, and close", async ({
 
   await page.goto("/tickets");
   await page.getByRole("button", { name: "New warranty claim" }).click();
+  await closeDialog();
+
+  await page.goto("/leads");
+  await page.getByRole("button", { name: "Add lead" }).click();
   await closeDialog();
 
   await page.goto("/staff");
@@ -319,12 +352,12 @@ test("catalog, PUBG account, and bundle CRUD stay synchronized", async ({
   const accountReference = "E2E-PUBG-ACCOUNT-CRUD";
   const bundleName = "E2E Commercial Set";
   await cleanupCatalogFixture(sku);
-  await cleanupAccountFixture(accountReference);
+  await cleanupCatalogFixture(accountReference);
   if (db) await db.delete(bundleTable).where(eq(bundleTable.name, bundleName));
 
   try {
     await signIn(page, "/inventory");
-    await page.getByRole("button", { name: "Add listing" }).click();
+    await page.getByRole("button", { name: "Add gadget" }).click();
     const listing = page.getByRole("dialog", { name: "Create listing" });
     await listing.getByLabel("Name").fill("E2E Test Gaming Headset");
     await listing.getByLabel("SKU").fill(sku);
@@ -340,7 +373,7 @@ test("catalog, PUBG account, and bundle CRUD stay synchronized", async ({
       "created and published",
     );
 
-    await page.getByPlaceholder(/Search product, category or SKU/i).fill(sku);
+    await page.getByPlaceholder(/Search gadgets.*SKU/i).fill(sku);
     await expect(page.getByRole("row").filter({ hasText: sku })).toContainText(
       "E2E Test Gaming Headset",
     );
@@ -359,39 +392,25 @@ test("catalog, PUBG account, and bundle CRUD stay synchronized", async ({
       .click();
     await expect(page.getByRole("status")).toContainText("Listing removed");
 
-    await page.getByRole("button", { name: "Account vault" }).click();
+    await page.getByRole("button", { name: /^PUBG accounts/ }).click();
     await page.getByRole("button", { name: "Add PUBG account" }).click();
-    const account = page.getByRole("dialog", { name: "Add PUBG account" });
-    await account.getByLabel("PUBG listing").selectOption({ index: 1 });
-    await account
-      .getByLabel("Internal account reference")
-      .fill(accountReference);
-    await account.getByLabel("Login provider").fill("E2E provider");
-    await account.getByRole("button", { name: "Add account" }).click();
-    await expect(page.getByRole("status")).toContainText(
-      "availability synchronized",
-    );
-    await page
-      .getByPlaceholder(/Search account reference/i)
-      .fill(accountReference);
-    await page
-      .getByRole("button", { name: `Edit ${accountReference}` })
-      .first()
-      .click();
-    const editAccount = page.getByRole("dialog", { name: "Edit PUBG account" });
-    await editAccount.getByLabel("Rebind status").selectOption("ready");
-    await editAccount.getByRole("button", { name: "Save account" }).click();
-    await expect(page.getByRole("status")).toContainText(
-      "availability updated",
-    );
+    const account = page.getByRole("dialog", { name: "Create listing" });
+    await account.getByLabel("Name", { exact: true }).fill(accountReference);
+    await account.getByLabel("SKU").fill(accountReference);
+    await account.getByLabel("Retail price (MMK)").fill("50000");
+    await account.getByLabel("Cost price (MMK)").fill("45000");
+    await expect(account.getByLabel("Stock quantity")).toHaveCount(0);
+    await account.getByRole("button", { name: "Create listing" }).click();
+    await expect(page.getByRole("status")).toContainText("created and published");
+    await page.getByPlaceholder(/Search PUBG accounts/i).fill(accountReference);
+    await page.getByRole("button", { name: `Edit ${accountReference}` }).first().click();
+    const editAccount = page.getByRole("dialog", { name: "Edit listing" });
+    await editAccount.getByLabel("Sale status").selectOption("withdrawn");
+    await editAccount.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByRole("status")).toContainText("updated across");
     page.once("dialog", (dialog) => dialog.accept());
-    await page
-      .getByRole("button", { name: `Delete ${accountReference}` })
-      .first()
-      .click();
-    await expect(page.getByRole("status")).toContainText(
-      "Account deleted and availability synchronized",
-    );
+    await page.getByRole("button", { name: `Delete ${accountReference}` }).first().click();
+    await expect(page.getByRole("status")).toContainText("Listing removed");
 
     await page.goto("/bundles");
     await page.getByRole("button", { name: "Create bundle set" }).click();
@@ -416,7 +435,7 @@ test("catalog, PUBG account, and bundle CRUD stay synchronized", async ({
       "removed from all sales surfaces",
     );
   } finally {
-    await cleanupAccountFixture(accountReference);
+    await cleanupCatalogFixture(accountReference);
     if (db)
       await db.delete(bundleTable).where(eq(bundleTable.name, bundleName));
     await cleanupCatalogFixture(sku);
@@ -455,4 +474,79 @@ test("public checkout creates an order and customer atomically", async ({
   } finally {
     await cleanupOrderFixture(phone);
   }
+});
+
+test("staff completes the guarded payment, packing, and dispatch workflow", async ({
+  page,
+}, testInfo) => {
+  test.skip(!db, "A database is required for the order workflow audit");
+  const mobile = testInfo.project.name === "mobile-chrome";
+  const phone = mobile ? "09999990003" : "09999990002";
+  const orderCode = mobile ? "MHOP-260905-WF02" : "MHOP-260905-WF01";
+  await cleanupOrderFixture(phone);
+
+  try {
+    const [customer] = await db!
+      .insert(customers)
+      .values({ name: "E2E Workflow Customer", phone })
+      .returning({ id: customers.id });
+    await db!.insert(orders).values({
+      customerId: customer.id,
+      orderCode,
+      customerName: "E2E Workflow Customer",
+      phone,
+      shippingAddress: "E2E Yangon Address",
+      shippingZone: "yangonInner",
+      shippingFee: "4500",
+      totalAmount: "104500",
+      paymentMethod: "KBZPay",
+      paymentSlipUrl: "telegram-file:E2E-PAYMENT-SLIP",
+    });
+
+    await signIn(page, "/orders");
+    await page.getByRole("button", { name: new RegExp(orderCode) }).click();
+    await page.getByRole("button", { name: "Approve payment" }).click();
+    await expect(page.getByRole("status")).toContainText("moved to Packing");
+    await expect
+      .poll(async () => {
+        const [row] = await db!
+          .select({ status: orders.fulfillmentStatus })
+          .from(orders)
+          .where(eq(orders.orderCode, orderCode));
+        return row?.status;
+      })
+      .toBe("packing");
+
+    await page.getByRole("button", { name: "Mark as packed" }).click();
+    await expect(page.getByRole("status")).toContainText("ready to dispatch");
+    await page.getByLabel("Royal Express tracking number").fill("REX-E2E-WF01");
+    await page.getByRole("button", { name: "Dispatch order" }).click();
+    await expect(page.getByRole("status")).toContainText(
+      "processing is complete",
+    );
+    await expect
+      .poll(async () => {
+        const [row] = await db!
+          .select({
+            status: orders.fulfillmentStatus,
+            tracking: orders.trackingNumber,
+          })
+          .from(orders)
+          .where(eq(orders.orderCode, orderCode));
+        return row;
+      })
+      .toEqual({ status: "dispatched", tracking: "REX-E2E-WF01" });
+  } finally {
+    await cleanupOrderFixture(phone);
+  }
+});
+
+test("staff views recoverable leads console and delivery guidance", async ({
+  page,
+}) => {
+  await signIn(page, "/leads");
+  await expect(page.getByRole("heading", { name: "Leads & recovery" })).toBeVisible();
+  await expect(
+    page.getByText(/Reminders are sent individually from your Telegram customer sales bot/i),
+  ).toBeVisible();
 });

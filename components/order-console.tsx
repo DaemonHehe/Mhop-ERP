@@ -1,11 +1,15 @@
 "use client";
-import { useState, useTransition } from "react";
+
+import { useMemo, useState, useTransition } from "react";
 import {
   Check,
-  X,
-  PackageCheck,
-  Truck,
+  CheckCircle2,
+  CircleDollarSign,
   Image as ImageIcon,
+  PackageCheck,
+  ShieldCheck,
+  Truck,
+  X,
 } from "lucide-react";
 import { formatMMK } from "@/lib/data";
 import type { OperationalOrder } from "@/app/actions/store";
@@ -13,123 +17,249 @@ import {
   addShipmentAction,
   assignDeviceByIdentifierAction,
   reviewPayment,
+  updateFulfillmentAction,
 } from "@/app/actions/store";
+
+const filters = [
+  "All",
+  "New",
+  "Packing",
+  "Packed",
+  "Dispatched",
+  "Cancelled",
+] as const;
+type Filter = (typeof filters)[number];
+
+const stageOf = (order: OperationalOrder): Exclude<Filter, "All"> => {
+  if (order.fulfillment === "New") return "New";
+  if (["Confirmed", "Packing"].includes(order.fulfillment)) return "Packing";
+  if (order.fulfillment === "Packed") return "Packed";
+  if (order.fulfillment === "Cancelled") return "Cancelled";
+  return "Dispatched";
+};
+
+const stageStyles: Record<Exclude<Filter, "All">, string> = {
+  New: "border-amber-300 bg-amber-50 text-amber-900",
+  Packing: "border-sky-300 bg-sky-50 text-sky-900",
+  Packed: "border-violet-300 bg-violet-50 text-violet-900",
+  Dispatched: "border-emerald-300 bg-emerald-50 text-emerald-900",
+  Cancelled: "border-rose-300 bg-rose-50 text-rose-900",
+};
+
+const workflow = [
+  { name: "New", helper: "Review payment", icon: CircleDollarSign },
+  { name: "Packing", helper: "Prepare items", icon: PackageCheck },
+  { name: "Packed", helper: "Ready to send", icon: ShieldCheck },
+  { name: "Dispatched", helper: "Staff complete", icon: Truck },
+] as const;
 
 export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
   const [activeId, setActiveId] = useState(orders[0]?.id || "");
-  const [filter, setFilter] = useState("All");
+  const [filter, setFilter] = useState<Filter>("All");
   const [notice, setNotice] = useState("");
   const [tracking, setTracking] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [pending, startTransition] = useTransition();
+
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        filters.map((item) => [
+          item,
+          item === "All"
+            ? orders.length
+            : orders.filter((order) => stageOf(order) === item).length,
+        ]),
+      ) as Record<Filter, number>,
+    [orders],
+  );
   const visible =
     filter === "All"
       ? orders
-      : orders.filter((order) => order.fulfillment === filter);
-  const active = orders.find((order) => order.id === activeId) || visible[0];
-  if (!active)
+      : orders.filter((order) => stageOf(order) === filter);
+  const active =
+    visible.find((order) => order.id === activeId) || visible[0] || orders[0];
+
+  const act = (
+    operation: () => Promise<{ ok: boolean; error?: string }>,
+    success: string,
+  ) =>
+    startTransition(async () => {
+      setNotice("");
+      const result = await operation();
+      setNotice(result.ok ? success : result.error || "Update failed");
+    });
+
+  if (!orders.length)
     return (
       <div className="card p-8 text-center text-sm text-[#77776f]">
         No orders yet.
       </div>
     );
-  const act = (operation: () => Promise<{ ok: boolean; error?: string }>) =>
-    startTransition(async () => {
-      const result = await operation();
-      setNotice(
-        result.ok
-          ? "Order updated successfully."
-          : result.error || "Update failed",
-      );
-    });
+
+  const stage = stageOf(active);
+  const currentStep = workflow.findIndex((step) => step.name === stage);
+  const canReview = ["Pending", "Rejected"].includes(active.payment);
+  const canReject = active.payment === "Pending";
+  const canPack = active.payment === "Verified" && stage === "Packing";
+  const canDispatch = active.payment === "Verified" && stage === "Packed";
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_390px]">
-      <div className="card overflow-hidden">
-        <div className="flex gap-2 border-b p-4">
-          {["All", "New", "Packing", "Dispatched"].map((x) => (
-            <button
-              onClick={() => setFilter(x)}
-              key={x}
-              className={`rounded-full px-4 py-2 text-xs font-bold ${filter === x ? "bg-black text-white" : "border"}`}
-            >
-              {x}
-            </button>
-          ))}
-        </div>
-        <div>
-          {visible.length ? (
-            visible.map((o) => (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_410px]">
+      <section className="card min-w-0 overflow-hidden">
+        <div className="overflow-x-auto border-b p-3 sm:p-4">
+          <div className="flex min-w-max gap-2">
+            {filters.map((item) => (
               <button
+                type="button"
+                onClick={() => setFilter(item)}
+                key={item}
+                className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-bold transition ${filter === item ? "border-black bg-black text-white shadow-sm" : "border-[#dedbd0] bg-white text-[#626258] hover:border-black"}`}
+              >
+                {item}
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] ${filter === item ? "bg-white/20" : "bg-[#f1efe8]"}`}
+                >
+                  {counts[item]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {visible.length ? (
+          visible.map((order) => {
+            const orderStage = stageOf(order);
+            return (
+              <button
+                type="button"
                 onClick={() => {
-                  setActiveId(o.id);
+                  setActiveId(order.id);
                   setNotice("");
                   setIdentifier("");
                   setTracking("");
                 }}
-                key={o.id}
-                className={`grid w-full grid-cols-[1fr_auto] gap-4 border-b p-5 text-left last:border-0 ${active.id === o.id ? "bg-[#f8f6ef]" : ""}`}
+                key={order.id}
+                className={`relative grid w-full grid-cols-1 gap-3 border-b p-4 text-left transition last:border-0 sm:grid-cols-[1fr_auto] sm:p-5 ${active.id === order.id ? "bg-[#f8f6ef] shadow-[inset_4px_0_0_#171813]" : "hover:bg-[#fbfaf6]"}`}
               >
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-xs font-bold">
-                      {o.orderCode || o.id}
+                      {order.orderCode || order.id}
                     </span>
-                    <span className="pill py-1">{o.channel}</span>
+                    <span className="pill py-1">{order.channel}</span>
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide ${stageStyles[orderStage]}`}
+                    >
+                      {orderStage}
+                    </span>
                   </div>
-                  <p className="mt-2 font-bold">{o.customer}</p>
-                  <p className="mt-1 text-xs text-[#77776f]">
-                    {o.item} · {o.created}
+                  <p className="mt-2 font-bold">{order.customer}</p>
+                  <p className="mt-1 truncate text-xs text-[#77776f]">
+                    {order.item} · {order.created}
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold">{formatMMK(o.amount)}</p>
+                <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                  <p className="font-bold">{formatMMK(order.amount)}</p>
                   <span
-                    className={`mt-2 pill py-1 ${o.payment === "Verified" ? "bg-[#effbdd]" : "bg-[#fff8dc]"}`}
+                    className={`pill py-1 ${order.payment === "Verified" ? "bg-[#effbdd] text-[#31520d]" : order.payment === "Rejected" ? "bg-[#fff0eb] text-[#9b3215]" : "bg-[#fff8dc] text-[#725a00]"}`}
                   >
-                    {o.payment}
+                    {order.payment}
                   </span>
                 </div>
               </button>
-            ))
-          ) : (
-            <p className="p-8 text-center text-sm text-[#77776f]">
-              No {filter.toLowerCase()} orders.
-            </p>
-          )}
-        </div>
-      </div>
-      <aside className="card h-fit overflow-hidden">
+            );
+          })
+        ) : (
+          <p className="p-10 text-center text-sm text-[#77776f]">
+            No {filter.toLowerCase()} orders.
+          </p>
+        )}
+      </section>
+
+      <aside className="card h-fit overflow-hidden xl:sticky xl:top-24">
         <div className="border-b bg-[#171813] p-5 text-white">
           <p className="text-[10px] uppercase tracking-wider text-white/50">
-            Order detail
+            Order workflow
           </p>
-          <h2 className="display mt-1 text-2xl font-bold">
-            {active.orderCode || active.id}
-          </h2>
+          <div className="mt-1 flex items-center justify-between gap-3">
+            <h2 className="display truncate text-2xl font-bold">
+              {active.orderCode || active.id}
+            </h2>
+            <span
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-extrabold uppercase ${stageStyles[stage]}`}
+            >
+              {stage}
+            </span>
+          </div>
         </div>
+
+        <div className="border-b bg-[#f7f5ee] p-4">
+          <ol className="grid grid-cols-4 gap-1" aria-label="Order progress">
+            {workflow.map((step, index) => {
+              const Icon = step.icon;
+              const complete = index < currentStep;
+              const current = index === currentStep;
+              return (
+                <li key={step.name} className="min-w-0 text-center">
+                  <div className="mb-2 flex items-center">
+                    <span
+                      className={`h-px flex-1 ${index === 0 ? "bg-transparent" : complete || current ? "bg-black" : "bg-[#d7d3c8]"}`}
+                    />
+                    <span
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border ${complete ? "border-black bg-black text-white" : current ? "border-black bg-[#c7f36b] text-black ring-4 ring-[#c7f36b]/25" : "border-[#d7d3c8] bg-white text-[#969187]"}`}
+                    >
+                      {complete ? <Check size={14} /> : <Icon size={14} />}
+                    </span>
+                    <span
+                      className={`h-px flex-1 ${index === workflow.length - 1 ? "bg-transparent" : complete ? "bg-black" : "bg-[#d7d3c8]"}`}
+                    />
+                  </div>
+                  <p className="truncate text-[10px] font-extrabold">
+                    {step.name}
+                  </p>
+                  <p className="hidden truncate text-[9px] text-[#77776f] sm:block">
+                    {step.helper}
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
         <div className="p-5">
           {notice && (
-            <p className="mb-4 rounded-xl bg-[#f1efe8] p-3 text-xs font-semibold">
+            <p
+              role="status"
+              className="mb-4 rounded-xl border border-[#dedbd0] bg-[#f1efe8] p-3 text-xs font-semibold"
+            >
               {notice}
             </p>
           )}
           <p className="eyebrow">Customer</p>
           <p className="mt-2 font-bold">{active.customer}</p>
           <p className="text-xs text-[#77776f]">
-            {active.phone || "09 77 123 4567"} · {active.address || "Yangon"}
+            {active.phone || "Phone not provided"} ·{" "}
+            {active.address || "Address not provided"}
           </p>
+
           <div className="my-5 border-t" />
-          <p className="eyebrow">Payment audit</p>
-          <div className="mt-3 flex aspect-[16/7] items-center justify-center rounded-xl border border-dashed bg-[#f3f1ea]">
+          <div className="flex items-center justify-between gap-3">
+            <p className="eyebrow">1. Verify payment</p>
+            <span className="text-[10px] font-bold uppercase text-[#77776f]">
+              {active.payment}
+            </span>
+          </div>
+          <div className="mt-3 flex min-h-28 items-center justify-center rounded-xl border border-dashed bg-[#f3f1ea] p-4">
             <div className="text-center text-[#77776f]">
-              <ImageIcon className="mx-auto" />
+              <ImageIcon className="mx-auto" size={22} />
               <p className="mt-2 text-xs">
                 {active.paymentSlipUrl
                   ? "Telegram payment slip linked"
                   : "No payment slip received"}
               </p>
               {active.paymentSlipUrl && (
-                <p className="mt-1 font-mono text-[9px]">
+                <p className="mt-1 break-all font-mono text-[9px]">
                   {active.paymentSlipUrl.replace("telegram-file:", "File ")}
                 </p>
               )}
@@ -137,65 +267,140 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
-              disabled={pending}
-              onClick={() => act(() => reviewPayment(active.id, "rejected"))}
-              className="rounded-xl border py-2.5 text-xs font-bold text-[#b5421c]"
+              type="button"
+              disabled={pending || !canReject}
+              onClick={() =>
+                act(
+                  () => reviewPayment(active.id, "rejected"),
+                  "Payment rejected. Follow up with the customer.",
+                )
+              }
+              className="rounded-xl border py-2.5 text-xs font-bold text-[#b5421c] disabled:cursor-not-allowed disabled:opacity-35"
             >
               <X size={14} className="mr-1 inline" /> Reject
             </button>
             <button
-              disabled={pending}
-              onClick={() => act(() => reviewPayment(active.id, "verified"))}
-              className="rounded-xl bg-[#c7f36b] py-2.5 text-xs font-bold"
-            >
-              <Check size={14} className="mr-1 inline" /> Approve
-            </button>
-          </div>
-          <div className="my-5 border-t" />
-          <p className="eyebrow">Serialized fulfillment</p>
-          <label className="mt-3 block text-xs font-bold">
-            Assign serial / IMEI
-          </label>
-          <input
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="Enter serial or IMEI"
-            className="mt-2 h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none focus:border-black"
-          />
-          <button
-            disabled={pending || !identifier}
-            onClick={() =>
-              act(() => assignDeviceByIdentifierAction(active.id, identifier))
-            }
-            className="mt-3 w-full rounded-xl bg-black py-3 text-xs font-bold text-white disabled:opacity-40"
-          >
-            <PackageCheck size={15} className="mr-2 inline" /> Assign device &
-            mark packing
-          </button>
-          <div className="mt-4 border-t pt-4">
-            <label className="text-xs font-bold">Tracking number</label>
-            <input
-              value={tracking}
-              onChange={(e) => setTracking(e.target.value)}
-              placeholder="REX-000000"
-              className="mt-2 h-10 w-full rounded-xl border px-3 text-sm"
-            />
-            <button
-              disabled={pending || !tracking}
+              type="button"
+              disabled={pending || !canReview || !active.paymentSlipUrl}
               onClick={() =>
-                act(() =>
-                  addShipmentAction(active.id, {
-                    trackingNumber: tracking,
-                    carrier: "Royal Express",
-                  }),
+                act(
+                  () => reviewPayment(active.id, "verified"),
+                  "Payment approved. Order moved to Packing.",
                 )
               }
-              className="mt-2 w-full rounded-xl border py-3 text-xs font-bold disabled:opacity-40"
+              className="rounded-xl bg-[#c7f36b] py-2.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
             >
-              <Truck size={15} className="mr-2 inline" /> Dispatch via Royal
-              Express
+              <Check size={14} className="mr-1 inline" /> Approve payment
             </button>
           </div>
+
+          <div className="my-5 border-t" />
+          <p className="eyebrow">2. Pack order</p>
+          <p className="mt-2 text-xs leading-5 text-[#77776f]">
+            Assign a serial or IMEI to physical items when applicable,
+            then confirm every item is prepared.
+          </p>
+          {!active.isDigitalOnly && <>
+          <label
+            className="mt-3 block text-xs font-bold"
+            htmlFor="order-identifier"
+          >
+            Unit identifier (optional for non-serialized accessories)
+          </label>
+          <input
+            id="order-identifier"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            placeholder="Serial or IMEI"
+            disabled={!canPack || pending}
+            className="mt-2 h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none focus:border-black disabled:bg-[#f3f1ea]"
+          />
+          <button
+            type="button"
+            disabled={pending || !identifier || !canPack}
+            onClick={() =>
+              act(
+                () => assignDeviceByIdentifierAction(active.id, identifier),
+                "Unit assigned to this order.",
+              )
+            }
+            className="mt-2 w-full rounded-xl border py-2.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            <PackageCheck size={15} className="mr-2 inline" /> Assign unit
+          </button>
+          </>}
+          <button
+            type="button"
+            disabled={pending || !canPack}
+            onClick={() =>
+              act(
+                () => updateFulfillmentAction(active.id, "packed"),
+                "Packing confirmed. Order is ready to dispatch.",
+              )
+            }
+            className="mt-2 w-full rounded-xl bg-black py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            <CheckCircle2 size={15} className="mr-2 inline" /> Mark as packed
+          </button>
+
+          <div className="my-5 border-t" />
+          <p className="eyebrow">3. Dispatch</p>
+          {active.isDigitalOnly ? (
+            <>
+              <p className="mt-2 text-xs leading-5 text-[#77776f]">
+                Confirm the secure PUBG account handover. No delivery fee or
+                courier tracking is required.
+              </p>
+              <button
+                type="button"
+                disabled={pending || !canDispatch}
+                onClick={() =>
+                  act(
+                    () => updateFulfillmentAction(active.id, "dispatched"),
+                    "Digital handover completed. Order is now finished.",
+                  )
+                }
+                className="mt-3 w-full rounded-xl bg-[#c7f36b] py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                <ShieldCheck size={15} className="mr-2 inline" /> Complete
+                secure handover
+              </button>
+            </>
+          ) : (
+            <>
+              <label
+                className="mt-3 block text-xs font-bold"
+                htmlFor="tracking-number"
+              >
+                Royal Express tracking number
+              </label>
+              <input
+                id="tracking-number"
+                value={tracking}
+                onChange={(event) => setTracking(event.target.value)}
+                placeholder="REX-000000"
+                disabled={!canDispatch || pending}
+                className="mt-2 h-11 w-full rounded-xl border px-3 text-sm disabled:bg-[#f3f1ea]"
+              />
+              <button
+                type="button"
+                disabled={pending || !tracking.trim() || !canDispatch}
+                onClick={() =>
+                  act(
+                    () =>
+                      addShipmentAction(active.id, {
+                        trackingNumber: tracking.trim(),
+                        carrier: "Royal Express",
+                      }),
+                    "Courier dispatch recorded. Staff processing is complete.",
+                  )
+                }
+                className="mt-2 w-full rounded-xl bg-[#c7f36b] py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                <Truck size={15} className="mr-2 inline" /> Dispatch order
+              </button>
+            </>
+          )}
         </div>
       </aside>
     </div>

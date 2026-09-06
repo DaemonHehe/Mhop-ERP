@@ -106,11 +106,11 @@ export default async function Checkout({
                 {formatMMK(total)}
               </span>
             </div>
-            <p className="mt-2 text-xs text-[#77776f]">
-              {digitalOnly
-                ? "Secure digital handover · No delivery fee"
-                : "Royal Express delivery is calculated by zone."}
-            </p>
+            {digitalOnly && (
+              <p className="mt-2 text-xs text-[#77776f]">
+                Secure digital handover · No delivery fee
+              </p>
+            )}
           </aside>
         </div>
       </div>

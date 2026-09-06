@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import * as auditService from "@/lib/services/audit.service";
@@ -9,15 +9,15 @@ import * as stockService from "@/lib/services/stock.service";
 import * as ticketService from "@/lib/services/ticket.service";
 import { authorizeStaff, requireStaff } from "@/lib/auth/authorize";
 import { allowRequest } from "@/lib/security/rate-limit";
+import { getRecoveryLeads, sendRecoveryReminder } from "@/lib/services/lead-recovery.service";
 
 // Re-export types
 export type {
   ActionResult,
   InventoryItem,
-  AccountUnit,
   CatalogItemInput,
-  AccountUnitInput,
 } from "@/lib/services/stock.service";
+export type { LeadInput } from "@/lib/services/ticket.service";
 export type { OperationalOrder } from "@/lib/services/order.service";
 export type { RevenuePoint, ReceiptOrder } from "@/lib/services/order.service";
 export type { CustomerSummary } from "@/lib/services/customer.service";
@@ -33,11 +33,6 @@ export async function getDashboardSnapshot() {
 export async function getInventoryAction() {
   await requireStaff(["admin", "staff"]);
   return stockService.getInventory();
-}
-
-export async function getAccountUnitsAction() {
-  await requireStaff(["admin", "staff"]);
-  return stockService.getAccountUnits();
 }
 
 export async function getOrdersAction() {
@@ -61,12 +56,28 @@ export async function getTicketsAction() {
 
 export async function getLeadsAction() {
   await requireStaff(["admin", "staff"]);
-  return ticketService.getLeads();
+  return getRecoveryLeads();
 }
 
-export async function getAuditLogsAction() {
+export async function sendLeadReminderAction(id: string) {
+  if (!(await authorizeStaff(["admin", "staff"])))
+    return { ok: false, error: "Unauthorized" };
+  const result = await sendRecoveryReminder(id);
+  revalidatePath("/leads");
+  return result;
+}
+export async function getAuditLogsAction(before?: {
+  createdAt: string;
+  id: string;
+}) {
   await requireStaff(["admin", "staff"]);
-  return auditService.getAuditLogs();
+  if (
+    before &&
+    (!/^[0-9a-f-]{36}$/i.test(before.id) ||
+      !Number.isFinite(Date.parse(before.createdAt)))
+  )
+    throw new Error("Invalid history cursor");
+  return auditService.getAuditLogs(before);
 }
 
 export async function getCustomersAction() {
@@ -121,7 +132,6 @@ export async function createOrder(form: FormData) {
   }
   return result;
 }
-
 export async function reviewPayment(
   orderId: string,
   decision: "verified" | "rejected",
@@ -135,10 +145,15 @@ export async function reviewPayment(
   }
   return result;
 }
-
 export async function updateFulfillmentAction(
   orderId: string,
-  status: "confirmed" | "packing" | "dispatched" | "delivered" | "cancelled",
+  status:
+    | "confirmed"
+    | "packing"
+    | "packed"
+    | "dispatched"
+    | "delivered"
+    | "cancelled",
 ) {
   if (!(await authorizeStaff(["admin", "staff"])))
     return { ok: false as const, error: "Unauthorized" };
@@ -172,7 +187,6 @@ const revalidateCatalog = () => {
   revalidatePath("/shop/compare");
   revalidatePath("/shop/checkout");
   revalidatePath("/dashboard");
-  revalidatePath("/bot");
 };
 
 export async function createCatalogItemAction(
@@ -204,36 +218,6 @@ export async function deleteCatalogItemAction(variantId: string) {
   if (result.ok) revalidateCatalog();
   return result;
 }
-export async function createAccountUnitAction(
-  input: stockService.AccountUnitInput,
-) {
-  if (!(await authorizeStaff(["admin", "staff"])))
-    return { ok: false as const, error: "Unauthorized" };
-  const result = await stockService.createAccountUnit(input);
-  if (result.ok) revalidateCatalog();
-  return result;
-}
-export async function updateAccountUnitAction(
-  id: string,
-  input: stockService.AccountUnitInput,
-) {
-  if (!(await authorizeStaff(["admin", "staff"])))
-    return { ok: false as const, error: "Unauthorized" };
-  const result = await stockService.updateAccountUnit(id, input);
-  if (result.ok) revalidateCatalog();
-  return result;
-}
-export async function deleteAccountUnitAction(id: string) {
-  if (!(await authorizeStaff(["admin"])))
-    return {
-      ok: false as const,
-      error: "Administrator access is required to delete accounts.",
-    };
-  const result = await stockService.deleteAccountUnit(id);
-  if (result.ok) revalidateCatalog();
-  return result;
-}
-
 export async function adjustStockAction(variantId: string, delta: number) {
   if (!(await authorizeStaff(["admin", "staff"])))
     return { ok: false as const, error: "Unauthorized" };
@@ -338,3 +322,35 @@ export async function updateLeadStageAction(
   }
   return result;
 }
+
+export async function createLeadAction(input: ticketService.LeadInput) {
+  if (!(await authorizeStaff(["admin", "staff"])))
+    return { ok: false as const, error: "Unauthorized" };
+  const result = await ticketService.createLead(input);
+  if (result.ok) revalidatePath("/leads");
+  return result;
+}
+
+export async function updateLeadAction(
+  leadId: string,
+  input: ticketService.LeadInput,
+) {
+  if (!(await authorizeStaff(["admin", "staff"])))
+    return { ok: false as const, error: "Unauthorized" };
+  const result = await ticketService.updateLead(leadId, input);
+  if (result.ok) revalidatePath("/leads");
+  return result;
+}
+
+export async function convertLeadToCustomerAction(leadId: string) {
+  if (!(await authorizeStaff(["admin", "staff"])))
+    return { ok: false as const, error: "Unauthorized" };
+  const result = await ticketService.convertLeadToCustomer(leadId);
+  if (result.ok) {
+    revalidatePath("/leads");
+    revalidatePath("/customers");
+  }
+  return result;
+}
+
+

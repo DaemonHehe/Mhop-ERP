@@ -1,4 +1,5 @@
 "use client";
+import { Logo } from "@/components/logo";
 import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 export default function ErrorPage({
@@ -18,6 +19,7 @@ export default function ErrorPage({
   return (
     <main className="grid min-h-screen place-items-center bg-[#f4f2ec] p-6">
       <div className="card max-w-lg p-8">
+        <Logo className="mb-6" href="/shop" />
         <span className="grid h-12 w-12 place-items-center rounded-full bg-[#fff0eb] text-[#b5421c]">
           <AlertTriangle />
         </span>

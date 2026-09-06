@@ -1,14 +1,34 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { createOrder } from "@/app/actions/store";
-import { ArrowRight, Truck, WalletCards } from "lucide-react";
+import { ArrowRight, WalletCards } from "lucide-react";
 import {
   calculateOrderShipping,
   clientConfig,
   type ShippingZone,
 } from "@/lib/client-config";
 import { formatMMK } from "@/lib/data";
+
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        ready: () => void;
+        expand: () => void;
+        close: () => void;
+        initDataUnsafe?: {
+          user?: {
+            id?: number;
+            first_name?: string;
+            last_name?: string;
+            username?: string;
+          };
+        };
+      };
+    };
+  }
+}
 
 const paymentEntries = [
   ["kbzpay", clientConfig.payments.kbzPay],
@@ -31,9 +51,25 @@ export function CheckoutForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
-  const [zone, setZone] = useState<ShippingZone>("yangonInner");
+  const [zone] = useState<ShippingZone>("yangonInner");
+  const [customerName, setCustomerName] = useState("");
+  const [telegramUserId, setTelegramUserId] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      const user = tg.initDataUnsafe?.user;
+      if (user) {
+        if (user.id) setTelegramUserId(String(user.id));
+        const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "";
+        if (fullName) setCustomerName(fullName);
+      }
+    }
+  }, []);
+
   const shipping = calculateOrderShipping(total, zone, digitalOnly);
-  const rule = clientConfig.shipping.zones[zone];
   const submit = (form: FormData) =>
     startTransition(async () => {
       const result = await createOrder(form);
@@ -49,6 +85,7 @@ export function CheckoutForm({
       <input type="hidden" name="skus" value={skus.join(",")} />
       <input type="hidden" name="bundleIds" value={bundleIds.join(",")} />
       <input type="hidden" name="shippingZone" value={zone} />
+      {telegramUserId && <input type="hidden" name="telegramUserId" value={telegramUserId} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="checkout-customer-name" className="text-xs font-bold">
@@ -57,6 +94,8 @@ export function CheckoutForm({
           <input
             id="checkout-customer-name"
             name="customerName"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
             required
             maxLength={120}
             className="mt-2 h-12 w-full rounded-xl border bg-white px-4"
@@ -88,32 +127,6 @@ export function CheckoutForm({
               maxLength={500}
               className="mt-2 min-h-28 w-full rounded-xl border bg-white p-4"
             />
-          </div>
-          <div className="rounded-xl border bg-white p-4">
-            <div className="flex items-center gap-2">
-              <Truck size={16} />
-              <p className="text-xs font-bold">Royal Express delivery</p>
-            </div>
-            <select
-              aria-label="Delivery zone"
-              value={zone}
-              onChange={(event) => setZone(event.target.value as ShippingZone)}
-              className="mt-3 h-11 w-full rounded-xl border bg-[#f7f5ef] px-3 text-sm"
-            >
-              {Object.entries(clientConfig.shipping.zones).map(
-                ([key, value]) => (
-                  <option key={key} value={key}>
-                    {value.label}
-                  </option>
-                ),
-              )}
-            </select>
-            <div className="mt-3 flex justify-between text-xs">
-              <span>
-                {rule.leadTime} · Free above {formatMMK(rule.freeAbove)}
-              </span>
-              <b>{shipping === 0 ? "FREE" : formatMMK(shipping)}</b>
-            </div>
           </div>
         </>
       )}

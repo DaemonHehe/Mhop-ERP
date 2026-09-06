@@ -6,12 +6,21 @@ const MAX_BUCKETS = 5_000;
 
 function makeRoom(now: number) {
   if (buckets.size < MAX_BUCKETS) return;
+  let expiredCount = 0;
   for (const [key, bucket] of buckets) {
-    if (bucket.resetsAt <= now) buckets.delete(key);
+    if (bucket.resetsAt <= now) {
+      buckets.delete(key);
+      expiredCount++;
+      if (expiredCount >= 100) break;
+    }
   }
-  if (buckets.size >= MAX_BUCKETS) {
+  while (buckets.size >= MAX_BUCKETS) {
     const oldest = buckets.keys().next().value;
-    if (oldest) buckets.delete(oldest);
+    if (oldest) {
+      buckets.delete(oldest);
+    } else {
+      break;
+    }
   }
 }
 

@@ -179,7 +179,9 @@ export async function markAlertRead(id: string): Promise<ActionResult> {
       .set({ isRead: true })
       .where(eq(staffAlerts.id, id))
       .returning({ id: staffAlerts.id });
-    return updated ? { ok: true } : { ok: false, error: "Alert not found" };
+    if (!updated) return { ok: false, error: "Alert not found" };
+    await audit("system.alert_read", updated.id, "Staff alert marked as read");
+    return { ok: true };
   } catch (error) {
     return { ok: false, error: errorOf(error) };
   }
@@ -187,10 +189,16 @@ export async function markAlertRead(id: string): Promise<ActionResult> {
 export async function markAllAlertsRead(): Promise<ActionResult> {
   try {
     if (!db) return { ok: false, error: "Database is not configured." };
-    await db
+    const updated = await db
       .update(staffAlerts)
       .set({ isRead: true })
-      .where(eq(staffAlerts.isRead, false));
+      .where(eq(staffAlerts.isRead, false))
+      .returning({ id: staffAlerts.id });
+    await audit(
+      "system.alerts_read",
+      undefined,
+      `${updated.length} staff alerts marked as read`,
+    );
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorOf(error) };

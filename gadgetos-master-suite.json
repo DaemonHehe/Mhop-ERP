@@ -38,7 +38,7 @@
       "parameters": {
         "width": 1260,
         "height": 280,
-        "content": "### Cart recovery · scans every 15 minutes\nValid private Telegram recipients only; one reminder attempt per lead, including after stage changes. This scan cadence does not guarantee a 15-minute delay after cart creation."
+        "content": "### Lead recovery · scans every 15 minutes\nUses the same browsing/unpaid queue as Leads. Only linked Telegram customers inactive for at least 15 minutes qualify. One attempt per lead ID within retained dedupe history. The app rechecks activity and payment status immediately before sending through TELEGRAM_CUSTOMER_BOT_TOKEN. No automatic send retries; inspect ambiguous failures before retrying."
       }
     },
     {
@@ -98,7 +98,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const rows = $input.all().flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]);\nconst seen = new Set();\nreturn rows.filter(Boolean).map((row) => ({ ...row, telegram_user_id: String(row.telegram_user_id ?? row.telegramUserId ?? '') })).filter((row) => {\n  if (!row.id || !/^[1-9][0-9]*$/.test(row.telegram_user_id) || !/^https?:\\/\\//.test(String(row.checkout_url ?? ''))) return false;\n  const key = String(row.id);\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n}).map((row) => ({ json: row }));"
+        "jsCode": "const rows = $input.all().flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]);\nconst seen = new Set();\nreturn rows.filter(Boolean).filter((row) => {\n  if (!/^(order|session):[0-9a-f-]{36}$/i.test(String(row.id ?? '')) ||\n      !['browsing', 'unpaid'].includes(row.stage) ||\n      !/^[1-9][0-9]*$/.test(String(row.telegramUserId ?? '')) ||\n      !Number.isFinite(Date.parse(row.activityAt))) return false;\n  if (seen.has(row.telegramUserId)) return false;\n  seen.add(row.telegramUserId);\n  return true;\n}).map(({ id, activityAt }) => ({ json: { id, activityAt } }));"
       }
     },
     {
@@ -123,24 +123,31 @@
     {
       "id": "cart-send",
       "name": "Send Cart Recovery DM",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
       "position": [
         960,
         100
       ],
       "retryOnFail": false,
       "parameters": {
-        "operation": "sendMessage",
-        "chatId": "={{ $json.telegram_user_id }}",
-        "text": "={{ ('မင်္ဂလာပါ ' + ($json.customerName || 'အကို/အမ') + '။ MH OP မှ ရွေးထားတဲ့ Gadget / Account တွေကို ဆက်လက်မှာယူနိုင်ပါတယ်။\\n\\n' + $json.checkout_url + '\\n\\nမလိုအပ်တော့ပါက ဒီစာကို လျစ်လျူရှုနိုင်ပါတယ်ခင်ဗျာ။').slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "disable_web_page_preview": true,
-          "parse_mode": "HTML"
+        "method": "POST",
+        "url": "={{ $env.GADGETOS_URL.replace(/\\/$/, '') }}/api/internal/leads/remind",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $json.id, activityAt: $json.activityAt }) }}",
+        "options": {
+          "timeout": 25000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
         }
       },
-      "notes": "Automatic retries are disabled because Telegram sendMessage has no idempotency key. Check Telegram before manually retrying an ambiguous failure."
+      "notes": "Sends through the application customer bot after rechecking the recovery queue. Attach MH OP Internal API credentials. Never automatically retry: delivery may have succeeded before an HTTP timeout."
     },
     {
       "id": "event-note",

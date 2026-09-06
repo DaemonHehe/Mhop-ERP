@@ -49,7 +49,7 @@ const aliases = {
 const byName = new Map(current.nodes.map((node) => [node.name, node]));
 const nodes = template.nodes.map((node) => {
   const updated = structuredClone(node);
-  const previous = byName.get(aliases[node.name] || node.name);
+  const previous = byName.get(node.name) || byName.get(aliases[node.name]);
   if (previous) {
     updated.id = previous.id;
     if (previous.type === node.type) {
@@ -67,10 +67,15 @@ const nodes = template.nodes.map((node) => {
     const customerCredential = byName.get("Send Cart Recovery DM")?.credentials;
     if (customerCredential) updated.credentials = customerCredential;
   }
+  if (node.id === "cart-send") {
+    const internalCredentials = byName.get("Fetch Recoverable Leads")?.credentials;
+    if (internalCredentials?.httpHeaderAuth) updated.credentials = internalCredentials;
+    updated.typeVersion = byName.get("Fetch Recoverable Leads")?.typeVersion || node.typeVersion;
+  }
   return updated;
 });
 const setup = nodes.find((node) => node.id === "setup-note");
-if (setup) setup.parameters.content += "\n\nLive update by Daemon: workflow name and existing webhook path are preserved. Credentials still need review. Do not publish until the app URL, internal API auth and event Header Auth are configured. No error-handler workflow was created by this update.";
+if (setup) setup.parameters.content += "\n\nLive update by Daemon: workflow name, existing webhook path, matching credentials and configured error handler are preserved. Recovery sends use the app internal API. Verify app deployment and test chats before activation.";
 const desired = {
   name: current.name,
   nodes,

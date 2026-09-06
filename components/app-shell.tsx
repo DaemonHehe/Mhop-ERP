@@ -1,6 +1,8 @@
 "use client";
+import { brandAssets } from "@/lib/brand-assets";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
@@ -9,7 +11,6 @@ import {
   LifeBuoy,
   Users,
   Magnet,
-  Bot,
   ScrollText,
   Bell,
   ChevronDown,
@@ -38,13 +39,13 @@ const nav = [
   ["/customers", "Customers", Users],
   ["/leads", "Leads", Magnet],
   ["/ai-studio", "AI Creative Studio", WandSparkles],
-  ["/bot", "Bot studio", Bot],
   ["/staff", "Staff & access", UserCog],
   ["/logs", "Activity logs", ScrollText],
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -90,8 +91,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
+                prefetch
                 aria-current={active ? "page" : undefined}
                 onClick={() => setOpen(false)}
+                onMouseEnter={() => router.prefetch(href)}
+                onFocus={() => router.prefetch(href)}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-[#c7f36b] font-bold text-black" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
               >
                 <Icon size={17} />
@@ -102,8 +106,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/10 bg-white/[.035] p-3 shadow-[inset_2px_2px_8px_rgba(0,0,0,.22)]">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-[#ff6b35] text-xs font-bold shadow-[3px_4px_9px_rgba(0,0,0,.35),inset_0_1px_rgba(255,255,255,.45)]">
-              MH
+            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-white/20 shadow-[0_2px_8px_rgba(0,0,0,0.4)]">
+              <Image
+                src={brandAssets.logo}
+                alt="MH OP Admin"
+                fill
+                sizes="36px"
+                className="object-cover"
+              />
             </div>
             <div>
               <p className="text-sm font-semibold">MH OP Admin</p>
@@ -145,7 +155,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
         </header>
-        <div className="overflow-x-hidden p-4 pb-8 md:p-8">{children}</div>
+        <div
+          key={path}
+          className="route-content overflow-x-hidden p-4 pb-8 md:p-8"
+        >
+          {children}
+        </div>
       </main>
     </div>
   );

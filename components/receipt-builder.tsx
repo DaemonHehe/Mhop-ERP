@@ -1,6 +1,8 @@
 "use client";
 
+import { brandAssets } from "@/lib/brand-assets";
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { Download, Printer } from "lucide-react";
 import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
@@ -164,13 +166,24 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
       <div className="h-2 bg-[#252a20]" />
       <div className="p-5 sm:p-9">
         <header className="grid gap-5 border-b-2 border-[#252a20] pb-6 sm:grid-cols-[1fr_auto] sm:items-start">
-          <div>
-            <h2 className="text-xl font-black tracking-[-0.035em] text-[#171914] sm:text-2xl">
-              {receipt.storeName}
-            </h2>
-            <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#707469]">
-              Mobile gaming one stop service
-            </p>
+          <div className="flex items-center gap-3.5">
+            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-black/15 shadow-sm">
+              <Image
+                src={brandAssets.logo}
+                alt="MH OP"
+                fill
+                sizes="44px"
+                className="object-cover"
+              />
+            </div>
+            <div>
+              <h2 className="text-xl font-black tracking-[-0.035em] text-[#171914] sm:text-2xl">
+                {receipt.storeName}
+              </h2>
+              <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#707469]">
+                Mobile gaming one stop service
+              </p>
+            </div>
           </div>
           <div className="sm:text-right">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#73776d]">
@@ -409,6 +422,7 @@ function ThermalReceipt({
       className="receipt-document bg-white p-5 font-mono text-[10px] text-black shadow-xl"
     >
       <div className="text-center">
+        <Image src={brandAssets.logo} alt="MH OP" width={96} height={40} unoptimized className="mx-auto h-10 w-24 object-cover grayscale" />
         <p className="font-sans text-xl font-black tracking-tight">
           {clientConfig.brand.name}
         </p>

@@ -118,42 +118,46 @@ export function BundleConsole({
           {notice.text}
         </div>
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {bundles.map((bundle) => (
-          <article className="card p-5" key={bundle.id}>
-            <div className="flex items-start justify-between">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#c7f36b]">
-                <Layers3 size={19} />
+          <article className="card min-w-0 p-4" key={bundle.id}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#c7f36b]">
+                <Layers3 size={16} />
               </span>
               <span
-                className={`pill ${bundle.available ? "bg-[#effbdd]" : "bg-[#fff0eb] text-[#9c3212]"}`}
+                className={`pill truncate px-2.5 py-1 text-[10px] ${bundle.available ? "bg-[#effbdd]" : "bg-[#fff0eb] text-[#9c3212]"}`}
               >
                 {bundle.available} sets available
               </span>
             </div>
-            <h2 className="display mt-5 text-2xl font-bold">{bundle.name}</h2>
-            <p className="mt-2 min-h-10 text-sm text-[#777]">
+            <h2 className="display mt-3 truncate text-lg font-bold">
+              {bundle.name}
+            </h2>
+            <p className="mt-1.5 max-h-10 overflow-hidden text-xs leading-5 text-[#777]">
               {bundle.description}
             </p>
-            <div className="mt-4 space-y-2">
+            <div className="mt-3 max-h-32 space-y-1.5 overflow-y-auto pr-1">
               {bundle.items.map((item) => (
                 <div
                   key={item.sku}
-                  className="flex items-center justify-between rounded-xl bg-[#f1efe8] p-3 text-xs"
+                  className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-[#f1efe8] px-2.5 py-2 text-[11px]"
                 >
-                  <span>
+                  <span className="min-w-0 truncate">
                     <b>{item.quantity}×</b> {item.name}
                   </span>
-                  <code>{item.sku}</code>
+                  <code className="max-w-24 shrink-0 truncate text-[9px] text-[#777]">
+                    {item.sku}
+                  </code>
                 </div>
               ))}
             </div>
-            <div className="mt-5 flex items-end justify-between border-t pt-4">
+            <div className="mt-4 flex items-end justify-between border-t pt-3">
               <div>
                 <p className="text-[10px] text-[#777] line-through">
                   {formatMMK(bundle.retailValue)}
                 </p>
-                <p className="display text-xl font-bold">
+                <p className="display text-lg font-bold">
                   {formatMMK(bundle.bundlePrice)}
                 </p>
                 <p className="text-[10px] font-bold text-[#45830d]">
@@ -164,7 +168,7 @@ export function BundleConsole({
                 <button
                   aria-label={`Edit ${bundle.name}`}
                   onClick={() => edit(bundle)}
-                  className="grid h-9 w-9 place-items-center rounded-full border"
+                  className="grid h-8 w-8 place-items-center rounded-full border"
                 >
                   <Pencil size={14} />
                 </button>
@@ -177,7 +181,7 @@ export function BundleConsole({
                       "Bundle removed from all sales surfaces.",
                     )
                   }
-                  className="grid h-9 w-9 place-items-center rounded-full border text-[#b5421c]"
+                  className="grid h-8 w-8 place-items-center rounded-full border text-[#b5421c]"
                 >
                   <Trash2 size={14} />
                 </button>

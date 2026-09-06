@@ -88,45 +88,55 @@ export async function getErpSnapshot(): Promise<ErpSnapshot> {
       warrantyCost: 18000,
       refunds: 0,
     };
-  const [sales] = await db
-    .select({
-      revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.totalAmount} else 0 end),0)`,
-    })
-    .from(orders);
-  const [profit] = await db
-    .select({
-      value: sql<string>`coalesce(sum((${orderItems.unitPrice}-${orderItems.costSnapshot})*${orderItems.quantity}),0)`,
-    })
-    .from(orderItems)
-    .innerJoin(orders, eq(orders.id, orderItems.orderId))
-    .where(eq(orders.paymentStatus, "verified"));
-  const [costs] = await db
-    .select({ value: sql<string>`coalesce(sum(${expenses.amount}),0)` })
-    .from(expenses);
-  const [stock] = await db
-    .select({
-      value: sql<string>`coalesce(sum(${productVariants.costPrice}*${productVariants.stockQuantity}),0)`,
-    })
-    .from(productVariants)
-    .innerJoin(products, eq(products.id, productVariants.productId))
-    .where(
-      and(eq(products.isActive, true), eq(productVariants.isActive, true)),
-    );
-  const [open] = await db
-    .select({ value: sql<number>`count(*)` })
-    .from(purchaseOrders)
-    .where(eq(purchaseOrders.status, "ordered"));
-  const [deliveryFees] = await db
-    .select({
-      revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.shippingFee} else 0 end),0)`,
-    })
-    .from(orders);
-  const [warranty] = await db
-    .select({
-      cost: sql<string>`coalesce(sum(${tickets.resolutionCost}),0)`,
-      refunds: sql<string>`coalesce(sum(${tickets.refundAmount}),0)`,
-    })
-    .from(tickets);
+  const [
+    [sales],
+    [profit],
+    [costs],
+    [stock],
+    [open],
+    [deliveryFees],
+    [warranty],
+  ] = await Promise.all([
+    db
+      .select({
+        revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.totalAmount} else 0 end),0)`,
+      })
+      .from(orders),
+    db
+      .select({
+        value: sql<string>`coalesce(sum((${orderItems.unitPrice}-${orderItems.costSnapshot})*${orderItems.quantity}),0)`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(eq(orders.paymentStatus, "verified")),
+    db
+      .select({ value: sql<string>`coalesce(sum(${expenses.amount}),0)` })
+      .from(expenses),
+    db
+      .select({
+        value: sql<string>`coalesce(sum(${productVariants.costPrice}*${productVariants.stockQuantity}),0)`,
+      })
+      .from(productVariants)
+      .innerJoin(products, eq(products.id, productVariants.productId))
+      .where(
+        and(eq(products.isActive, true), eq(productVariants.isActive, true)),
+      ),
+    db
+      .select({ value: sql<number>`count(*)` })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.status, "ordered")),
+    db
+      .select({
+        revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.shippingFee} else 0 end),0)`,
+      })
+      .from(orders),
+    db
+      .select({
+        cost: sql<string>`coalesce(sum(${tickets.resolutionCost}),0)`,
+        refunds: sql<string>`coalesce(sum(${tickets.refundAmount}),0)`,
+      })
+      .from(tickets),
+  ]);
   const grossProfit = num(profit.value) + num(deliveryFees.revenue),
     expenseTotal = num(costs.value),
     warrantyCost = num(warranty.cost),
@@ -332,7 +342,7 @@ export async function createPurchase(
       if (!variant) throw new Error("Select an active product");
       if (variant.category === "PUBG Accounts")
         throw new Error(
-          "Add purchased PUBG accounts through Account Vault so each account is tracked individually",
+          "Create each purchased PUBG account as an individual listing in Products & Stock; quantity-based purchase inventory is for gadgets",
         );
       const [po] = await tx
         .insert(purchaseOrders)

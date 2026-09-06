@@ -1,4 +1,4 @@
-﻿import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { z } from "zod";
 import {
@@ -10,8 +10,7 @@ import {
 } from "@/db/schema";
 import { products as demoProducts } from "@/lib/data";
 import { audit } from "./audit.service";
-import { accountUnitSchema, catalogItemSchema } from "@/lib/validation/schemas";
-import { availabilityDelta, canDeleteAccount } from "@/lib/stock-rules";
+import { catalogItemSchema } from "@/lib/validation/schemas";
 
 export type ActionResult<T = undefined> =
   { ok: true; data?: T } | { ok: false; error: string };
@@ -37,6 +36,7 @@ export interface InventoryItem {
   specs: { label: string; value: string }[];
   description: string;
   lowStockThreshold: number;
+  listingStatus?: string;
 }
 
 export type PublicAvailability = "available" | "low" | "sold_out";
@@ -58,23 +58,18 @@ export function toPublicCatalogItem(item: InventoryItem): PublicCatalogItem {
   return {
     ...publicItem,
     availability:
-      stock < 1 ? "sold_out" : stock <= lowStockThreshold ? "low" : "available",
+      item.category === "PUBG Accounts"
+        ? item.listingStatus === "available" ? "available" : "sold_out"
+        : stock < 1 ? "sold_out" : stock <= lowStockThreshold ? "low" : "available",
   };
 }
 
-export interface AccountUnit {
-  id: string;
-  variantId: string;
-  sku: string;
-  productName: string;
-  identifier: string;
-  loginProvider: string | null;
-  rebindStatus: string;
-  status: "in_stock" | "reserved" | "sold" | "rma_under_repair" | "written_off";
-  receivedAt: Date;
-}
 export type CatalogItemInput = z.input<typeof catalogItemSchema>;
-export type AccountUnitInput = z.input<typeof accountUnitSchema>;
+
+const internalCondition = (category: "Gaming Gadgets" | "PUBG Accounts") =>
+  category === "PUBG Accounts"
+    ? "Verified Digital Account"
+    : "Brand New Sealed";
 
 const errorOf = (error: unknown) => {
   if (error instanceof Error && !(error as Error & { code?: string }).code)
@@ -97,31 +92,31 @@ export async function getDashboardSnapshot() {
     };
   }
 
-  const [orderStats] = await db
-    .select({
-      revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.totalAmount} else 0 end),0)`,
-      count: sql<number>`count(*)`,
-    })
-    .from(orders);
-
-  const [stockStats] = await db
-    .select({
-      stock: sql<number>`coalesce(sum(${productVariants.stockQuantity}),0)`,
-      low: sql<number>`count(*) filter (where ${productVariants.stockQuantity} <= ${productVariants.lowStockThreshold})`,
-    })
-    .from(productVariants)
-    .innerJoin(products, eq(productVariants.productId, products.id))
-    .where(
-      and(eq(products.isActive, true), eq(productVariants.isActive, true)),
-    );
-
-  const [profitStats] = await db
-    .select({
-      profit: sql<string>`coalesce(sum((${orderItems.unitPrice}-${orderItems.costSnapshot})*${orderItems.quantity}),0)`,
-    })
-    .from(orderItems)
-    .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(eq(orders.paymentStatus, "verified"));
+  const [[orderStats], [stockStats], [profitStats]] = await Promise.all([
+    db
+      .select({
+        revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.totalAmount} else 0 end),0)`,
+        count: sql<number>`count(*)`,
+      })
+      .from(orders),
+    db
+      .select({
+        stock: sql<number>`coalesce(sum(${productVariants.stockQuantity}),0)`,
+        low: sql<number>`count(*) filter (where ${productVariants.stockQuantity} <= ${productVariants.lowStockThreshold})`,
+      })
+      .from(productVariants)
+      .innerJoin(products, eq(productVariants.productId, products.id))
+      .where(
+        and(eq(products.isActive, true), eq(productVariants.isActive, true), eq(products.category, "Gaming Gadgets")),
+      ),
+    db
+      .select({
+        profit: sql<string>`coalesce(sum((${orderItems.unitPrice}-${orderItems.costSnapshot})*${orderItems.quantity}),0)`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(eq(orders.paymentStatus, "verified")),
+  ]);
 
   return {
     mode: "database" as const,
@@ -138,6 +133,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
     return demoProducts.map((p) => ({
       ...p,
       variantId: p.id,
+      listingStatus: "available",
       color: p.color || null,
       storage: p.storage || null,
       ram: p.ram || null,
@@ -163,6 +159,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
       price: productVariants.price,
       cost: productVariants.costPrice,
       stock: productVariants.stockQuantity,
+      listingStatus: productVariants.listingStatus,
       warranty: productVariants.warrantyMonths,
       description: products.description,
       lowStockThreshold: productVariants.lowStockThreshold,
@@ -190,32 +187,6 @@ export async function getInventory(): Promise<InventoryItem[]> {
 export async function getPublicCatalog(): Promise<PublicCatalogItem[]> {
   const inventory = await getInventory();
   return inventory.map(toPublicCatalogItem);
-}
-
-export async function getAccountUnits(): Promise<AccountUnit[]> {
-  if (!db) return [];
-  return db
-    .select({
-      id: deviceUnits.id,
-      variantId: deviceUnits.variantId,
-      sku: productVariants.sku,
-      productName: products.name,
-      identifier: deviceUnits.serialNumber,
-      loginProvider: deviceUnits.loginProvider,
-      rebindStatus: sql<string>`coalesce(${deviceUnits.rebindStatus},'pending')`,
-      status: deviceUnits.status,
-      receivedAt: deviceUnits.receivedAt,
-    })
-    .from(deviceUnits)
-    .innerJoin(productVariants, eq(productVariants.id, deviceUnits.variantId))
-    .innerJoin(products, eq(products.id, productVariants.productId))
-    .where(
-      and(
-        eq(products.category, "PUBG Accounts"),
-        eq(products.isActive, true),
-        eq(productVariants.isActive, true),
-      ),
-    );
 }
 
 function mutationError(error: unknown, fallback: string) {
@@ -246,6 +217,8 @@ export async function createCatalogItem(
         error: parsed.error.issues[0]?.message || "Invalid product details",
       };
     const value = parsed.data;
+    if (value.category === "PUBG Accounts" && value.listingStatus === "reserved")
+      return { ok: false, error: "Only an order can reserve a listing" };
     const variantId = await db.transaction(async (tx) => {
       const [product] = await tx
         .insert(products)
@@ -265,13 +238,14 @@ export async function createCatalogItem(
           productId: product.id,
           sku: value.sku,
           color: value.color || null,
-          condition: value.condition,
+          condition: internalCondition(value.category),
           price: String(value.price),
           costPrice: String(value.costPrice),
           warrantyMonths: value.warrantyMonths,
           stockQuantity:
             value.category === "PUBG Accounts" ? 0 : value.stockQuantity,
-          lowStockThreshold: value.lowStockThreshold,
+          lowStockThreshold: value.category === "PUBG Accounts" ? 0 : value.lowStockThreshold,
+          listingStatus: value.listingStatus,
         })
         .returning({ id: productVariants.id });
       return variant.id;
@@ -312,6 +286,7 @@ export async function updateCatalogItem(
         .select({
           productId: productVariants.productId,
           category: products.category,
+          listingStatus: productVariants.listingStatus,
         })
         .from(productVariants)
         .innerJoin(products, eq(products.id, productVariants.productId))
@@ -323,6 +298,10 @@ export async function updateCatalogItem(
         )
         .for("update");
       if (!current) throw new Error("Listing not found");
+      if (current.category === "PUBG Accounts" &&
+          ((current.listingStatus === "reserved" && value.listingStatus !== "reserved") ||
+           (current.listingStatus !== "reserved" && value.listingStatus === "reserved")))
+        throw new Error("Reserved listing status is managed by its order");
       if (current.category !== value.category)
         throw new Error("A listing category cannot be changed after creation");
       await tx
@@ -341,15 +320,16 @@ export async function updateCatalogItem(
         .set({
           sku: value.sku,
           color: value.color || null,
-          condition: value.condition,
+          condition: internalCondition(value.category),
           price: String(value.price),
           costPrice: String(value.costPrice),
           warrantyMonths: value.warrantyMonths,
           stockQuantity:
             value.category === "PUBG Accounts"
-              ? sql`${productVariants.stockQuantity}`
+              ? 0
               : value.stockQuantity,
-          lowStockThreshold: value.lowStockThreshold,
+          lowStockThreshold: value.category === "PUBG Accounts" ? 0 : value.lowStockThreshold,
+          listingStatus: value.listingStatus,
         })
         .where(eq(productVariants.id, variantId));
     });
@@ -404,181 +384,6 @@ export async function deleteCatalogItem(
   }
 }
 
-export async function createAccountUnit(
-  input: AccountUnitInput,
-): Promise<ActionResult> {
-  try {
-    if (!db)
-      return {
-        ok: false,
-        error: "Database is not configured. Add DATABASE_URL to .env.local.",
-      };
-    const parsed = accountUnitSchema.safeParse(input);
-    if (!parsed.success)
-      return {
-        ok: false,
-        error: parsed.error.issues[0]?.message || "Invalid account details",
-      };
-    const value = parsed.data;
-    await db.transaction(async (tx) => {
-      const [variant] = await tx
-        .select({ id: productVariants.id, category: products.category })
-        .from(productVariants)
-        .innerJoin(products, eq(products.id, productVariants.productId))
-        .where(
-          and(
-            eq(productVariants.id, value.variantId),
-            eq(productVariants.isActive, true),
-            eq(products.isActive, true),
-          ),
-        )
-        .for("update");
-      if (!variant || variant.category !== "PUBG Accounts")
-        throw new Error("Select an active PUBG account listing");
-      await tx.insert(deviceUnits).values({
-        variantId: value.variantId,
-        serialNumber: value.identifier,
-        loginProvider: value.loginProvider || null,
-        rebindStatus: value.rebindStatus,
-        status: value.status,
-        soldAt: value.status === "sold" ? new Date() : null,
-      });
-      if (value.status === "in_stock")
-        await tx
-          .update(productVariants)
-          .set({ stockQuantity: sql`${productVariants.stockQuantity}+1` })
-          .where(eq(productVariants.id, value.variantId));
-    });
-    await audit(
-      "account.created",
-      value.identifier,
-      "PUBG account record added",
-    );
-    return { ok: true };
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Select"))
-      return { ok: false, error: error.message };
-    return {
-      ok: false,
-      error: mutationError(error, "Could not add the account. Try again."),
-    };
-  }
-}
-
-export async function updateAccountUnit(
-  id: string,
-  input: AccountUnitInput,
-): Promise<ActionResult> {
-  try {
-    if (!db)
-      return {
-        ok: false,
-        error: "Database is not configured. Add DATABASE_URL to .env.local.",
-      };
-    const parsed = accountUnitSchema.safeParse(input);
-    if (!parsed.success)
-      return {
-        ok: false,
-        error: parsed.error.issues[0]?.message || "Invalid account details",
-      };
-    const value = parsed.data;
-    await db.transaction(async (tx) => {
-      const [current] = await tx
-        .select()
-        .from(deviceUnits)
-        .where(eq(deviceUnits.id, id))
-        .for("update");
-      if (!current) throw new Error("Account record not found");
-      if (current.variantId !== value.variantId)
-        throw new Error("The account listing cannot be changed after creation");
-      const delta = availabilityDelta(current.status, value.status);
-      await tx
-        .update(deviceUnits)
-        .set({
-          serialNumber: value.identifier,
-          loginProvider: value.loginProvider || null,
-          rebindStatus: value.rebindStatus,
-          status: value.status,
-          soldAt: value.status === "sold" ? current.soldAt || new Date() : null,
-        })
-        .where(eq(deviceUnits.id, id));
-      if (delta !== 0)
-        await tx
-          .update(productVariants)
-          .set({
-            stockQuantity:
-              delta > 0
-                ? sql`${productVariants.stockQuantity}+1`
-                : sql`greatest(0,${productVariants.stockQuantity}-1)`,
-          })
-          .where(eq(productVariants.id, current.variantId));
-    });
-    await audit(
-      "account.updated",
-      value.identifier,
-      "PUBG account record updated",
-    );
-    return { ok: true };
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      (error.message.includes("cannot be changed") ||
-        error.message.includes("not found"))
-    )
-      return { ok: false, error: error.message };
-    return {
-      ok: false,
-      error: mutationError(error, "Could not update the account. Try again."),
-    };
-  }
-}
-
-export async function deleteAccountUnit(id: string): Promise<ActionResult> {
-  try {
-    if (!db)
-      return {
-        ok: false,
-        error: "Database is not configured. Add DATABASE_URL to .env.local.",
-      };
-    let identifier = "";
-    await db.transaction(async (tx) => {
-      const [current] = await tx
-        .select()
-        .from(deviceUnits)
-        .where(eq(deviceUnits.id, id))
-        .for("update");
-      if (!current) throw new Error("Account record not found");
-      if (!canDeleteAccount(current.status))
-        throw new Error("Only an available account can be deleted");
-      identifier = current.serialNumber;
-      await tx.delete(deviceUnits).where(eq(deviceUnits.id, id));
-      await tx
-        .update(productVariants)
-        .set({
-          stockQuantity: sql`greatest(0,${productVariants.stockQuantity}-1)`,
-        })
-        .where(eq(productVariants.id, current.variantId));
-    });
-    await audit(
-      "account.deleted",
-      identifier,
-      "Available PUBG account record deleted",
-    );
-    return { ok: true };
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      (error.message.includes("Only an available") ||
-        error.message.includes("not found"))
-    )
-      return { ok: false, error: error.message };
-    return {
-      ok: false,
-      error: mutationError(error, "Could not delete the account. Try again."),
-    };
-  }
-}
-
 export async function adjustStock(
   variantId: string,
   delta: number,
@@ -599,7 +404,7 @@ export async function adjustStock(
     if (catalog.category === "PUBG Accounts")
       return {
         ok: false,
-        error: "PUBG account stock is managed from Account Vault records.",
+        error: "PUBG resale listings have sale statuses, not stock quantities.",
       };
 
     const [updated] = await db
@@ -635,6 +440,35 @@ export async function assignDeviceToOrder(
     if (!db) return { ok: false, error: "Database is not configured." };
 
     await db.transaction(async (tx) => {
+      const [item] = await tx
+        .select({
+          orderId: orderItems.orderId,
+          variantId: orderItems.variantId,
+          deviceUnitId: orderItems.deviceUnitId,
+        })
+        .from(orderItems)
+        .where(eq(orderItems.id, orderItemId))
+        .for("update");
+      if (!item || item.deviceUnitId) {
+        throw new Error(
+          "Order item was not found or already has an assigned unit",
+        );
+      }
+
+      const [order] = await tx
+        .select({
+          paymentStatus: orders.paymentStatus,
+          fulfillmentStatus: orders.fulfillmentStatus,
+        })
+        .from(orders)
+        .where(eq(orders.id, item.orderId))
+        .for("update");
+      if (!order) throw new Error("Order not found");
+      if (order.paymentStatus !== "verified")
+        throw new Error("Approve the payment before assigning stock");
+      if (order.fulfillmentStatus !== "packing")
+        throw new Error("Stock can only be assigned while an order is packing");
+
       const [unit] = await tx
         .select()
         .from(deviceUnits)
@@ -645,30 +479,24 @@ export async function assignDeviceToOrder(
           ),
         )
         .for("update");
+      if (!unit) throw new Error("Device is unavailable or already assigned");
+      if (unit.variantId !== item.variantId)
+        throw new Error("The selected unit does not match this order item");
 
-      if (!unit) {
-        throw new Error("Device is unavailable or already assigned");
-      }
+      const [listing] = await tx.select({ category: products.category }).from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
+        .where(eq(productVariants.id, item.variantId));
+      if (listing?.category === "PUBG Accounts")
+        throw new Error("PUBG sales use the listed player account; no stocked unit is assigned");
 
-      const [item] = await tx
+      await tx
         .update(orderItems)
         .set({ deviceUnitId })
-        .where(eq(orderItems.id, orderItemId))
-        .returning({ orderId: orderItems.orderId });
-
-      if (!item) {
-        throw new Error("Order item not found");
-      }
-
+        .where(eq(orderItems.id, orderItemId));
       await tx
         .update(deviceUnits)
         .set({ status: "reserved" })
         .where(eq(deviceUnits.id, deviceUnitId));
-
-      await tx
-        .update(orders)
-        .set({ fulfillmentStatus: "packing" })
-        .where(eq(orders.id, item.orderId));
     });
 
     await audit(
@@ -693,13 +521,28 @@ export async function assignDeviceByIdentifier(
     if (clean.length < 3 || clean.length > 120) {
       return {
         ok: false,
-        error: "Enter a valid serial, IMEI or account identifier",
+        error: "Enter a valid serial or IMEI",
       };
     }
 
     let assignedCode = "";
 
     await db.transaction(async (tx) => {
+      const [currentOrder] = await tx
+        .select({
+          code: orders.orderCode,
+          paymentStatus: orders.paymentStatus,
+          fulfillmentStatus: orders.fulfillmentStatus,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+      if (!currentOrder) throw new Error("Order not found");
+      if (currentOrder.paymentStatus !== "verified")
+        throw new Error("Approve the payment before assigning stock");
+      if (currentOrder.fulfillmentStatus !== "packing")
+        throw new Error("Stock can only be assigned while an order is packing");
+
       const [unit] = await tx
         .select()
         .from(deviceUnits)
@@ -715,7 +558,7 @@ export async function assignDeviceByIdentifier(
         .for("update");
 
       if (!unit) {
-        throw new Error("No available unit or account matches that identifier");
+        throw new Error("No available physical unit matches that identifier");
       }
 
       const [item] = await tx
@@ -737,6 +580,12 @@ export async function assignDeviceByIdentifier(
         );
       }
 
+      const [listing] = await tx.select({ category: products.category }).from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
+        .where(eq(productVariants.id, item.variantId));
+      if (listing?.category === "PUBG Accounts")
+        throw new Error("PUBG sales use the listed player account; no stocked unit is assigned");
+
       await tx
         .update(orderItems)
         .set({ deviceUnitId: unit.id })
@@ -747,13 +596,7 @@ export async function assignDeviceByIdentifier(
         .set({ status: "reserved" })
         .where(eq(deviceUnits.id, unit.id));
 
-      const [order] = await tx
-        .update(orders)
-        .set({ fulfillmentStatus: "packing" })
-        .where(eq(orders.id, orderId))
-        .returning({ code: orders.orderCode });
-
-      assignedCode = order?.code || orderId;
+      assignedCode = currentOrder.code;
     });
 
     await audit(

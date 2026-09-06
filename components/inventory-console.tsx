@@ -3,17 +3,12 @@ import { FormEvent, useMemo, useState, useTransition } from "react";
 import { AlertTriangle, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { formatMMK } from "@/lib/data";
 import type {
-  AccountUnit,
-  AccountUnitInput,
   CatalogItemInput,
   InventoryItem,
 } from "@/app/actions/store";
 import {
-  createAccountUnitAction,
   createCatalogItemAction,
-  deleteAccountUnitAction,
   deleteCatalogItemAction,
-  updateAccountUnitAction,
   updateCatalogItemAction,
 } from "@/app/actions/store";
 
@@ -26,19 +21,12 @@ type CatalogDraft = {
   imageUrl: string;
   sku: string;
   color: string;
-  condition: string;
   price: string;
   costPrice: string;
   warrantyMonths: string;
   stockQuantity: string;
   lowStockThreshold: string;
-};
-type AccountDraft = {
-  variantId: string;
-  identifier: string;
-  loginProvider: string;
-  rebindStatus: "pending" | "ready" | "in_progress" | "completed" | "locked";
-  status: "in_stock" | "reserved" | "sold" | "rma_under_repair" | "written_off";
+  listingStatus: "available" | "reserved" | "sold" | "withdrawn";
 };
 const emptyCatalog: CatalogDraft = {
   name: "",
@@ -49,20 +37,13 @@ const emptyCatalog: CatalogDraft = {
   imageUrl: "",
   sku: "",
   color: "",
-  condition: "Brand New Sealed",
   price: "",
   costPrice: "",
   warrantyMonths: "6",
   stockQuantity: "0",
   lowStockThreshold: "3",
+  listingStatus: "available",
 };
-const emptyAccount = (variantId = ""): AccountDraft => ({
-  variantId,
-  identifier: "",
-  loginProvider: "",
-  rebindStatus: "pending",
-  status: "in_stock",
-});
 const inputClass = "h-11 w-full rounded-xl border px-3 text-sm outline-none";
 
 function Modal({
@@ -118,14 +99,11 @@ function Field({
 
 export function InventoryConsole({
   items,
-  accounts,
 }: {
   items: InventoryItem[];
-  accounts: AccountUnit[];
 }) {
-  const [tab, setTab] = useState<"catalog" | "accounts">("catalog"),
-    [query, setQuery] = useState(""),
-    [selectedCategory, setSelectedCategory] = useState("All"),
+  const [category, setCategory] = useState<CatalogDraft["category"]>("Gaming Gadgets");
+  const [query, setQuery] = useState(""),
     [notice, setNotice] = useState<{
       kind: "success" | "error";
       text: string;
@@ -134,33 +112,15 @@ export function InventoryConsole({
   const [catalogEditor, setCatalogEditor] = useState<{
       id?: string;
       draft: CatalogDraft;
-    } | null>(null),
-    [accountEditor, setAccountEditor] = useState<{
-      id?: string;
-      draft: AccountDraft;
     } | null>(null);
-  const accountListings = items.filter(
-    (item) => item.category === "PUBG Accounts",
-  );
   const filtered = useMemo(
     () =>
-      items.filter(
-        (p) =>
-          (selectedCategory === "All" || p.category === selectedCategory) &&
-          `${p.name} ${p.sku} ${p.brand} ${p.category} ${p.subcategory}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
-      ),
-    [items, query, selectedCategory],
-  );
-  const filteredAccounts = useMemo(
-    () =>
-      accounts.filter((a) =>
-        `${a.productName} ${a.sku} ${a.identifier} ${a.loginProvider || ""} ${a.status}`
+      items.filter((p) => p.category === category &&
+        `${p.name} ${p.sku} ${p.brand} ${p.category} ${p.subcategory}`
           .toLowerCase()
           .includes(query.toLowerCase()),
       ),
-    [accounts, query],
+    [items, query, category],
   );
   const showResult = (
     result: { ok: boolean; error?: string },
@@ -204,11 +164,11 @@ export function InventoryConsole({
         imageUrl: item.image === "/placeholder.svg" ? "" : item.image,
         sku: item.sku,
         color: item.color || "",
-        condition: item.condition,
         price: String(item.price),
         costPrice: String(item.cost),
         warrantyMonths: String(item.warranty),
-        stockQuantity: String(item.stock),
+        stockQuantity: item.category === "PUBG Accounts" ? "0" : String(item.stock),
+        listingStatus: (item.listingStatus || "available") as CatalogDraft["listingStatus"],
         lowStockThreshold: String(item.lowStockThreshold),
       },
     });
@@ -228,96 +188,37 @@ export function InventoryConsole({
       () => setCatalogEditor(null),
     );
   };
-  const saveAccount = (event: FormEvent) => {
-    event.preventDefault();
-    if (!accountEditor) return;
-    const { id, draft } = accountEditor;
-    const payload: AccountUnitInput = draft;
-    safely(
-      () =>
-        id
-          ? updateAccountUnitAction(id, payload)
-          : createAccountUnitAction(payload),
-      id
-        ? "Account record and availability updated."
-        : "Account added and storefront availability synchronized.",
-      () => setAccountEditor(null),
-    );
-  };
-  const editAccount = (account: AccountUnit) =>
-    setAccountEditor({
-      id: account.id,
-      draft: {
-        variantId: account.variantId,
-        identifier: account.identifier,
-        loginProvider: account.loginProvider || "",
-        rebindStatus: account.rebindStatus as AccountDraft["rebindStatus"],
-        status: account.status,
-      },
-    });
-
   return (
     <>
+      <div className="mb-4 flex flex-wrap gap-2" aria-label="Product categories">
+        {(["Gaming Gadgets", "PUBG Accounts"] as const).map((value) => (
+          <button key={value} type="button" aria-pressed={category === value}
+            onClick={() => { setCategory(value); setQuery(""); setNotice(null); }}
+            className={`min-h-11 rounded-full border px-4 py-2 text-xs font-bold ${category === value ? "border-black bg-black text-white" : "bg-white/60"}`}>
+            {value === "Gaming Gadgets" ? "Gadget products" : "PUBG accounts"}
+          </button>
+        ))}
+      </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-full border bg-white/60 p-1">
-          {[
-            ["catalog", "Catalog & stock"],
-            ["accounts", "Account vault"],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => {
-                setTab(value as typeof tab);
-                setQuery("");
-              }}
-              className={`rounded-full px-4 py-2 text-xs font-bold ${tab === value ? "bg-black text-white" : ""}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() =>
-            tab === "catalog"
-              ? setCatalogEditor({ draft: { ...emptyCatalog } })
-              : setAccountEditor({
-                  draft: emptyAccount(accountListings[0]?.variantId),
-                })
-          }
-          disabled={pending || (tab === "accounts" && !accountListings.length)}
-          className="rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-bold disabled:opacity-40"
-        >
-          <Plus size={15} className="mr-1.5 inline" />
-          {tab === "catalog" ? "Add listing" : "Add PUBG account"}
+        <h2 className="text-lg font-bold">{category === "PUBG Accounts" ? "PUBG accounts" : "Gadget stock"}</h2>
+        <button onClick={() => setCatalogEditor({ draft: { ...emptyCatalog, category,
+          subcategory: category === "PUBG Accounts" ? "Starter Accounts" : emptyCatalog.subcategory,
+          brand: category === "PUBG Accounts" ? "PUBG Mobile" : "",
+          warrantyMonths: category === "PUBG Accounts" ? "0" : emptyCatalog.warrantyMonths } })}
+          disabled={pending} className="rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-bold disabled:opacity-40">
+          <Plus size={15} className="mr-1.5 inline" />{category === "PUBG Accounts" ? "Add PUBG account" : "Add gadget"}
         </button>
       </div>
-      <div className="card mb-4 flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
+      <div className="card mb-4 p-3">
         <div className="flex flex-1 items-center gap-2 rounded-xl bg-[#f1efe8] px-3">
           <Search size={16} />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={
-              tab === "catalog"
-                ? "Search product, category or SKU…"
-                : "Search account reference, listing or status…"
-            }
+            placeholder={category === "Gaming Gadgets" ? "Search gadgets, brand or SKU…" : "Search PUBG accounts or reference…"}
             className="h-10 w-full bg-transparent text-sm outline-none"
           />
         </div>
-        {tab === "catalog" && (
-          <div className="flex gap-1.5 overflow-x-auto">
-            {["All", "PUBG Accounts", "Gaming Gadgets"].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-bold ${selectedCategory === cat ? "bg-black text-white" : "border bg-white text-[#555]"}`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
       {notice && (
         <div
@@ -327,7 +228,7 @@ export function InventoryConsole({
           {notice.text}
         </div>
       )}
-      {tab === "catalog" ? (
+      {(
         <>
           <div className="space-y-3 md:hidden">
             {filtered.map((product) => (
@@ -354,7 +255,7 @@ export function InventoryConsole({
                   <span
                     className={`pill shrink-0 py-1 ${product.stock <= product.lowStockThreshold ? "bg-[#fff0eb] text-[#b5421c]" : "bg-[#effbdd] text-[#406b16]"}`}
                   >
-                    {product.stock} stock
+                    {category === "PUBG Accounts" ? product.listingStatus : `${product.stock} stock`}
                   </span>
                 </div>
                 <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
@@ -408,7 +309,7 @@ export function InventoryConsole({
                     "SKU",
                     "Retail",
                     "Cost",
-                    "Stock",
+                    ...(category === "PUBG Accounts" ? [] : ["Stock"]),
                     "Status",
                     "Actions",
                   ].map((h) => (
@@ -437,9 +338,7 @@ export function InventoryConsole({
                         />
                         <div>
                           <p className="font-bold">{p.name}</p>
-                          <p className="text-xs text-[#77776f]">
-                            {p.brand} · {p.condition}
-                          </p>
+                          <p className="text-xs text-[#77776f]">{p.brand}</p>
                         </div>
                       </div>
                     </td>
@@ -455,19 +354,19 @@ export function InventoryConsole({
                     <td className="px-5 py-4 text-[#77776f]">
                       {formatMMK(p.cost)}
                     </td>
-                    <td className="px-5 py-4">
+                    {category !== "PUBG Accounts" && <td className="px-5 py-4">
                       <span className="display text-xl font-bold">
                         {p.stock}
                       </span>
-                    </td>
+                    </td>}
                     <td className="px-5 py-4">
                       <span
                         className={`pill py-1 ${p.stock <= p.lowStockThreshold ? "bg-[#fff0eb] text-[#b5421c]" : "bg-[#effbdd] text-[#406b16]"}`}
                       >
-                        {p.stock <= p.lowStockThreshold && (
+                        {category !== "PUBG Accounts" && p.stock <= p.lowStockThreshold && (
                           <AlertTriangle size={12} />
                         )}{" "}
-                        {p.stock <= p.lowStockThreshold ? "Low" : "Healthy"}
+                        {category === "PUBG Accounts" ? p.listingStatus : p.stock <= p.lowStockThreshold ? "Low" : "Healthy"}
                       </span>
                     </td>
                     <td className="px-5 py-4">
@@ -511,149 +410,6 @@ export function InventoryConsole({
             )}
           </div>
         </>
-      ) : (
-        <>
-          <div className="space-y-3 md:hidden">
-            {filteredAccounts.map((account) => (
-              <article className="card p-4" key={account.id}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-bold">{account.productName}</p>
-                    <p className="mt-1 break-all font-mono text-xs">
-                      {account.identifier}
-                    </p>
-                    <p className="mt-2 text-[11px] text-[#77776f]">
-                      {account.loginProvider || "No login provider"} ·{" "}
-                      {account.rebindStatus.replaceAll("_", " ")}
-                    </p>
-                  </div>
-                  <span className="pill shrink-0 py-1 capitalize">
-                    {account.status.replaceAll("_", " ")}
-                  </span>
-                </div>
-                <div className="mt-4 flex justify-end gap-2 border-t pt-3">
-                  <button
-                    aria-label={`Edit ${account.identifier}`}
-                    disabled={pending}
-                    onClick={() => editAccount(account)}
-                    className="grid h-11 w-11 place-items-center rounded-xl border"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    aria-label={`Delete ${account.identifier}`}
-                    disabled={pending || account.status !== "in_stock"}
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Delete available account ${account.identifier}?`,
-                        )
-                      )
-                        safely(
-                          () => deleteAccountUnitAction(account.id),
-                          "Account deleted and availability synchronized.",
-                        );
-                    }}
-                    className="grid h-11 w-11 place-items-center rounded-xl border text-[#b5421c]"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </article>
-            ))}
-            {!filteredAccounts.length && (
-              <div className="card p-8 text-center text-sm text-[#77776f]">
-                {accounts.length
-                  ? "No matching accounts."
-                  : "No account records yet. Add an account to an active PUBG listing."}
-              </div>
-            )}
-          </div>
-          <div className="card hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b">
-                <tr>
-                  {[
-                    "Listing",
-                    "Account reference",
-                    "Login provider",
-                    "Rebind",
-                    "Availability",
-                    "Actions",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-5 py-3 text-[10px] uppercase tracking-wider text-[#77776f]"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAccounts.map((a) => (
-                  <tr key={a.id} className="border-b last:border-0">
-                    <td className="px-5 py-4">
-                      <p className="font-bold">{a.productName}</p>
-                      <p className="font-mono text-[10px] text-[#77776f]">
-                        {a.sku}
-                      </p>
-                    </td>
-                    <td className="px-5 py-4 font-mono text-xs">
-                      {a.identifier}
-                    </td>
-                    <td className="px-5 py-4">{a.loginProvider || "—"}</td>
-                    <td className="px-5 py-4 capitalize">
-                      {a.rebindStatus.replaceAll("_", " ")}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="pill py-1 capitalize">
-                        {a.status.replaceAll("_", " ")}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex gap-1">
-                        <button
-                          aria-label={`Edit ${a.identifier}`}
-                          disabled={pending}
-                          onClick={() => editAccount(a)}
-                          className="grid h-8 w-8 place-items-center rounded-full border"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          aria-label={`Delete ${a.identifier}`}
-                          disabled={pending || a.status !== "in_stock"}
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Delete available account ${a.identifier}?`,
-                              )
-                            )
-                              safely(
-                                () => deleteAccountUnitAction(a.id),
-                                "Account deleted and availability synchronized.",
-                              );
-                          }}
-                          className="grid h-8 w-8 place-items-center rounded-full border text-[#b5421c]"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!filteredAccounts.length && (
-              <p className="p-10 text-center text-sm text-[#77776f]">
-                {accounts.length
-                  ? "No matching accounts."
-                  : "No account records yet. Add an account to an active PUBG listing."}
-              </p>
-            )}
-          </div>
-        </>
       )}
 
       {catalogEditor && (
@@ -663,6 +419,13 @@ export function InventoryConsole({
         >
           <form onSubmit={saveCatalog}>
             <div className="grid gap-4 md:grid-cols-2">
+              {category === "PUBG Accounts" && <>
+                <Field label="Sale status"><select className={inputClass} value={catalogEditor.draft.listingStatus}
+                  disabled={catalogEditor.draft.listingStatus === "reserved"}
+                  onChange={(e) => setCatalogEditor({ ...catalogEditor, draft: { ...catalogEditor.draft, listingStatus: e.target.value as CatalogDraft['listingStatus'] } })}>
+                  <option value="available">Available</option><option value="reserved" disabled>Reserved by an order</option><option value="sold">Sold</option><option value="withdrawn">Withdrawn</option>
+                </select></Field>
+              </>}
               <Field label="Name">
                 <input
                   required
@@ -696,7 +459,7 @@ export function InventoryConsole({
               </Field>
               <Field label="Category">
                 <select
-                  disabled={!!catalogEditor.id}
+                  disabled
                   className={inputClass}
                   value={catalogEditor.draft.category}
                   onChange={(e) =>
@@ -705,10 +468,6 @@ export function InventoryConsole({
                       draft: {
                         ...catalogEditor.draft,
                         category: e.target.value as CatalogDraft["category"],
-                        condition:
-                          e.target.value === "PUBG Accounts"
-                            ? "Verified Digital Account"
-                            : "Brand New Sealed",
                         stockQuantity: "0",
                       },
                     })
@@ -747,22 +506,6 @@ export function InventoryConsole({
                   }
                 />
               </Field>
-              <Field label="Condition">
-                <input
-                  required
-                  className={inputClass}
-                  value={catalogEditor.draft.condition}
-                  onChange={(e) =>
-                    setCatalogEditor({
-                      ...catalogEditor,
-                      draft: {
-                        ...catalogEditor.draft,
-                        condition: e.target.value,
-                      },
-                    })
-                  }
-                />
-              </Field>
               <Field label="Retail price (MMK)">
                 <input
                   required
@@ -796,6 +539,7 @@ export function InventoryConsole({
                   }
                 />
               </Field>
+              {category !== "PUBG Accounts" && <>
               <Field label="Stock quantity">
                 <input
                   required
@@ -833,6 +577,7 @@ export function InventoryConsole({
                   }
                 />
               </Field>
+              </>}
               <Field label="Warranty months">
                 <input
                   required
@@ -901,12 +646,6 @@ export function InventoryConsole({
                 </Field>
               </div>
             </div>
-            {catalogEditor.draft.category === "PUBG Accounts" && (
-              <p className="mt-3 rounded-xl bg-[#f1efe8] p-3 text-xs text-[#666]">
-                PUBG availability is calculated from available Account Vault
-                records, so its stock field is read-only.
-              </p>
-            )}
             <button
               disabled={pending}
               className="mt-5 w-full rounded-xl bg-black py-3 text-xs font-bold text-white disabled:opacity-40"
@@ -916,145 +655,6 @@ export function InventoryConsole({
                 : catalogEditor.id
                   ? "Save changes"
                   : "Create listing"}
-            </button>
-          </form>
-        </Modal>
-      )}
-      {accountEditor && (
-        <Modal
-          title={accountEditor.id ? "Edit PUBG account" : "Add PUBG account"}
-          onClose={() => setAccountEditor(null)}
-        >
-          <form onSubmit={saveAccount}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="PUBG listing">
-                <select
-                  disabled={!!accountEditor.id}
-                  required
-                  className={inputClass}
-                  value={accountEditor.draft.variantId}
-                  onChange={(e) =>
-                    setAccountEditor({
-                      ...accountEditor,
-                      draft: {
-                        ...accountEditor.draft,
-                        variantId: e.target.value,
-                      },
-                    })
-                  }
-                >
-                  <option value="">Select listing</option>
-                  {accountListings.map((p) => (
-                    <option key={p.variantId} value={p.variantId}>
-                      {p.name} · {p.sku}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Internal account reference">
-                <input
-                  required
-                  minLength={3}
-                  maxLength={120}
-                  className={inputClass}
-                  value={accountEditor.draft.identifier}
-                  onChange={(e) =>
-                    setAccountEditor({
-                      ...accountEditor,
-                      draft: {
-                        ...accountEditor.draft,
-                        identifier: e.target.value,
-                      },
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Login provider">
-                <input
-                  maxLength={60}
-                  placeholder="Facebook, email, phone…"
-                  className={inputClass}
-                  value={accountEditor.draft.loginProvider}
-                  onChange={(e) =>
-                    setAccountEditor({
-                      ...accountEditor,
-                      draft: {
-                        ...accountEditor.draft,
-                        loginProvider: e.target.value,
-                      },
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Rebind status">
-                <select
-                  className={inputClass}
-                  value={accountEditor.draft.rebindStatus}
-                  onChange={(e) =>
-                    setAccountEditor({
-                      ...accountEditor,
-                      draft: {
-                        ...accountEditor.draft,
-                        rebindStatus: e.target
-                          .value as AccountDraft["rebindStatus"],
-                      },
-                    })
-                  }
-                >
-                  {[
-                    "pending",
-                    "ready",
-                    "in_progress",
-                    "completed",
-                    "locked",
-                  ].map((x) => (
-                    <option key={x} value={x}>
-                      {x.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Availability">
-                <select
-                  className={inputClass}
-                  value={accountEditor.draft.status}
-                  onChange={(e) =>
-                    setAccountEditor({
-                      ...accountEditor,
-                      draft: {
-                        ...accountEditor.draft,
-                        status: e.target.value as AccountDraft["status"],
-                      },
-                    })
-                  }
-                >
-                  {[
-                    "in_stock",
-                    "reserved",
-                    "sold",
-                    "rma_under_repair",
-                    "written_off",
-                  ].map((x) => (
-                    <option key={x} value={x}>
-                      {x.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <p className="mt-4 rounded-xl bg-[#fff8dc] p-3 text-xs text-[#6f5b13]">
-              Store only an internal reference here—never passwords, recovery
-              codes, or customer credentials.
-            </p>
-            <button
-              disabled={pending}
-              className="mt-5 w-full rounded-xl bg-black py-3 text-xs font-bold text-white disabled:opacity-40"
-            >
-              {pending
-                ? "Saving…"
-                : accountEditor.id
-                  ? "Save account"
-                  : "Add account"}
             </button>
           </form>
         </Modal>

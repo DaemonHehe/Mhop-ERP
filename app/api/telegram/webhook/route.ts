@@ -24,7 +24,9 @@ async function reply(
   extra: Record<string, unknown> = {},
 ) {
   try {
-    const delivery = await sendTelegramMessage(chatId, text);
+    const delivery = await sendTelegramMessage(chatId, text, {
+      reply_markup: extra.reply_markup as Record<string, unknown> | undefined,
+    });
     return NextResponse.json({
       ok: true,
       action: "send_message",
@@ -75,6 +77,10 @@ export async function POST(request: NextRequest) {
   await updateBotSessionActivity(telegramUserId, {
     lastCommand: text,
     lastSeenAt: new Date().toISOString(),
+    ...(chatId === userId && !message?.photo?.length &&
+      (text.startsWith("/catalog") || text.startsWith("/shop") || (text && !text.startsWith("/")))
+      ? { shoppingAt: new Date().toISOString(), privateChatId: chatId }
+      : {}),
   });
 
   if (message?.photo?.length) {
@@ -103,8 +109,22 @@ export async function POST(request: NextRequest) {
       chatId,
       "Voice ordering မဖွင့်ရသေးပါခင်ဗျာ။ စာသားဖြင့် ပစ္စည်းအမည် သို့မဟုတ် မေးခွန်းကို ပေးပို့နိုင်ပါတယ်။",
     );
+  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const shopMiniAppUrl = `${appBaseUrl}/shop`;
+
   if (text.startsWith("/start"))
-    return reply(chatId, clientConfig.telegram.welcome);
+    return reply(chatId, clientConfig.telegram.welcome, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🛍️ Open MH OP Store",
+              web_app: { url: shopMiniAppUrl },
+            },
+          ],
+        ],
+      },
+    });
   if (text.startsWith("/catalog")) {
     const stock = (await getPublicCatalog())
       .filter((p) => p.availability !== "sold_out")
@@ -115,12 +135,36 @@ export async function POST(request: NextRequest) {
         "MH OP · ရရှိနိုင်သော Gaming Gadgets & PUBG Accounts",
         ...stock.map((p) => `• ${p.name} — ${p.price.toLocaleString()} MMK`),
       ].join("\n"),
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🛒 Open Catalog Mini App",
+                web_app: { url: shopMiniAppUrl },
+              },
+            ],
+          ],
+        },
+      },
     );
   }
   if (text.startsWith("/shop"))
     return reply(
       chatId,
-      `MH OP Store ပစ္စည်းများ ကြည့်ရှုဝယ်ယူရန် ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/shop ကို ဝင်ရောက်ကြည့်ရှုနိုင်ပါသည်ခင်ဗျာ။`,
+      `MH OP Store ပစ္စည်းများ ကြည့်ရှုဝယ်ယူရန် အောက်ပါ ခလုတ်ကို နှိပ်၍ Mini App ဖွင့်နိုင်ပါသည်ခင်ဗျာ။`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🛍️ Open MH OP Store (Mini App)",
+                web_app: { url: shopMiniAppUrl },
+              },
+            ],
+          ],
+        },
+      },
     );
   if (text.startsWith("/warranty"))
     return reply(

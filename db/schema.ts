@@ -30,6 +30,7 @@ export const fulfillmentStatus = pgEnum("fulfillment_status", [
   "new",
   "confirmed",
   "packing",
+  "packed",
   "dispatched",
   "delivered",
   "cancelled",
@@ -75,6 +76,7 @@ export const productVariants = pgTable(
     costPrice: numeric("cost_price", { precision: 14, scale: 2 }).notNull(),
     warrantyMonths: integer("warranty_months").notNull().default(12),
     stockQuantity: integer("stock_quantity").notNull().default(0),
+    listingStatus: varchar("listing_status", { length: 20 }).notNull().default("available"),
     lowStockThreshold: integer("low_stock_threshold").notNull().default(3),
     isActive: boolean("is_active").notNull().default(true),
   },
@@ -311,6 +313,7 @@ export const systemAuditLogs = pgTable(
   "system_audit_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    category: varchar("category", { length: 40 }).notNull().default("system"),
     event: varchar("event", { length: 80 }).notNull(),
     actor: varchar("actor", { length: 120 }).notNull().default("system"),
     targetCode: varchar("target_code", { length: 100 }),
@@ -320,6 +323,10 @@ export const systemAuditLogs = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("audit_logs_category_created_idx").on(
+      table.category,
+      table.createdAt,
+    ),
     index("audit_logs_event_idx").on(table.event),
     index("audit_logs_created_at_idx").on(table.createdAt),
   ],

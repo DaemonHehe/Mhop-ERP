@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageCircle, Search, ShoppingBag, Users } from "lucide-react";
+import { Megaphone, MessageCircle, Search, ShoppingBag, Users } from "lucide-react";
 import type { CustomerSummary } from "@/app/actions/store";
 import { formatMMK } from "@/lib/data";
+import { TelegramBroadcastModal } from "./telegram-broadcast-modal";
 
 const normalize = (value: string | null | undefined) =>
   (value || "").trim().toLocaleLowerCase();
@@ -14,6 +15,7 @@ export function CustomerDirectory({
   customers: CustomerSummary[];
 }) {
   const [query, setQuery] = useState("");
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
   const normalized = normalize(query);
   const visible = useMemo(
     () =>
@@ -72,19 +74,29 @@ export function CustomerDirectory({
               {visible.length} of {customers.length} profiles
             </p>
           </div>
-          <label className="relative block w-full sm:max-w-xs">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#77776f]"
-            />
-            <span className="sr-only">Search customers</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name, phone, Telegram or address"
-              className="h-11 w-full rounded-xl border bg-white pl-9 pr-3 text-sm outline-none focus:border-black"
-            />
-          </label>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setBroadcastOpen(true)}
+              className="flex h-11 items-center gap-2 rounded-xl bg-[#0088cc] px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#0077b5]"
+            >
+              <Megaphone size={15} />
+              <span>Broadcast to Telegram</span>
+            </button>
+            <label className="relative block w-full sm:w-auto sm:min-w-[240px]">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#77776f]"
+              />
+              <span className="sr-only">Search customers</span>
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Name, phone, Telegram or address"
+                className="h-11 w-full rounded-xl border bg-white pl-9 pr-3 text-sm outline-none focus:border-black"
+              />
+            </label>
+          </div>
         </div>
 
         <div className="divide-y md:hidden">
@@ -197,6 +209,11 @@ export function CustomerDirectory({
           </div>
         )}
       </section>
+
+      <TelegramBroadcastModal
+        isOpen={broadcastOpen}
+        onClose={() => setBroadcastOpen(false)}
+      />
     </>
   );
 }

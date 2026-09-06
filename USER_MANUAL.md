@@ -2,62 +2,67 @@
 
 ## Daily opening
 
-1. Open **Command center** and check unfulfilled orders, pending payment slips, and low-stock items.
-2. Compare the 09:00 Telegram briefing with dashboard totals.
-3. Resolve critical stock warnings before promoting affected products.
+1. Sign in at `/login` and open **Command center**.
+2. Review pending payments, unfinished orders, and gadget stock warnings.
+3. Check **Leads** for unfinished purchases and **Activity logs** for recent changes.
+4. Review the operations-bot briefing if the n8n schedules have been configured and activated.
 
-## Products & Stock and serialized devices
+## Products & Stock
 
-Use **Products & Stock** to search by product, SKU, serial, or IMEI. High-value devices should have one `device_units` record per physical unit. Valid lifecycle states are `in_stock`, `reserved`, `sold`, `rma_under_repair`, and `written_off`. Quantity-only accessories use the variant stock quantity and low-stock threshold.
+Use the compact **Gadget products** and **PUBG accounts** buttons to switch categories. Search applies only to the selected category. Add or edit a listing's name, SKU, category/subcategory, brand, description, image URL, cost price, retail price, and warranty. The category is fixed when the listing is created. Deleting a listing removes it from new sales while preserving previous order records.
 
-Use **Catalog & stock** to create or edit gadget and PUBG listings. Deleting a listing removes it from the storefront, checkout, bot catalog, and dashboards while preserving historical orders. Use **Account vault** for individual PUBG account references. Available account records are the source of truth for PUBG stock: creating, changing availability, or deleting a record adjusts the published quantity automatically. Never store passwords or recovery codes in the account reference fields.
+### Gadget products
 
-## Orders and payment slips
+Maintain stock quantity and the low-stock threshold. Cost price is the purchase cost; retail price is the customer selling price. Serialized physical devices can be assigned to orders by serial or IMEI during packing. The listing search searches product details and SKU; serial/IMEI assignment is an order operation.
 
-Open an order and inspect the uploaded slip. Match merchant, transaction ID, time, and exact total against the payment provider before selecting **Approve**. Reject illegible, duplicate, or mismatched slips and record the reason. Approval is not proof of settlement unless reconciled with the provider account.
+### PUBG accounts
 
-For packing, enter the physical device IMEI/serial into **Assign serial / IMEI**, verify the on-screen model matches the box, then mark the order as packing. A serial can only be assigned while its state is `in_stock`.
+The owner buys an account and resells it, using the same cost-price and retail-price model as gadgets. Each listing represents one account. There are no seller-information fields, stock quantities, low-stock alerts, or Account Vault screen.
 
-## Dispatch
+Use **Sale status** to mark a listing Available, Sold, or Withdrawn. Reserved is managed by the linked order. Checkout accepts only one unit of an available account and reserves it. Cancelling that order releases the account; completing the order marks it sold. An account does not require a serialized unit assignment. Put customer-facing account features in the description; do not put passwords or recovery codes in public catalog fields.
 
-Add the carrier and tracking number, confirm the customer address, then mark dispatched. The customer notification should include the tracking link and dispatch time. Mark delivered only from confirmed carrier status or staff verification.
+## Orders and payment
 
-## Receipts
+Customers create orders through the shop. A Telegram payment-slip photo must include the order code in its caption, for example `MHOP-260829-A1B2`. Staff must compare the slip with the payment provider's actual transaction before approving it. A photo alone is not proof of settlement.
 
-Select an order, then choose 80mm or 58mm in **Thermal receipt studio**. The receipt reads the order's actual items, bundle names, prices, payment state, IMEI/serial, and warranty period. Use the browser print dialog with margins disabled, scale 100%, and the matching roll width.
+In **Orders**, select an order and review its payment evidence. Approval moves the order into packing. While packing a physical order, assign its serial or IMEI if applicable, then mark it packed. Physical dispatch uses the courier/tracking controls. For PUBG-only orders, use the digital handover controls; no courier or shipping fee is required. Mark delivered after confirming completion. Do not assume that changing order status automatically sends a customer tracking message.
 
-## Warranty and RMA
+## Leads & recovery
 
-Create a claim using the original order code, purchase phone, and device serial or IMEI. The system refuses mismatched claims and takes the customer name from the verified order. Move claims through Claim Received → Inspection → Repaired/Replaced → Dispatched. Inspection synchronizes the device lifecycle to `rma_under_repair`; dispatch restores it to `sold` and the new claim appears in Staff Alerts.
+Leads are identified customers who made a Telegram catalog/sales inquiry without a subsequent order, or who started an order without finishing payment. Paid, cancelled, and payment-slip-review orders are excluded from the unpaid queue. An order after a Telegram inquiry supersedes that browsing entry. Existing customers can appear again when they start another unfinished purchase.
 
-## Leads, staff, and alerts
+New private-chat catalog and sales activity is tracked through the customer Telegram bot. Anonymous shop visitors cannot be contacted, and opening the shop does not automatically link a Telegram identity to a checkout.
 
-Use **Leads & recovery** to move abandoned-cart leads through New, Contacted, Reserved, Converted, or Lost. Updates are written to the audit trail. Use **Staff & access** as an administrator to create accounts, assign Staff or Administrator roles, reset passwords, activate access, or deactivate access while preserving history. The final active administrator and the currently signed-in administrator are protected from accidental deactivation. Open the bell icon for payment, order, stock, and warranty events, then mark individual alerts or the full inbox as read.
+Use **Send Telegram reminder** on a reachable lead. The app rechecks eligibility and sends through the configured customer sales bot. The customer must have started and not blocked the bot. Customers without a linked Telegram ID have no reminder action. There is no Add lead, Convert, or manual sales-stage pipeline on this page.
 
-## Customer shop
+The app limits repeated sends to the same chat for one minute per running application process. A successful send is reported in the page and an audit write is attempted. If delivery is uncertain, inspect the chat before retrying. This is not a persistent cross-server contact history or opt-out system.
 
-The public catalog supports department and subcategory filters, search, comparison, bundles, and checkout.
+## Customers, staff, alerts, and logs
 
-## Bundle Sets
+**Customers** shows customer records and purchase history. Administrators use **Staff & access** to manage staff roles, passwords, and active status. The final active administrator and the currently signed-in administrator are protected from accidental deactivation. Use the bell for staff alerts. **Activity logs** supports searching and filtering; records are grouped into Monday–Sunday Bangkok calendar weeks, without weekly deletion.
 
-Use **Bundle Sets** to combine two or more active SKUs, set quantities, and publish a discounted selling price. Combined retail value, customer savings, and maximum available sets are calculated automatically. Checkout locks and consumes every underlying SKU in one transaction, distributes the discount exactly across stored order units, and saves a bundle snapshot so later catalog edits do not rewrite order history. Archiving removes a set from new sales without affecting previous orders.
+## Receipts and warranty
 
-## ERP and finance
+In **Thermal receipt studio**, choose an order and 58mm or 80mm paper. Check item prices, payment status, serial/IMEI where applicable, and warranty details. In the printer dialog use the matching roll width, 100% scale, and no margins; verify the output on the client's printer.
 
-Create suppliers before raising purchase orders. A purchase order does not alter available stock. After the delivered quantity is physically checked, select **Receive**; the purchase status, latest unit cost, and gadget stock are then updated in one transaction. Cancelled or already received purchases cannot be received again. Add individual purchased PUBG accounts through **Account vault** instead, so every account has its own internal reference and lifecycle.
+Use **Warranty & RMA** to record and resolve claims against the original order. Supply the original order code, purchase phone, and the requested identifying details. Review the store policy and evidence before deciding a resolution. PUBG replacements are handled as individual account cases, not gadget stock replacements. Public warranty lookup uses `/warranty`.
 
-Record operating costs under **Expenses**. Verified sales, gross profit, expenses, net profit, inventory asset value, and open purchases recalculate from the shared ledger. Administrator access is required to delete suppliers or expenses.
+## Bundle Sets and ERP
+
+Use **Bundle Sets** for gadget combinations with quantities and a discounted price. Availability comes from the underlying gadget stock; historical orders retain their bundle snapshot. Keep individual PUBG resale accounts outside quantity-based bundle workflows.
+
+In **ERP & Finance**, create suppliers and gadget purchase orders. Confirm physical receipt before selecting **Receive**; receiving updates gadget stock and purchase cost. Record a purchased PUBG account directly as a listing in Products & Stock with its cost price. Record operating expenses separately. Review verified sales, costs, and profit reports against actual payments; the application does not transfer money or pay suppliers.
 
 ## AI Creative Studio
 
-Select a live physical gaming gadget from **Products & Stock**. AI Studio automatically displays the same catalog image used by that stock listing; there is no separate upload or duplicate product record. PUBG accounts are deliberately excluded because they are digital inventory and do not have a physical product image to transform. If the listing has no genuine image, add its HTTPS image in Products & Stock first. Choose a campaign and a curated commercial shortcut. Available shortcuts are limited to useful photoshoot, camera, lighting, advertising, editorial, packaging, branding-mockup, and photorealistic-render directions. Complete the channel, crop, audience, headline, offer, CTA, typography workflow, and optional art direction.
+Choose a physical gadget with a catalog image, complete the campaign fields, and copy the prompt. Open the reference image and attach it in your preferred image-generation tool. The studio itself does not call an image API, upload files, or generate images. PUBG accounts are excluded from this physical-product tool. Bot Studio has been removed; the customer sales bot still operates independently.
 
-Open the displayed catalog image and attach it directly in ChatGPT Images or another image tool, then select **Copy prompt** and paste the prompt. The generated instructions treat the photo as an immutable source of truth: the environment, lighting, mood, and layout may change, but the product shape, component count, materials, colors, cables, controls, and genuine printed logo must remain accurate. The studio uses no API and never generates, stores, or uploads the image itself.
+## Telegram and n8n
 
-## Automations
+The application owns incoming customer-bot updates. It handles catalog/shop commands, support, payment photos, and sales questions. AI replies require configured provider credentials; otherwise catalog-based fallback replies remain available. Voice messages currently receive a request to send text; there is no transcription workflow.
 
-The customer bot handles catalog, warranty, support, payment photo acknowledgements, and free-form sales questions. Customers can describe a device, use case, or budget in Burmese or English. The sales agent searches the live public catalog and bundles, explains store policies, remembers only the latest bounded conversation context, and creates an unread Staff Alert when a person is needed. It cannot place orders, approve payments, expose exact stock or internal costs, reveal PUBG credentials, or approve refunds and warranty claims. Those actions remain staff-controlled.
+The n8n master workflow has four branches: lead recovery, critical staff-event alerts, 09:00/22:00 Asia/Yangon staff digests, and a daily accessory follow-up scan for qualifying older purchases. These run only after credentials, URLs, schedules, and activation have been tested.
 
-A payment-slip photo caption must include its order code, for example `MHOP-260829-A1B2`, so the slip can be attached to the correct order. Set a real `OPENAI_API_KEY` to activate model-generated replies; the bot continues with safe catalog matching if that key is absent or the model provider times out. The operations bot sends event cards and scheduled digests. If messages stop, check Telegram credentials, the Telegram webhook, OpenAI credentials, n8n execution history, webhook signature configuration, and the app health endpoint in that order.
+Lead recovery scans every 15 minutes and selects linked Telegram customers inactive for at least 15 minutes. It uses the same queue as Leads, deduplicates attempts by lead ID within retained workflow history, and calls the app to recheck eligibility and send the reminder. The app uses its customer bot token; n8n does not send this reminder directly. Changed activity or purchase status causes a skip. An HTTP or Telegram failure needs staff review; automatic reminder-send retries are disabled. Manual reminders and n8n do not share persistent deduplication history.
 
-The n8n automation has four independent branches: one-time cart recovery reminders, authenticated critical-event alerts, 09:00/22:00 staff digests, and deduplicated 21–30 day cross-sell offers. The application—not n8n—owns incoming customer Telegram updates. In n8n, failed executions are retained while successful production payloads are not, reducing unnecessary storage of customer data. The separate error-handler workflow sends a payload-minimized failure alert to the operations group. After importing a new workflow version, reconnect all four named credentials, test each branch manually with staging data, verify the production event webhook URL, and only then publish it.
+If messages stop, check application logs, Telegram credentials/webhook, n8n failed executions, internal API authentication, and configured URLs. See README for deployment steps and USER_TESTING for the release checklist.

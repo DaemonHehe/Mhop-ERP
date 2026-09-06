@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { calculateOrderShipping, calculateShipping } from "@/lib/client-config";
 import {
-  accountUnitSchema,
   bundleSchema,
   catalogItemSchema,
   expenseSchema,
+  leadSchema,
   orderSchema,
   purchaseSchema,
   supplierSchema,
   warrantyLookupSchema,
 } from "@/lib/validation/schemas";
-import { availabilityDelta, canDeleteAccount } from "@/lib/stock-rules";
 import { allocateDiscountedUnits } from "@/lib/order-pricing";
 
 describe("MH OP commerce rules", () => {
@@ -63,7 +62,6 @@ describe("MH OP commerce rules", () => {
       imageUrl: "https://example.com/item.jpg",
       sku: "memo-dl05",
       color: "Black",
-      condition: "New",
       price: "65000",
       costPrice: "42000",
       warrantyMonths: "3",
@@ -80,28 +78,6 @@ describe("MH OP commerce rules", () => {
     expect(
       catalogItemSchema.safeParse({ ...base, costPrice: "70000" }).success,
     ).toBe(false);
-  });
-
-  it("accepts only valid PUBG account lifecycle values", () => {
-    const base = {
-      variantId: "20000000-0000-4000-8000-000000000006",
-      identifier: "PUBG-0001",
-      loginProvider: "Email",
-      rebindStatus: "ready",
-      status: "in_stock",
-    };
-    expect(accountUnitSchema.safeParse(base).success).toBe(true);
-    expect(
-      accountUnitSchema.safeParse({ ...base, status: "available" }).success,
-    ).toBe(false);
-  });
-
-  it("keeps PUBG account availability synchronized across lifecycle changes", () => {
-    expect(availabilityDelta("in_stock", "reserved")).toBe(-1);
-    expect(availabilityDelta("reserved", "sold")).toBe(0);
-    expect(availabilityDelta("sold", "in_stock")).toBe(1);
-    expect(canDeleteAccount("in_stock")).toBe(true);
-    expect(canDeleteAccount("reserved")).toBe(false);
   });
 
   it("validates ERP supplier, purchase and expense inputs", () => {
@@ -141,6 +117,21 @@ describe("MH OP commerce rules", () => {
         expenseDate: "2026-08-29",
       }).success,
     ).toBe(true);
+  });
+
+  it("requires a reachable contact for manually managed leads", () => {
+    const lead = {
+      customerName: "Ko Min",
+      phone: "09700000000",
+      telegramUserId: "",
+      interestedIn: "Gaming earbuds under 100,000 MMK",
+      stage: "new",
+      reserveExpiresAt: "",
+    };
+    expect(leadSchema.safeParse(lead).success).toBe(true);
+    expect(
+      leadSchema.safeParse({ ...lead, phone: "", telegramUserId: "" }).success,
+    ).toBe(false);
   });
 
   it("validates unique multi-product bundle sets", () => {

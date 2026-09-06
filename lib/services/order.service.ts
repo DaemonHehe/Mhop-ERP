@@ -1,3 +1,4 @@
+import { canPurchaseListing } from "@/lib/listing-rules";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -22,6 +23,11 @@ import { audit } from "./audit.service";
 import type { ActionResult } from "./stock.service";
 import { allocateDiscountedUnits } from "@/lib/order-pricing";
 import { evaluateWarrantyPolicy } from "@/lib/warranty-policy";
+import { sendTelegramMessage, sendTelegramOpsMessage } from "@/lib/telegram/bot";
+import {
+  formatCustomerReceipt,
+  formatManagerOrderAlert,
+} from "./receipt-summary";
 
 export interface OperationalOrder {
   id: string;
@@ -31,7 +37,13 @@ export interface OperationalOrder {
   amount: number;
   payment: "Verified" | "Pending" | "Rejected" | "Refunded";
   fulfillment:
-    "New" | "Confirmed" | "Packing" | "Dispatched" | "Delivered" | "Cancelled";
+    | "New"
+    | "Confirmed"
+    | "Packing"
+    | "Packed"
+    | "Dispatched"
+    | "Delivered"
+    | "Cancelled";
   item: string;
   created: string;
   createdAt?: Date;
@@ -41,6 +53,7 @@ export interface OperationalOrder {
   shippingCarrier?: string | null;
   telegramUserId?: string | null;
   paymentSlipUrl?: string | null;
+  isDigitalOnly?: boolean;
 }
 
 export interface WarrantyResult {
@@ -106,31 +119,36 @@ export async function getOrders(): Promise<OperationalOrder[]> {
 
   const rows = await db.select().from(orders).orderBy(desc(orders.createdAt));
   const ids = rows.map((row) => row.id);
-  const itemRows = ids.length
-    ? await db
-        .select({
-          orderId: orderItems.orderId,
-          name: products.name,
-          quantity: orderItems.quantity,
-        })
-        .from(orderItems)
-        .innerJoin(products, eq(products.id, orderItems.productId))
-        .where(inArray(orderItems.orderId, ids))
-    : [];
-  const bundleRows = ids.length
-    ? await db
-        .select({
-          orderId: orderBundleSets.orderId,
-          name: orderBundleSets.bundleName,
-        })
-        .from(orderBundleSets)
-        .where(inArray(orderBundleSets.orderId, ids))
-    : [];
+  const [itemRows, bundleRows] = ids.length
+    ? await Promise.all([
+        db
+          .select({
+            orderId: orderItems.orderId,
+            name: products.name,
+            category: products.category,
+            quantity: orderItems.quantity,
+          })
+          .from(orderItems)
+          .innerJoin(products, eq(products.id, orderItems.productId))
+          .where(inArray(orderItems.orderId, ids)),
+        db
+          .select({
+            orderId: orderBundleSets.orderId,
+            name: orderBundleSets.bundleName,
+          })
+          .from(orderBundleSets)
+          .where(inArray(orderBundleSets.orderId, ids)),
+      ])
+    : [[], []];
   const itemLabels = new Map<string, string[]>();
+  const itemCategories = new Map<string, string[]>();
   for (const item of itemRows) {
     const list = itemLabels.get(item.orderId) || [];
     list.push(`${item.quantity > 1 ? `${item.quantity}× ` : ""}${item.name}`);
     itemLabels.set(item.orderId, list);
+    const categories = itemCategories.get(item.orderId) || [];
+    categories.push(item.category);
+    itemCategories.set(item.orderId, categories);
   }
   const bundleLabels = new Map<string, string[]>();
   for (const bundle of bundleRows) {
@@ -159,6 +177,13 @@ export async function getOrders(): Promise<OperationalOrder[]> {
     shippingCarrier: o.shippingCarrier,
     telegramUserId: o.telegramUserId,
     paymentSlipUrl: o.paymentSlipUrl,
+    isDigitalOnly: (() => {
+      const items = itemCategories.get(o.id) || [];
+      return (
+        items.length > 0 &&
+        items.every((category) => category === "PUBG Accounts")
+      );
+    })(),
   }));
 }
 
@@ -427,7 +452,7 @@ export async function createOrder(
 
     const { shippingZone, paymentMethod, ...customer } = parsed.data;
 
-    await db.transaction(async (tx) => {
+    const orderSummary = await db.transaction(async (tx) => {
       const selectedBundles = bundleIds.length
         ? await tx
             .select()
@@ -465,11 +490,13 @@ export async function createOrder(
       const selected = await tx
         .select({
           productId: products.id,
+          productName: products.name,
           variantId: productVariants.id,
           sku: productVariants.sku,
           price: productVariants.price,
           cost: productVariants.costPrice,
           stock: productVariants.stockQuantity,
+          listingStatus: productVariants.listingStatus,
           category: products.category,
         })
         .from(productVariants)
@@ -486,8 +513,8 @@ export async function createOrder(
         throw new Error("One or more products are unavailable");
       for (const item of selected) {
         const quantity = quantities.get(item.sku) || 0;
-        if (quantity < 1 || item.stock < quantity)
-          throw new Error(`${item.sku} does not have enough stock`);
+        if (!canPurchaseListing(item, quantity))
+          throw new Error(`${item.sku} is unavailable for the requested quantity`);
       }
       const retailSubtotal = selected.reduce(
         (sum, item) => sum + num(item.price) * (quantities.get(item.sku) || 0),
@@ -528,12 +555,14 @@ export async function createOrder(
         .values({
           name: customer.customerName,
           phone: customer.phone,
+          telegramUserId: customer.telegramUserId || null,
           primaryAddress: digitalOnly ? null : customer.shippingAddress || null,
         })
         .onConflictDoUpdate({
           target: customers.phone,
           set: {
             name: customer.customerName,
+            ...(customer.telegramUserId ? { telegramUserId: customer.telegramUserId } : {}),
             ...(!digitalOnly && customer.shippingAddress
               ? { primaryAddress: customer.shippingAddress }
               : {}),
@@ -548,6 +577,7 @@ export async function createOrder(
         .insert(orders)
         .values({
           ...customer,
+          telegramUserId: customer.telegramUserId || null,
           customerId: customerProfile.id,
           totalAmount: String(total),
           shippingZone,
@@ -576,7 +606,7 @@ export async function createOrder(
           const quantity = quantities.get(item.sku) || 1;
           const prices = allocatedUnits.filter((unit) => unit.key === item.sku);
           for (const price of prices) {
-            const [createdItem] = await tx
+            await tx
               .insert(orderItems)
               .values({
                 orderId: created.id,
@@ -587,29 +617,13 @@ export async function createOrder(
                 quantity: 1,
               })
               .returning({ id: orderItems.id });
-            if (item.category === "PUBG Accounts") {
-              const [account] = await tx
-                .select({ id: deviceUnits.id })
-                .from(deviceUnits)
-                .where(
-                  and(
-                    eq(deviceUnits.variantId, item.variantId),
-                    eq(deviceUnits.status, "in_stock"),
-                  ),
-                )
-                .limit(1)
-                .for("update");
-              if (!account)
-                throw new Error(`${item.sku} has no available account record`);
-              await tx
-                .update(orderItems)
-                .set({ deviceUnitId: account.id })
-                .where(eq(orderItems.id, createdItem.id));
-              await tx
-                .update(deviceUnits)
-                .set({ status: "reserved" })
-                .where(eq(deviceUnits.id, account.id));
-            }
+          }
+          if (item.category === "PUBG Accounts") {
+            const [reserved] = await tx.update(productVariants).set({ listingStatus: "reserved" })
+              .where(and(eq(productVariants.id, item.variantId), eq(productVariants.listingStatus, "available")))
+              .returning({ id: productVariants.id });
+            if (!reserved) throw new Error(`${item.sku} is already reserved`);
+            continue;
           }
           const [updated] = await tx
             .update(productVariants)
@@ -633,6 +647,22 @@ export async function createOrder(
         body: `${parsed.data.customerName} placed an order for ${total} MMK`,
         targetCode: orderCode,
       });
+
+      return {
+        orderCode,
+        total,
+        shippingFee,
+        selectedItems: selected.map((item) => ({
+          name: item.productName || item.sku,
+          quantity: quantities.get(item.sku) || 1,
+          unitPrice: num(item.price),
+          sku: item.sku,
+        })),
+        bundleSummaries: selectedBundles.map((bundle) => ({
+          name: bundle.name,
+          price: num(bundle.bundlePrice),
+        })),
+      };
     });
 
     await audit(
@@ -640,6 +670,40 @@ export async function createOrder(
       orderCode,
       `Order created for ${parsed.data.customerName}`,
     );
+
+    // Telegram Notifications (Best-effort, does not block order creation)
+    const receiptData = {
+      orderCode: orderSummary.orderCode,
+      customerName: parsed.data.customerName,
+      phone: parsed.data.phone,
+      shippingAddress: parsed.data.shippingAddress || "Secure digital handover",
+      shippingFee: orderSummary.shippingFee,
+      totalAmount: orderSummary.total,
+      paymentMethod: parsed.data.paymentMethod,
+      items: orderSummary.selectedItems,
+      bundles: orderSummary.bundleSummaries,
+    };
+
+    // 1. Notify Manager Bot in Operations Group
+    try {
+      const managerText = formatManagerOrderAlert(receiptData);
+      await sendTelegramOpsMessage(managerText, { parse_mode: "HTML" });
+    } catch (opsErr) {
+      console.error("[Telegram Manager Notification Error]", opsErr);
+    }
+
+    // 2. Generate and dispatch receipt back to customer via Customer Bot (if linked)
+    if (parsed.data.telegramUserId) {
+      try {
+        const customerReceiptText = formatCustomerReceipt(receiptData);
+        await sendTelegramMessage(parsed.data.telegramUserId, customerReceiptText, {
+          parse_mode: "HTML",
+        });
+      } catch (custErr) {
+        console.error("[Telegram Customer Receipt Error]", custErr);
+      }
+    }
+
     return { ok: true, data: { orderCode } };
   } catch (error) {
     return { ok: false, error: errorOf(error) };
@@ -653,24 +717,81 @@ export async function reviewPayment(
   try {
     if (!db) return { ok: false, error: "Database is not configured." };
 
-    await db.transaction(async (tx) => {
+    const reviewed = await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          code: orders.orderCode,
+          paymentStatus: orders.paymentStatus,
+          fulfillmentStatus: orders.fulfillmentStatus,
+          paymentSlipUrl: orders.paymentSlipUrl,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+      if (!current) throw new Error("Order not found");
+      if (
+        ["cancelled", "dispatched", "delivered"].includes(
+          current.fulfillmentStatus,
+        )
+      )
+        throw new Error("Payment can no longer be reviewed for this order");
+      if (decision === "verified" && !current.paymentSlipUrl)
+        throw new Error("A payment slip is required before approval");
+      if (current.paymentStatus === decision)
+        throw new Error(
+          decision === "verified"
+            ? "Payment is already approved"
+            : "Payment is already rejected",
+        );
+      if (current.paymentStatus === "verified" && decision === "rejected")
+        throw new Error(
+          "Use the refund or cancellation workflow after approval",
+        );
+
       const changed = await tx
         .update(orders)
-        .set({ paymentStatus: decision })
+        .set({
+          paymentStatus: decision,
+          ...(decision === "verified"
+            ? { fulfillmentStatus: "packing" as const }
+            : {}),
+        })
         .where(eq(orders.id, orderId))
-        .returning({ code: orders.orderCode });
+        .returning({ code: orders.orderCode, telegramUserId: orders.telegramUserId });
 
       if (!changed[0]) throw new Error("Order not found");
 
       await tx.insert(staffAlerts).values({
         type: `payment.${decision}`,
-        title: `Payment ${decision}`,
-        body: `Payment review completed for ${changed[0].code}`,
+        title:
+          decision === "verified"
+            ? `Payment approved • ${changed[0].code}`
+            : `Payment rejected • ${changed[0].code}`,
+        body:
+          decision === "verified"
+            ? "Payment is verified. The order is now ready for packing."
+            : "Payment evidence was rejected and requires customer follow-up.",
         targetCode: changed[0].code,
       });
+
+      return changed[0];
     });
 
     await audit(`payment.${decision}`, orderId, `Payment marked ${decision}`);
+
+    // If customer has linked Telegram, notify them of verification decision
+    if (reviewed?.telegramUserId) {
+      try {
+        const text =
+          decision === "verified"
+            ? `✅ <b>ငွေလွှဲပြေစာ အတည်ပြုပြီးပါပြီ</b>\nOrder Code: <code>${reviewed.code}</code> အတွက် ငွေလွှဲမှုကို အောင်မြင်စွာ စစ်ဆေးအတည်ပြုပြီးပါပြီခင်ဗျာ။\n\nပစ္စည်းများကို ထုတ်ပိုးပြင်ဆင်နေပြီး ပို့ဆောင်ချိန်တွင် tracking code ကို ထပ်မံအကြောင်းကြားပေးပါမည်။`
+            : `⚠️ <b>ငွေလွှဲပြေစာ စစ်ဆေးမှု မအောင်မြင်ပါ</b>\nOrder Code: <code>${reviewed.code}</code> အတွက် ငွေလွှဲပြေစာကို အတည်ပြု၍မရသေးပါခင်ဗျာ။ Customer Service (/support) သို့ ဆက်သွယ်မေးမြန်းပေးပါရန်။`;
+        await sendTelegramMessage(reviewed.telegramUserId, text, { parse_mode: "HTML" });
+      } catch (err) {
+        console.error("[Telegram Customer Payment Decision Error]", err);
+      }
+    }
+
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorOf(error) };
@@ -718,6 +839,17 @@ export async function recordTelegramPaymentSlip(
       "Payment slip received through Telegram",
       "telegram",
     );
+
+    // Notify Manager Bot in operations group that payment slip arrived for manual verification
+    try {
+      await sendTelegramOpsMessage(
+        `💳 <b>Payment Slip Received</b>\nOrder Code: <code>${updated.code}</code>\nTelegram Customer: <code>${telegramUserId}</code>\n\nAdmin console တွင် စစ်ဆေးအတည်ပြုပေးပါရန်။`,
+        { parse_mode: "HTML" },
+      );
+    } catch (opsErr) {
+      console.error("[Telegram Slip Ops Alert Error]", opsErr);
+    }
+
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorOf(error) };
@@ -726,7 +858,13 @@ export async function recordTelegramPaymentSlip(
 
 export async function updateFulfillment(
   orderId: string,
-  status: "confirmed" | "packing" | "dispatched" | "delivered" | "cancelled",
+  status:
+    | "confirmed"
+    | "packing"
+    | "packed"
+    | "dispatched"
+    | "delivered"
+    | "cancelled",
 ): Promise<ActionResult> {
   try {
     if (!db) return { ok: false, error: "Database is not configured." };
@@ -736,6 +874,7 @@ export async function updateFulfillment(
         .select({
           code: orders.orderCode,
           status: orders.fulfillmentStatus,
+          paymentStatus: orders.paymentStatus,
           deliveredAt: orders.deliveredAt,
         })
         .from(orders)
@@ -744,16 +883,60 @@ export async function updateFulfillment(
       if (!current) throw new Error("Order not found");
       if (current.status === "cancelled")
         throw new Error("A cancelled order cannot be reopened");
+      if (current.status === status)
+        throw new Error(`Order is already ${status}`);
+
+      const allowed: Record<string, string[]> = {
+        new: ["packing", "cancelled"],
+        confirmed: ["packing", "cancelled"],
+        packing: ["packed", "cancelled"],
+        packed: ["dispatched", "cancelled"],
+        dispatched: ["delivered"],
+        delivered: [],
+      };
+      if (!allowed[current.status]?.includes(status))
+        throw new Error(
+          `Cannot move an order from ${current.status} to ${status}`,
+        );
+      if (
+        ["packing", "packed", "dispatched", "delivered"].includes(status) &&
+        current.paymentStatus !== "verified"
+      )
+        throw new Error("Approve the payment before fulfilling this order");
+      if (status === "packed" || status === "dispatched") {
+        const fulfillmentItems = await tx
+          .select({
+            category: products.category,
+            deviceUnitId: orderItems.deviceUnitId,
+          })
+          .from(orderItems)
+          .innerJoin(products, eq(products.id, orderItems.productId))
+          .where(eq(orderItems.orderId, orderId));
+        const digitalOnly =
+          fulfillmentItems.length > 0 &&
+          fulfillmentItems.every((item) => item.category === "PUBG Accounts");
+        if (status === "dispatched" && !digitalOnly)
+          throw new Error(
+            "Physical orders must be dispatched with courier tracking",
+          );
+      }
       if (status === "cancelled") {
         const items = await tx
           .select({
             variantId: orderItems.variantId,
             quantity: orderItems.quantity,
+            category: products.category,
             deviceUnitId: orderItems.deviceUnitId,
           })
           .from(orderItems)
+          .innerJoin(products, eq(products.id, orderItems.productId))
           .where(eq(orderItems.orderId, orderId));
         for (const item of items) {
+          if (item.category === "PUBG Accounts") {
+            await tx.update(productVariants).set({ listingStatus: "available" })
+              .where(and(eq(productVariants.id, item.variantId), eq(productVariants.listingStatus, "reserved")));
+            continue;
+          }
           await tx
             .update(productVariants)
             .set({
@@ -773,6 +956,11 @@ export async function updateFulfillment(
         }
       }
       if (status === "delivered") {
+        const digitalItems = await tx.select({ variantId: orderItems.variantId }).from(orderItems)
+          .innerJoin(products, eq(products.id, orderItems.productId))
+          .where(and(eq(orderItems.orderId, orderId), eq(products.category, "PUBG Accounts")));
+        for (const item of digitalItems)
+          await tx.update(productVariants).set({ listingStatus: "sold" }).where(eq(productVariants.id, item.variantId));
         const assigned = await tx
           .select({ deviceUnitId: orderItems.deviceUnitId })
           .from(orderItems)
@@ -830,15 +1018,45 @@ export async function addShipment(
       };
     }
 
-    const [updated] = await db
-      .update(orders)
-      .set({
-        trackingNumber: parsed.data.trackingNumber,
-        shippingCarrier: parsed.data.carrier,
-        fulfillmentStatus: "dispatched",
-      })
-      .where(eq(orders.id, orderId))
-      .returning({ code: orders.orderCode });
+    const updated = await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          code: orders.orderCode,
+          paymentStatus: orders.paymentStatus,
+          fulfillmentStatus: orders.fulfillmentStatus,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+      if (!current) throw new Error("Order not found");
+      if (current.paymentStatus !== "verified")
+        throw new Error("Approve the payment before dispatch");
+      if (current.fulfillmentStatus !== "packed")
+        throw new Error("Mark the order as packed before dispatch");
+      const shipmentItems = await tx
+        .select({ category: products.category })
+        .from(orderItems)
+        .innerJoin(products, eq(products.id, orderItems.productId))
+        .where(eq(orderItems.orderId, orderId));
+      if (
+        shipmentItems.length > 0 &&
+        shipmentItems.every((item) => item.category === "PUBG Accounts")
+      )
+        throw new Error(
+          "Digital orders use secure handover, not courier dispatch",
+        );
+
+      const [changed] = await tx
+        .update(orders)
+        .set({
+          trackingNumber: parsed.data.trackingNumber,
+          shippingCarrier: parsed.data.carrier,
+          fulfillmentStatus: "dispatched",
+        })
+        .where(eq(orders.id, orderId))
+        .returning({ code: orders.orderCode });
+      return changed;
+    });
 
     if (!updated) return { ok: false, error: "Order not found" };
 

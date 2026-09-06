@@ -7,10 +7,9 @@ import { db } from "@/db";
 import { adminUsers } from "@/db/schema";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 import { loginSchema } from "@/lib/validation/schemas";
-import {
-  allowRequest,
-  clearRequestRateLimit,
-} from "@/lib/security/rate-limit";
+import { audit } from "@/lib/services/audit.service";
+import { getStaffSession } from "@/lib/auth/authorize";
+import { allowRequest, clearRequestRateLimit } from "@/lib/security/rate-limit";
 
 const DUMMY_PASSWORD_HASH =
   "$2b$12$C6UzMDM.H6dfI/f/IKcEe.9D9ATmB2vM9QMfUHiu33FhZsHk1vYqG";
@@ -82,8 +81,21 @@ export async function loginAction(
     parsed.data.password,
     staff?.passwordHash || DUMMY_PASSWORD_HASH,
   );
-  if (!staff || !passwordMatches)
+  if (!staff || !passwordMatches) {
+    await audit(
+      "auth.login_failed",
+      undefined,
+      "Sign-in rejected: invalid credentials or inactive account",
+      normalizedEmail,
+    );
     return { error: "Email or password is incorrect." };
+  }
+  await audit(
+    "auth.login_succeeded",
+    staff.id,
+    `Staff signed in with role ${staff.role}`,
+    `${staff.name} (${staff.email})`.slice(0, 120),
+  );
   await Promise.all([
     clearRequestRateLimit("staff-login-ip"),
     clearRequestRateLimit("staff-login-account", normalizedEmail),
@@ -114,6 +126,14 @@ export async function loginAction(
 }
 
 export async function logoutAction() {
+  const staff = await getStaffSession();
+  if (staff)
+    await audit(
+      "auth.logout",
+      staff.id,
+      "Staff signed out",
+      `${staff.name} (${staff.email})`.slice(0, 120),
+    );
   const jar = await cookies();
   jar.delete(SESSION_COOKIE);
   redirect("/login");

@@ -249,6 +249,67 @@ table tbody tr:hover {
 .app-main {
   min-height: 100vh;
 }
+.route-content {
+  animation: route-content-in 0.2s ease-out both;
+}
+.route-skeleton {
+  min-height: calc(100vh - 7rem);
+  padding: 0.25rem;
+}
+.skeleton-line,
+.skeleton-card,
+.skeleton-panel {
+  position: relative;
+  overflow: hidden;
+  background: rgba(218, 216, 206, 0.72);
+}
+.skeleton-line {
+  border-radius: 999px;
+}
+.skeleton-card,
+.skeleton-panel {
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+}
+.skeleton-card {
+  min-height: 144px;
+  padding: 1.25rem;
+}
+.skeleton-panel {
+  min-height: 320px;
+  padding: 1.25rem;
+}
+.skeleton-line::after,
+.skeleton-card::after,
+.skeleton-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.54) 48%,
+    transparent 76%
+  );
+  animation: skeleton-shimmer 1.45s ease-in-out infinite;
+}
+@keyframes route-content-in {
+  from {
+    opacity: 0.55;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
 
 .store-header {
   background: rgba(243, 242, 235, 0.62) !important;
@@ -349,6 +410,12 @@ a[class*="bg-[#c7f36b]"] {
   * {
     scroll-behavior: auto !important;
     transition: none !important;
+  }
+  .route-content,
+  .skeleton-line::after,
+  .skeleton-card::after,
+  .skeleton-panel::after {
+    animation: none !important;
   }
 }
 @media print {

@@ -1,120 +1,44 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateLeadStageAction } from "@/app/actions/store";
+import { Send } from "lucide-react";
+import { sendLeadReminderAction } from "@/app/actions/store";
+import type { RecoveryLead } from "@/lib/services/lead-recovery.service";
 
-type Lead = {
-  id: string;
-  customerName: string;
-  phone: string | null;
-  telegramUserId: string | null;
-  cartItemsJson: unknown;
-  stage: string;
-  reserveExpiresAt: Date | null;
-};
-const stages = ["new", "contacted", "reserved", "converted", "lost"] as const;
-
-export function LeadConsole({ leads }: { leads: Lead[] }) {
+export function LeadConsole({ leads }: { leads: RecoveryLead[] }) {
   const [pending, startTransition] = useTransition();
-  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
-  const update = (id: string, stage: (typeof stages)[number]) =>
-    startTransition(async () => {
-      const result = await updateLeadStageAction(id, stage);
-      setNotice(
-        result.ok
-          ? { ok: true, text: "Lead stage updated." }
-          : { ok: false, text: result.error },
-      );
-    });
-  return (
-    <div className="card overflow-hidden">
-      {notice && (
-        <p
-          role="status"
-          className={`m-4 rounded-xl border p-3 text-xs font-bold ${notice.ok ? "bg-[#effbdd] text-[#416b17]" : "bg-[#fff0eb] text-[#9c3212]"}`}
-        >
-          {notice.text}
-        </p>
-      )}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] text-left text-sm">
-          <thead className="border-y bg-[#f7f5ef] text-[10px] uppercase tracking-wider text-[#77776f]">
-            <tr>
-              {[
-                "Customer",
-                "Source",
-                "Interested in",
-                "Stage",
-                "Reservation",
-                "Contact",
-              ].map((header) => (
-                <th key={header} className="px-5 py-3">
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {leads.map((lead) => {
-              const cart = Array.isArray(lead.cartItemsJson)
-                ? (lead.cartItemsJson as { name?: string }[])
-                : [];
-              return (
-                <tr key={lead.id} className="border-b last:border-0">
-                  <td className="px-5 py-4 font-bold">{lead.customerName}</td>
-                  <td className="px-5 py-4">
-                    {lead.telegramUserId ? "Telegram" : "Web"}
-                  </td>
-                  <td className="max-w-xs px-5 py-4 text-[#77776f]">
-                    {cart
-                      .map((item) => item.name)
-                      .filter(Boolean)
-                      .join(", ") || "Saved cart"}
-                  </td>
-                  <td className="px-5 py-4">
-                    <select
-                      aria-label={`Stage for ${lead.customerName}`}
-                      disabled={pending || lead.id.startsWith("demo-")}
-                      value={lead.stage}
-                      onChange={(event) =>
-                        update(
-                          lead.id,
-                          event.target.value as (typeof stages)[number],
-                        )
-                      }
-                      className="rounded-xl border bg-white px-3 py-2 text-xs font-bold capitalize disabled:opacity-50"
-                    >
-                      {stages.map((stage) => (
-                        <option key={stage} value={stage}>
-                          {stage}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-5 py-4 text-xs">
-                    {lead.reserveExpiresAt
-                      ? new Date(lead.reserveExpiresAt).toLocaleString(
-                          "en-US",
-                          { timeZone: "Asia/Yangon" },
-                        )
-                      : "—"}
-                  </td>
-                  <td className="px-5 py-4 text-xs">
-                    {lead.phone || lead.telegramUserId || "—"}
-                  </td>
-                </tr>
-              );
+  const [notice, setNotice] = useState("");
+  const [sent, setSent] = useState<string[]>([]);
+  return <>
+    <p className="mb-4 text-sm text-[#777]">Reminders are sent individually from your Telegram customer sales bot. Customers must have started the bot.</p>
+    {notice && <p role="status" className="card mb-4 p-4 text-sm">{notice}</p>}
+    <div className="space-y-3">
+      {leads.map((lead) => <article key={lead.id} className="card flex flex-wrap items-center justify-between gap-4 p-5">
+        <div>
+          <p className="font-bold">{lead.customerName}</p>
+          <p className="mt-1 text-xs text-[#777]">{lead.phone || lead.telegramUserId || "No contact linked"}</p>
+          <p className="mt-3 text-sm">{lead.detail}</p>
+          <p className="mt-2 text-xs text-[#777]">{new Date(lead.activityAt).toLocaleString("en-US", { timeZone: "Asia/Yangon" })}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{lead.stage === "unpaid" ? "Awaiting payment" : "Browsing catalog"}</span>
+          <button type="button" disabled={pending || !lead.telegramUserId || sent.includes(lead.id)}
+            title={!lead.telegramUserId ? "No Telegram chat linked to this customer" : "Send a purchase follow-up through the customer sales bot"}
+            onClick={() => startTransition(async () => {
+              setNotice("");
+              try {
+                const result = await sendLeadReminderAction(lead.id);
+                setNotice(result.ok ? `Reminder sent to ${lead.customerName}.` : result.error || "Unable to send reminder.");
+                if (result.ok) setSent((current) => [...current, lead.id]);
+              } catch { setNotice("Delivery could not be confirmed. Check the Telegram chat before retrying."); }
             })}
-          </tbody>
-        </table>
-      </div>
-      {!leads.length && (
-        <p className="p-8 text-center text-sm text-[#77776f]">
-          No leads are waiting for follow-up.
-        </p>
-      )}
+            className="min-h-11 rounded-xl bg-[#c7f36b] px-4 text-xs font-bold disabled:opacity-40">
+            <Send size={14} className="mr-2 inline" />{sent.includes(lead.id) ? "Reminder sent" : "Send Telegram reminder"}
+          </button>
+          {!lead.telegramUserId && <span className="text-xs text-[#777]">No Telegram chat linked</span>}
+        </div>
+      </article>)}
     </div>
-  );
+    {!leads.length && <div className="card p-10 text-center"><p className="font-bold">No unfinished purchases or catalog inquiries</p><p className="mt-2 text-sm text-[#777]">Identified customer activity appears here automatically. Anonymous catalog visitors cannot be contacted.</p></div>}
+  </>;
 }

@@ -9,6 +9,8 @@ export type BotConversationMessage = {
 };
 
 export type BotSessionState = {
+  shoppingAt?: string;
+  privateChatId?: number;
   lastCommand?: string;
   lastSeenAt?: string;
   history?: BotConversationMessage[];
