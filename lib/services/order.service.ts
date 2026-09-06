@@ -1084,7 +1084,7 @@ export async function addShipment(
       if (!current) throw new Error("Order not found");
       if (current.paymentStatus !== "verified")
         throw new Error("Approve the payment before dispatch");
-      if (current.fulfillmentStatus !== "packed")
+      if (!["packed", "dispatched"].includes(current.fulfillmentStatus))
         throw new Error("Mark the order as packed before dispatch");
       const shipmentItems = await tx
         .select({ category: products.category })
@@ -1107,7 +1107,11 @@ export async function addShipment(
           fulfillmentStatus: "dispatched",
         })
         .where(eq(orders.id, orderId))
-        .returning({ code: orders.orderCode });
+        .returning({
+          code: orders.orderCode,
+          telegramUserId: orders.telegramUserId,
+          customerId: orders.customerId,
+        });
       return changed;
     });
 
@@ -1118,6 +1122,27 @@ export async function addShipment(
       updated.code,
       `${parsed.data.carrier}: ${parsed.data.trackingNumber}`,
     );
+
+    // Send dispatch notification to customer on Telegram with estimated delivery (10-15 days)
+    let tgId = updated.telegramUserId;
+    if (!tgId && updated.customerId) {
+      const [cust] = await db
+        .select({ telegramUserId: customers.telegramUserId })
+        .from(customers)
+        .where(eq(customers.id, updated.customerId))
+        .limit(1);
+      tgId = cust?.telegramUserId || null;
+    }
+
+    if (tgId) {
+      try {
+        const text = `🚚 <b>လူကြီးမင်း၏ အော်ဒါကို ပို့ဆောင်ပေးလိုက်ပါပြီခင်ဗျာ</b>\n\nOrder Code: <code>${updated.code}</code>\nပို့ဆောင်သည့် လုပ်ငန်း: <b>${parsed.data.carrier}</b>\nTracking Number: <code>${parsed.data.trackingNumber}</code>\n\n📦 <b>၁၀ ရက် မှ ၁၅ ရက်အတွင်း</b> လူကြီးမင်းထံသို့ အရောက်ပို့ဆောင်ပေးပါမည်ခင်ဗျာ။\n<i>(10–15 days atwin yout pr mal)</i>\n\nအော်ဒါနှင့် ပတ်သက်၍ အကူအညီလိုအပ်ပါက /support သို့ ဆက်သွယ်နိုင်ပါသည်ခင်ဗျာ။ MH OP ကို အားပေးမှုအတွက် ကျေးဇူးတင်ရှိပါသည်! 🙏`;
+        await sendTelegramMessage(tgId, text, { parse_mode: "HTML" });
+      } catch (tgErr) {
+        console.error("[Telegram Customer Dispatch Notification Error]", tgErr);
+      }
+    }
+
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorOf(error) };

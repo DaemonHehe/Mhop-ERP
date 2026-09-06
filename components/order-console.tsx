@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Check,
   CheckCircle2,
@@ -66,6 +66,7 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
   const [slipModalOpen, setSlipModalOpen] = useState(false);
   const [slipZoom, setSlipZoom] = useState(1);
   const [slipRotation, setSlipRotation] = useState(0);
+  const [editingTracking, setEditingTracking] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const counts = useMemo(
@@ -86,6 +87,11 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
       : orders.filter((order) => stageOf(order) === filter);
   const active =
     visible.find((order) => order.id === activeId) || visible[0] || orders[0];
+
+  useEffect(() => {
+    setTracking(active?.trackingNumber || "");
+    setEditingTracking(false);
+  }, [active?.id, active?.trackingNumber]);
 
   const act = (
     operation: () => Promise<{ ok: boolean; error?: string }>,
@@ -144,7 +150,8 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
                   setActiveId(order.id);
                   setNotice("");
                   setIdentifier("");
-                  setTracking("");
+                  setTracking(order.trackingNumber || "");
+                  setEditingTracking(false);
                 }}
                 key={order.id}
                 className={`relative grid w-full grid-cols-1 gap-3 border-b p-4 text-left transition last:border-0 sm:grid-cols-[1fr_auto] sm:p-5 ${active.id === order.id ? "bg-[#f8f6ef] shadow-[inset_4px_0_0_#171813]" : "hover:bg-[#fbfaf6]"}`}
@@ -155,6 +162,11 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
                       {order.orderCode || order.id}
                     </span>
                     <span className="pill py-1">{order.channel}</span>
+                    {order.trackingNumber && (
+                      <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                        {order.trackingNumber}
+                      </span>
+                    )}
                     <span
                       className={`rounded-full border px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide ${stageStyles[orderStage]}`}
                     >
@@ -400,54 +412,153 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
                 Confirm the secure PUBG account handover. No delivery fee or
                 courier tracking is required.
               </p>
-              <button
-                type="button"
-                disabled={pending || !canDispatch}
-                onClick={() =>
-                  act(
-                    () => updateFulfillmentAction(active.id, "dispatched"),
-                    "Digital handover completed. Order is now finished.",
-                  )
-                }
-                className="mt-3 w-full rounded-xl bg-[#c7f36b] py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
-              >
-                <ShieldCheck size={15} className="mr-2 inline" /> Complete
-                secure handover
-              </button>
+              {active.fulfillment === "Dispatched" ? (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs">
+                  <p className="font-bold text-emerald-900">
+                    <ShieldCheck size={16} className="mr-1.5 inline text-emerald-700" /> Secure digital handover completed
+                  </p>
+                  <p className="mt-1 text-[11px] text-emerald-700">
+                    Account credentials have been transferred. Customer received handover confirmation.
+                  </p>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={pending || !canDispatch}
+                  onClick={() =>
+                    act(
+                      () => updateFulfillmentAction(active.id, "dispatched"),
+                      "Digital handover completed. Order is now finished.",
+                    )
+                  }
+                  className="mt-3 w-full rounded-xl bg-[#c7f36b] py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <ShieldCheck size={15} className="mr-2 inline" /> Complete secure handover
+                </button>
+              )}
             </>
           ) : (
             <>
-              <label
-                className="mt-3 block text-xs font-bold"
-                htmlFor="tracking-number"
-              >
-                Royal Express tracking number
-              </label>
-              <input
-                id="tracking-number"
-                value={tracking}
-                onChange={(event) => setTracking(event.target.value)}
-                placeholder="REX-000000"
-                disabled={!canDispatch || pending}
-                className="mt-2 h-11 w-full rounded-xl border px-3 text-sm disabled:bg-[#f3f1ea]"
-              />
-              <button
-                type="button"
-                disabled={pending || !tracking.trim() || !canDispatch}
-                onClick={() =>
-                  act(
-                    () =>
-                      addShipmentAction(active.id, {
-                        trackingNumber: tracking.trim(),
-                        carrier: "Royal Express",
-                      }),
-                    "Courier dispatch recorded. Staff processing is complete.",
-                  )
-                }
-                className="mt-2 w-full rounded-xl bg-[#c7f36b] py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
-              >
-                <Truck size={15} className="mr-2 inline" /> Dispatch order
-              </button>
+              {active.fulfillment === "Dispatched" || active.trackingNumber ? (
+                <div className="mt-3 space-y-2">
+                  <div className="rounded-xl border border-emerald-200 bg-[#f0f9eb] p-4 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 font-bold text-emerald-900">
+                        <Truck size={15} className="text-emerald-700" /> Dispatched via {active.shippingCarrier || "Royal Express"}
+                      </span>
+                      <span className="rounded-full bg-emerald-200/70 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-900">
+                        En Route
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-emerald-200/70 bg-white p-3 shadow-2xs">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#888]">
+                          Tracking Number
+                        </p>
+                        <p className="font-mono text-sm font-black text-black">
+                          {active.trackingNumber || tracking || "Not recorded"}
+                        </p>
+                      </div>
+                      {(active.trackingNumber || tracking) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(active.trackingNumber || tracking);
+                            setNotice("Tracking number copied to clipboard!");
+                          }}
+                          className="rounded-lg border border-[#dedbd0] bg-[#faf9f5] px-2.5 py-1.5 text-xs font-bold text-[#444] transition hover:bg-[#eae7dd]"
+                        >
+                          Copy
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-3 rounded-lg border border-emerald-200/60 bg-emerald-100/60 p-2.5 text-[11px] leading-relaxed text-emerald-950">
+                      📦 <b>ပို့ဆောင်ချိန် ခန့်မှန်းခြေ:</b> ၁၀ ရက် မှ ၁၅ ရက်အတွင်း လူကြီးမင်းထံသို့ အရောက်ပို့ဆောင်ပေးပါမည်ခင်ဗျာ။
+                      <span className="block mt-0.5 font-medium text-emerald-800">
+                        (10–15 days atwin yout pr mal · Customer notified via Telegram)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Toggle edit tracking */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingTracking((prev) => !prev)}
+                      className="text-xs font-bold text-[#77776f] transition hover:text-black"
+                    >
+                      {editingTracking ? "← Cancel edit tracking" : "Edit tracking number"}
+                    </button>
+                    {editingTracking && (
+                      <div className="mt-2 space-y-2">
+                        <input
+                          id="tracking-number-edit"
+                          value={tracking}
+                          onChange={(event) => setTracking(event.target.value)}
+                          placeholder="REX-000000"
+                          className="h-11 w-full rounded-xl border border-[#dedbd0] bg-white px-3 text-sm font-medium outline-none focus:border-black"
+                        />
+                        <button
+                          type="button"
+                          disabled={pending || !tracking.trim()}
+                          onClick={() =>
+                            act(
+                              () =>
+                                addShipmentAction(active.id, {
+                                  trackingNumber: tracking.trim(),
+                                  carrier: active.shippingCarrier || "Royal Express",
+                                }),
+                              "Tracking number updated and saved.",
+                            )
+                          }
+                          className="w-full rounded-xl bg-black py-2.5 text-xs font-bold text-white transition hover:bg-neutral-800 disabled:opacity-40"
+                        >
+                          Save updated tracking
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <label
+                    className="mt-3 block text-xs font-bold"
+                    htmlFor="tracking-number"
+                  >
+                    Royal Express tracking number
+                  </label>
+                  <input
+                    id="tracking-number"
+                    value={tracking}
+                    onChange={(event) => setTracking(event.target.value)}
+                    placeholder="REX-000000"
+                    disabled={!canDispatch || pending}
+                    className="mt-2 h-11 w-full rounded-xl border px-3 text-sm disabled:bg-[#f3f1ea]"
+                  />
+                  <p className="mt-1.5 text-[11px] text-[#77776f]">
+                    ပို့ဆောင်ချိန် ခန့်မှန်းခြေ: ၁၀ ရက် မှ ၁၅ ရက်အတွင်း (10–15 days)
+                  </p>
+                  <button
+                    type="button"
+                    disabled={pending || !tracking.trim() || !canDispatch}
+                    onClick={() =>
+                      act(
+                        () =>
+                          addShipmentAction(active.id, {
+                            trackingNumber: tracking.trim(),
+                            carrier: "Royal Express",
+                          }),
+                        "Courier dispatch recorded & customer notified via Telegram (10–15 days estimate).",
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl bg-[#c7f36b] py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Truck size={15} className="mr-2 inline" /> Dispatch order
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
