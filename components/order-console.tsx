@@ -10,6 +10,10 @@ import {
   ShieldCheck,
   Truck,
   X,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  ExternalLink,
 } from "lucide-react";
 import { formatMMK } from "@/lib/data";
 import type { OperationalOrder } from "@/app/actions/store";
@@ -59,6 +63,9 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
   const [notice, setNotice] = useState("");
   const [tracking, setTracking] = useState("");
   const [identifier, setIdentifier] = useState("");
+  const [slipModalOpen, setSlipModalOpen] = useState(false);
+  const [slipZoom, setSlipZoom] = useState(1);
+  const [slipRotation, setSlipRotation] = useState(0);
   const [pending, startTransition] = useTransition();
 
   const counts = useMemo(
@@ -250,21 +257,63 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
               {active.payment}
             </span>
           </div>
-          <div className="mt-3 flex min-h-28 items-center justify-center rounded-xl border border-dashed bg-[#f3f1ea] p-4">
-            <div className="text-center text-[#77776f]">
-              <ImageIcon className="mx-auto" size={22} />
-              <p className="mt-2 text-xs">
-                {active.paymentSlipUrl
-                  ? "Telegram payment slip linked"
-                  : "No payment slip received"}
-              </p>
-              {active.paymentSlipUrl && (
-                <p className="mt-1 break-all font-mono text-[9px]">
-                  {active.paymentSlipUrl.replace("telegram-file:", "File ")}
-                </p>
-              )}
+          {active.paymentSlipUrl ? (
+            <div className="mt-3 space-y-2">
+              <div className="group relative overflow-hidden rounded-xl border border-[#dedbd0] bg-[#f5f4ed]">
+                <img
+                  src={`/api/orders/${active.id}/slip`}
+                  alt="Payment slip"
+                  className="h-48 w-full cursor-pointer object-contain transition group-hover:scale-[1.02]"
+                  onClick={() => {
+                    setSlipModalOpen(true);
+                    setSlipZoom(1);
+                    setSlipRotation(0);
+                  }}
+                />
+                <div
+                  onClick={() => {
+                    setSlipModalOpen(true);
+                    setSlipZoom(1);
+                    setSlipRotation(0);
+                  }}
+                  className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/35 opacity-0 transition group-hover:opacity-100"
+                >
+                  <span className="pill flex items-center gap-1.5 bg-white text-xs font-bold text-black shadow-lg">
+                    <ZoomIn size={14} /> Click to zoom slip
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSlipModalOpen(true);
+                    setSlipZoom(1);
+                    setSlipRotation(0);
+                  }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#dedbd0] bg-white py-2 text-xs font-bold text-[#1f1f1d] transition hover:bg-[#eae8df]"
+                >
+                  <ZoomIn size={14} /> Inspect & Zoom Slip
+                </button>
+                <a
+                  href={`/api/orders/${active.id}/slip`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center rounded-xl border border-[#dedbd0] bg-white p-2 text-[#555] transition hover:bg-[#eae8df]"
+                  title="Open in new tab"
+                >
+                  <ExternalLink size={14} />
+                </a>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-3 flex min-h-28 items-center justify-center rounded-xl border border-dashed bg-[#f3f1ea] p-4">
+              <div className="text-center text-[#77776f]">
+                <ImageIcon className="mx-auto" size={22} />
+                <p className="mt-2 text-xs">No payment slip received</p>
+              </div>
+            </div>
+          )}
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -403,6 +452,135 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
           )}
         </div>
       </aside>
-    </div>
+    
+      {/* Payment Slip Zoom & Inspection Modal */}
+      {slipModalOpen && active.paymentSlipUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs">
+          <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#171815] text-white shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#222420] px-5 py-3.5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-lg bg-white/10 px-2.5 py-1 font-mono text-xs font-bold text-[#c7f36b]">
+                  {active.orderCode || active.id}
+                </span>
+                <span className="text-xs text-neutral-300">
+                  {active.customer} · {formatMMK(active.amount)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSlipZoom((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))}
+                  className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                  title="Zoom out"
+                >
+                  <ZoomOut size={15} />
+                </button>
+                <span className="px-2 font-mono text-xs text-neutral-300">
+                  {Math.round(slipZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSlipZoom((z) => Math.min(3.5, Number((z + 0.25).toFixed(2))))}
+                  className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                  title="Zoom in"
+                >
+                  <ZoomIn size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSlipZoom(1);
+                    setSlipRotation(0);
+                  }}
+                  className="rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold transition hover:bg-white/20"
+                  title="Reset zoom"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSlipRotation((r) => (r + 90) % 360)}
+                  className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                  title="Rotate 90 degrees"
+                >
+                  <RotateCw size={15} />
+                </button>
+                <a
+                  href={`/api/orders/${active.id}/slip`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                  title="Open original in new tab"
+                >
+                  <ExternalLink size={15} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSlipModalOpen(false);
+                    setSlipZoom(1);
+                    setSlipRotation(0);
+                  }}
+                  className="ml-2 rounded-lg bg-white/10 p-2 text-white transition hover:bg-rose-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Image Pan / Zoom Stage */}
+            <div className="relative flex min-h-[420px] max-h-[68vh] flex-1 select-none items-center justify-center overflow-auto bg-[#10110e] p-6">
+              <img
+                src={`/api/orders/${active.id}/slip`}
+                alt="Payment slip zoom"
+                style={{
+                  transform: `scale(${slipZoom}) rotate(${slipRotation}deg)`,
+                  transition: "transform 0.15s ease-out",
+                }}
+                className="max-h-full max-w-full origin-center object-contain shadow-2xl"
+              />
+            </div>
+
+            {/* Modal Footer with Verification Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#222420] px-5 py-3">
+              <p className="text-xs text-neutral-400">
+                Payment status:{" "}
+                <span className="font-bold uppercase text-white">{active.payment}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={pending || !canReject}
+                  onClick={() =>
+                    act(
+                      () => reviewPayment(active.id, "rejected"),
+                      "Payment rejected. Follow up with the customer."
+                    )
+                  }
+                  className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <X size={14} className="mr-1 inline" /> Reject
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !canReview || !active.paymentSlipUrl}
+                  onClick={() =>
+                    act(
+                      () => reviewPayment(active.id, "verified"),
+                      "Payment approved. Order moved to Packing."
+                    )
+                  }
+                  className="rounded-xl bg-[#c7f36b] px-5 py-2 text-xs font-bold text-black transition hover:bg-[#b8e55e] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <Check size={14} className="mr-1 inline" /> Approve payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+</div>
   );
 }

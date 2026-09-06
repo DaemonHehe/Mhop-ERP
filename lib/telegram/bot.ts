@@ -48,6 +48,31 @@ export async function sendTelegramMessage(
 }
 
 /** Send an in-memory PNG or JPEG through the customer bot as a Telegram photo. */
+
+/**
+ * Resolves a Telegram file_id to its direct download URL using the customer bot token.
+ */
+export async function getTelegramFileDownloadUrl(fileId: string): Promise<string | null> {
+  const token = process.env.TELEGRAM_CUSTOMER_BOT_TOKEN;
+  if (!token) return null;
+
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`,
+      { signal: AbortSignal.timeout(15_000) }
+    );
+    if (!res.ok) return null;
+
+    const json = await res.json().catch(() => null);
+    if (!json?.ok || !json.result?.file_path) return null;
+
+    return `https://api.telegram.org/file/bot${token}/${json.result.file_path}`;
+  } catch (err) {
+    console.error("[getTelegramFileDownloadUrl error]", err);
+    return null;
+  }
+}
+
 export async function sendTelegramPhoto(
   chatId: number | string,
   photo: Uint8Array,
