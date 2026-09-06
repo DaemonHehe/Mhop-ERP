@@ -22,7 +22,7 @@ export async function getRecoveryLeads(): Promise<RecoveryLead[]> {
   ]);
   const result: RecoveryLead[] = [];
   for (const order of purchases) {
-    if (!["pending", "rejected"].includes(order.paymentStatus) || order.paymentSlipUrl ||
+    if (order.paymentStatus !== "pending" || order.paymentSlipUrl ||
         !["new", "confirmed"].includes(order.fulfillmentStatus)) continue;
     const person = people.find((p) => p.id === order.customerId);
     const telegramId = order.telegramUserId || person?.telegramUserId || null;

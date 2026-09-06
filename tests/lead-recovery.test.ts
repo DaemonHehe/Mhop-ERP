@@ -11,8 +11,8 @@ function data(purchases: unknown[] = [], sessions: unknown[] = []) {
 }
 beforeEach(() => { vi.resetAllMocks(); mocks.limit.mockReturnValue(true); });
 describe("purchase recovery", () => {
-  it("excludes paid, cancelled and payment-review orders", async () => {
-    data([order, { ...order, id: "paid", paymentStatus: "verified" }, { ...order, id: "cancelled", fulfillmentStatus: "cancelled" }, { ...order, id: "review", paymentSlipUrl: "slip" }]);
+  it("excludes paid, cancelled, rejected and payment-review orders", async () => {
+    data([order, { ...order, id: "paid", paymentStatus: "verified" }, { ...order, id: "cancelled", fulfillmentStatus: "cancelled" }, { ...order, id: "review", paymentSlipUrl: "slip" }, { ...order, id: "rejected", paymentStatus: "rejected" }]);
     expect((await getRecoveryLeads()).map((l) => l.id)).toEqual(["order:one"]);
   });
   it("includes identified catalog inquiry and removes it after purchase", async () => {
@@ -24,6 +24,9 @@ describe("purchase recovery", () => {
   });
   it("rechecks eligibility before sending", async () => {
     data([{ ...order, paymentStatus: "verified" }]);
+    expect((await sendRecoveryReminder("order:one")).ok).toBe(false);
+    expect(mocks.send).not.toHaveBeenCalled();
+    data([{ ...order, paymentStatus: "rejected" }]);
     expect((await sendRecoveryReminder("order:one")).ok).toBe(false);
     expect(mocks.send).not.toHaveBeenCalled();
   });

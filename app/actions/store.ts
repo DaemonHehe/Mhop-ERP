@@ -128,6 +128,7 @@ export async function createOrder(form: FormData) {
   const result = await orderService.createOrder(form);
   if (result.ok) {
     revalidatePath("/orders");
+    revalidatePath("/leads");
     revalidateCatalog();
   }
   return result;
@@ -141,6 +142,7 @@ export async function reviewPayment(
   const result = await orderService.reviewPayment(orderId, decision);
   if (result.ok) {
     revalidatePath("/orders");
+    revalidatePath("/leads");
     revalidateCatalog();
   }
   return result;
@@ -160,6 +162,7 @@ export async function updateFulfillmentAction(
   const result = await orderService.updateFulfillment(orderId, status);
   if (result.ok) {
     revalidatePath("/orders");
+    revalidatePath("/leads");
     revalidateCatalog();
   }
   return result;

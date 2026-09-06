@@ -10,7 +10,6 @@ import {
   Copy,
   Send,
   ShoppingBag,
-  WalletCards,
 } from "lucide-react";
 import {
   calculateOrderShipping,
@@ -389,31 +388,20 @@ export function CheckoutForm({
         )}
         <fieldset className="rounded-xl border bg-white p-4">
           <legend className="px-1 text-xs font-bold">Payment method</legend>
-          <div className="mt-1 flex items-center gap-2 text-xs text-[#77776f]">
-            <WalletCards size={15} />
-            <span>
-              ငွေလွှဲပြီးပါက slip ကို {clientConfig.telegram.handle} သို့
-              ပေးပို့ပါခင်ဗျာ။
-            </span>
-          </div>
           <div className="mt-3 grid gap-2">
             {paymentEntries.map(([key, payment], index) => (
               <label
                 key={key}
-                className="flex cursor-pointer items-start gap-3 rounded-xl border p-3"
+                className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition hover:bg-[#faf9f6]"
               >
                 <input
                   type="radio"
                   name="paymentMethod"
                   value={key}
                   defaultChecked={index === 0}
-                  className="mt-1"
                 />
-                <span className="text-xs">
-                  <b className="block">{payment.label}</b>
-                  <span className="text-[#77776f]">
-                    {payment.holder} · {payment.account}
-                  </span>
+                <span className="text-xs font-bold text-[#1f1f1d]">
+                  {payment.label}
                 </span>
               </label>
             ))}
