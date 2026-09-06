@@ -30,6 +30,9 @@ import {
   Square,
   Globe,
   Minus,
+  HelpCircle,
+  RefreshCw,
+  Laptop,
 } from "lucide-react";
 import {
   askAdminCopilotAction,
@@ -135,6 +138,7 @@ export function AdminCopilotDrawer() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
+  const [showMicHelp, setShowMicHelp] = useState(false);
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -300,7 +304,12 @@ export function AdminCopilotDrawer() {
     stopSpeaking();
 
     // Check secure context
-    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+    const isLocal =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname.endsWith(".localhost");
+
+    if (!window.isSecureContext && !isLocal) {
       setMicError("Microphone access requires HTTPS or localhost.");
       return;
     }
@@ -318,16 +327,15 @@ export function AdminCopilotDrawer() {
 
     if (!SpeechRecognitionClass) {
       setMicError(
-        "Speech recognition is supported in Google Chrome, Microsoft Edge, and modern Android/Chromium browsers.",
+        "Voice input is supported in Google Chrome, Microsoft Edge, and modern Chromium browsers. You can also type below!",
       );
       return;
     }
 
-    // Step 1: Explicitly request microphone stream from user
-    let stream: MediaStream | null = null;
+    // Step 1: Optional Web Audio analyser stream for live visual waveform
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
 
         // Start Web Audio analyser for live voice wave visualization
@@ -356,18 +364,8 @@ export function AdminCopilotDrawer() {
         }
       }
     } catch (err: unknown) {
-      console.warn("[Microphone permission error]", err);
-      const errName = (err as Error)?.name || "";
-      if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
-        setMicError(
-          "Microphone permission blocked. Click the lock 🔒 in your browser address bar to allow microphone access.",
-        );
-      } else if (errName === "NotFoundError" || errName === "DevicesNotFoundError") {
-        setMicError("No microphone found on your device.");
-      } else {
-        setMicError("Could not access microphone. Please check browser permissions.");
-      }
-      return;
+      console.warn("[Microphone optional stream warning]", err);
+      // Do not block SpeechRecognition yet; allow browser SpeechRecognition to attempt native prompt
     }
 
     // Step 2: Start SpeechRecognition
@@ -403,14 +401,22 @@ export function AdminCopilotDrawer() {
           // Normal timeout if user paused, keep listening or gracefully stop
           return;
         }
+
+        const isStandalone =
+          typeof window !== "undefined" &&
+          (window.matchMedia("(display-mode: standalone)").matches ||
+            (window.navigator as unknown as { standalone?: boolean }).standalone === true);
+
         if (event.error === "not-allowed") {
           setMicError(
-            "Microphone permission blocked. Please allow mic access in your browser bar 🔒.",
+            isStandalone
+              ? "Microphone permission is blocked in this Web App window. Click the top-right menu (⋮) > App info > Permissions to allow."
+              : "Microphone permission blocked. Click the lock 🔒 or tune 🎛️ icon in the address bar to allow microphone access.",
           );
         } else if (event.error === "audio-capture") {
-          setMicError("No microphone found or audio capture failed.");
+          setMicError("No microphone found or audio capture failed on your device.");
         } else if (event.error === "network") {
-          setMicError("Network issue during speech recognition.");
+          setMicError("Network connection issue during speech recognition.");
         }
         stopListening();
       };
@@ -424,7 +430,16 @@ export function AdminCopilotDrawer() {
       recognition.start();
     } catch (err: unknown) {
       console.error("[startListening init error]", err);
-      setMicError("Speech recognition failed to initialize.");
+      const isStandalone =
+        typeof window !== "undefined" &&
+        (window.matchMedia("(display-mode: standalone)").matches ||
+          (window.navigator as unknown as { standalone?: boolean }).standalone === true);
+
+      setMicError(
+        isStandalone
+          ? "Microphone blocked in Web App. In this window, click top-right menu (⋮) > App info > Permissions to allow."
+          : "Microphone permission blocked. Click the lock 🔒 or tune 🎛️ icon next to the address to allow access.",
+      );
       stopListening();
     }
   };
@@ -1021,6 +1036,96 @@ export function AdminCopilotDrawer() {
             </div>
           )}
 
+          {/* Web App Microphone Permission Guide Overlay */}
+          {showMicHelp && (
+            <div className="border-b border-white/10 bg-zinc-900/95 p-4 space-y-3.5 text-xs animate-in fade-in slide-in-from-top-2 max-h-[460px] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="grid h-7 w-7 place-items-center rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    <Mic size={14} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-xs">
+                      How to Allow Microphone in Web App
+                    </h4>
+                    <p className="text-[10px] text-zinc-400">
+                      Step-by-step instructions for standalone app and browser
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMicHelp(false)}
+                  className="grid h-6 w-6 place-items-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-white cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Standalone PWA / Web App Window */}
+              <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3 space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-purple-300 text-xs">
+                  <Laptop size={13} />
+                  <span>Installed Web App / PWA (No Address Bar)</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-zinc-200 leading-relaxed">
+                  <li>Look at the <strong>very top title bar</strong> of this app window.</li>
+                  <li>Click the <strong>three dots (⋮)</strong> menu at the top-right corner.</li>
+                  <li>Click <strong>App info</strong> (or <strong>Site settings</strong>).</li>
+                  <li>Find <strong>Microphone</strong> and switch it to <strong>Allow</strong>.</li>
+                </ol>
+              </div>
+
+              {/* Browser Tab */}
+              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-cyan-300 text-xs">
+                  <Globe size={13} />
+                  <span>Chrome / Edge Browser Tab</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-zinc-200 leading-relaxed">
+                  <li>Click the <strong>lock 🔒 or tune 🎛️ icon</strong> on the left of the address bar.</li>
+                  <li>Switch <strong>Microphone</strong> to <strong>Allow</strong>.</li>
+                  <li>Click the green <strong>Try Again</strong> button below.</li>
+                </ol>
+              </div>
+
+              {/* Windows 11/10 OS Privacy */}
+              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300 text-xs">
+                  <Settings2 size={13} />
+                  <span>Windows 11 / 10 System Privacy</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-zinc-200 leading-relaxed">
+                  <li>Press <kbd className="bg-zinc-800 px-1 py-0.5 rounded text-[10px] font-mono">Win + I</kbd> to open Windows Settings.</li>
+                  <li>Go to <strong>Privacy & security</strong> ➔ <strong>Microphone</strong>.</li>
+                  <li>Turn ON <strong>&quot;Let desktop apps access your microphone&quot;</strong>.</li>
+                </ol>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowMicHelp(false)}
+                  className="rounded-xl border border-white/15 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/10 cursor-pointer"
+                >
+                  Close Guide
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMicHelp(false);
+                    setMicError(null);
+                    startListening();
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md transition-colors cursor-pointer"
+                >
+                  <RefreshCw size={12} />
+                  <span>Try Microphone Now</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Chat Messages Container */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
             {messages.length === 0 ? (
@@ -1201,18 +1306,51 @@ export function AdminCopilotDrawer() {
 
           {/* Microphone Error Diagnosis Banner */}
           {micError && (
-            <div className="flex items-center justify-between border-t border-rose-500/30 bg-rose-500/15 px-3 py-2 text-xs text-rose-300 animate-in fade-in">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <AlertCircle size={14} className="shrink-0 text-rose-400" />
-                <span className="text-[11px] leading-tight">{micError}</span>
+            <div className="border-t border-rose-500/30 bg-rose-500/15 p-3 text-xs text-rose-200 animate-in fade-in space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2 min-w-0">
+                  <AlertCircle size={15} className="shrink-0 text-rose-400 mt-0.5" />
+                  <div className="space-y-0.5 min-w-0">
+                    <p className="font-semibold text-rose-300 text-[11px] leading-tight">
+                      {micError}
+                    </p>
+                    <p className="text-[10px] text-zinc-300">
+                      In an installed Web App window, permissions are configured via the window title bar menu (⋮).
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMicError(null)}
+                  className="text-xs font-semibold text-rose-400 hover:text-white shrink-0 p-1"
+                  aria-label="Dismiss error"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setMicError(null)}
-                className="text-xs font-semibold text-rose-400 hover:text-white shrink-0 ml-2"
-              >
-                ✕
-              </button>
+
+              <div className="flex items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowMicHelp(true)}
+                  className="flex items-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors cursor-pointer"
+                >
+                  <HelpCircle size={12} className="text-purple-400" />
+                  <span>How to Allow in Web App</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMicError(null);
+                    startListening();
+                  }}
+                  className="flex items-center gap-1 rounded-lg bg-purple-600 hover:bg-purple-500 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  <RefreshCw size={12} />
+                  <span>Try Again</span>
+                </button>
+              </div>
             </div>
           )}
 
