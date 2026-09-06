@@ -21,11 +21,13 @@ import {
   Layers3,
   UserCog,
   Store,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "./logo";
 import { LiveRefresh } from "./live-refresh";
 import { GlobalSearch } from "./global-search";
+import { AdminCopilotDrawer } from "./admin-copilot-drawer";
 import { clientConfig } from "@/lib/client-config";
 
 const nav = [
@@ -138,6 +140,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <GlobalSearch />
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("open-admin-copilot"))
+              }
+              aria-label="Ask Admin AI Copilot (Ctrl+J)"
+              className="pill flex items-center gap-1.5 border border-purple-300/60 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 px-3 py-1.5 text-xs font-semibold rounded-full shadow-xs transition-all cursor-pointer"
+            >
+              <Sparkles size={14} className="text-purple-600 dark:text-purple-400 animate-pulse" />
+              <span className="hidden sm:inline">Ask Copilot</span>
+              <kbd className="hidden md:inline-block ml-1 rounded bg-purple-200/60 dark:bg-purple-900/80 px-1.5 py-0.5 font-mono text-[10px] text-purple-800 dark:text-purple-200">
+                Ctrl+J
+              </kbd>
+            </button>
             <Link
               href="/shop"
               aria-label="View store"
@@ -162,6 +178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+      <AdminCopilotDrawer />
     </div>
   );
 }

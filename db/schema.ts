@@ -448,3 +448,16 @@ export const paymentAccounts = pgTable(
     index("payment_accounts_order_idx").on(table.displayOrder),
   ],
 );
+
+// --- System Settings & Configurations ---
+export const systemSettings = pgTable(
+  "system_settings",
+  {
+    key: varchar("key", { length: 80 }).primaryKey(),
+    value: text("value").notNull(),
+    description: text("description"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
