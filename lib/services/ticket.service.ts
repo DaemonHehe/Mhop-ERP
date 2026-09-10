@@ -1,4 +1,4 @@
-﻿import { desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { and, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
@@ -626,3 +626,6 @@ export async function getReceiptSettings() {
   }
   return (await db.select().from(receiptSettings).limit(1))[0];
 }
+
+export const updateTicketStatusAction = updateTicketStatus;
+

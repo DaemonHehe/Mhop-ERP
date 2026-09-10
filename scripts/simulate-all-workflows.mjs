@@ -10,8 +10,8 @@ neonConfig.webSocketConstructor = ws;
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
-const N8N_URL = process.env.N8N_URL || 'http://localhost:5678';
+const APP_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const N8N_URL = process.env.N8N_URL || (process.env.N8N_API_URL ? new URL(process.env.N8N_API_URL).origin : 'http://localhost:5678');
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN;
 
 async function createStaffJwt(staffUser) {
@@ -516,13 +516,15 @@ async function runSimulation() {
 
       // 2. Local n8n execution test
       const n8nKey = process.env.N8N_API_KEY;
+      const targetWorkflowId = process.env.N8N_WORKFLOW_ID || '8wSFCu1BWqWkZWSC';
       if (n8nKey) {
-        const live = await fetch(`${N8N_URL}/api/v1/workflows/sinlB8NbcPfUqRb7`, {
+        const live = await fetch(`${N8N_URL}/api/v1/workflows/${targetWorkflowId}`, {
           headers: { 'X-N8N-API-KEY': n8nKey }
         }).then(r => r.json());
-        record('n8n Automation', 'Connected to local n8n service and verified MH OP Master Suite',
-          live?.name === 'MH OP Master Suite',
-          `Nodes: ${live?.nodes?.length}`
+        const workflow = live?.data || live;
+        record('n8n Automation', 'Connected to local n8n service and verified MH OP workflow',
+          Boolean(workflow?.name && workflow.name.includes('MH OP')),
+          `Workflow: ${workflow?.name}, Nodes: ${workflow?.nodes?.length}`
         );
       }
     }

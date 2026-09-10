@@ -3,9 +3,11 @@ const exactPublicRoutes = new Set(["/", "/login"]);
 const publicRoutePrefixes = [
   "/shop",
   "/warranty",
+  "/api/media",
   "/api/telegram/webhook",
   "/api/n8n/webhook",
   "/api/internal",
+  "/api/member-card",
 ];
 
 export function isPublicRoute(pathname: string) {

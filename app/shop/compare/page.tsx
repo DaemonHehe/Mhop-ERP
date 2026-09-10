@@ -53,6 +53,7 @@ export default async function Compare({
                       sizes="(max-width: 768px) 220px, 30vw"
                       className="object-cover"
                       alt=""
+                      unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
                     />
                   </div>
                   <div className="p-4">

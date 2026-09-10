@@ -7,6 +7,7 @@ export interface ReceiptSummaryInput {
   phone: string;
   shippingAddress: string;
   shippingFee: number;
+  deliveryFee?: number;
   totalAmount: number;
   paymentMethod: string;
   items: Array<{

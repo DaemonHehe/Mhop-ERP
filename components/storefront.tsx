@@ -278,6 +278,7 @@ export function Storefront({
                 priority={index < 2}
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                 className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
               />
               {p.images && p.images.length > 1 && (
                 <button
@@ -492,6 +493,7 @@ export function Storefront({
                   height={40}
                   className="h-10 w-10 rounded-full border-2 border-black object-cover"
                   alt=""
+                  unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
                 />
               );
             })}

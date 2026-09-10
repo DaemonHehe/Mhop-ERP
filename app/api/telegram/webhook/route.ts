@@ -180,6 +180,22 @@ export async function POST(request: NextRequest) {
   const shopMiniAppUrl = `${appBaseUrl}/shop`;
 
   if (text.startsWith("/start")) {
+    const telegramUsername =
+      message?.from?.username || callback?.from?.username || null;
+    const telegramName =
+      [message?.from?.first_name, message?.from?.last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      (telegramUsername ? `@${telegramUsername}` : null) ||
+      callback?.from?.first_name ||
+      "Valued Customer";
+
+    await getOrCreateTelegramCustomer({
+      telegramUserId,
+      telegramUsername,
+      displayName: telegramName,
+    });
+
     const welcomeText = await formatWelcomeMessage();
     return reply(chatId, welcomeText, {
       reply_markup: {

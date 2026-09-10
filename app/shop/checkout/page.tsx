@@ -77,6 +77,7 @@ export default async function Checkout({
                     width={56}
                     height={56}
                     className="h-14 w-14 rounded-xl object-cover"
+                    unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
                   />
                   <div className="flex-1">
                     <p className="text-sm font-bold">{p.name}</p>

@@ -12,6 +12,8 @@ describe("customer and staff route boundaries", () => {
     "/api/telegram/webhook",
     "/api/n8n/webhook",
     "/api/internal/stats/daily",
+    "/api/member-card",
+    "/api/media/60d313ac-d5dc-4326-91fa-486166c49b55",
   ])("keeps %s public", (path) => {
     expect(isPublicRoute(path)).toBe(true);
   });

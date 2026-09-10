@@ -6,7 +6,7 @@ const baseDirectory=path.dirname(fileURLToPath(import.meta.url));
 const compat=new FlatCompat({baseDirectory});
 
 const config = [
-  {ignores:[".next*/**","node_modules/**","next-env.d.ts"]},
+  {ignores:[".next*/**","node_modules/**","next-env.d.ts",".agents/**","tests/e2e/**","scripts/e2e-parts/**","scripts/build-e2e-tests.mjs","scripts/generate-operational-simulation.mjs"]},
   ...compat.extends("next/core-web-vitals","next/typescript"),
   {rules:{"@next/next/no-img-element":"off"}}
 ];

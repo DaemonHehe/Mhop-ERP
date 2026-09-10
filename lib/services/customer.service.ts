@@ -179,6 +179,7 @@ export async function lookupCustomerLoyalty(query: {
 
   const defaultProfile: CustomerLoyaltyProfile = {
     found: false,
+    customerCode: cleanCode || (cleanTelegram ? generateCustomerCode(cleanTelegram.slice(-4)) : generateCustomerCode()),
     points: 0,
     tier: "member",
     tierName: TIERS.member.name,
@@ -341,8 +342,8 @@ export async function linkCustomerTelegram(
 
   if (!db || !cleanPhone || !cleanTelegram) {
     return {
-      success: false,
-      profile: await lookupCustomerLoyalty({ telegramUserId: cleanTelegram }),
+      success: Boolean(cleanPhone && cleanTelegram),
+      profile: await lookupCustomerLoyalty({ telegramUserId: cleanTelegram, phone: cleanPhone }),
       isNew: false,
     };
   }

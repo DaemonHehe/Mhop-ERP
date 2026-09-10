@@ -1,5 +1,9 @@
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vitest/config";
+import nextEnv from "@next/env";
+const { loadEnvConfig } = nextEnv;
+
+loadEnvConfig(process.cwd());
 
 export default defineConfig({
   resolve: {
@@ -7,6 +11,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    exclude: ["tests/e2e/**", "node_modules/**", ".next/**"],
+    setupFiles: ["tests/e2e/setup.ts"],
+    exclude: ["tests/e2e/**/*.spec.ts", "node_modules/**", ".next/**"],
   },
 });

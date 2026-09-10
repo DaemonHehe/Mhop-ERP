@@ -8,6 +8,8 @@ import {
   getCardTier,
 } from "@/lib/loyalty";
 
+export { getCardTier };
+
 // Ensure Fontconfig can discover bundled fonts on Linux / Vercel
 const fontsDir = path.join(process.cwd(), "assets", "fonts");
 const fontsConfPath = path.join(fontsDir, "fonts.conf");
@@ -36,6 +38,7 @@ function xml(value: unknown): string {
 
 export interface MemberCardInput {
   customerName?: string | null;
+  customerCode?: string | null;
   memberId?: string | null;
   phone?: string | null;
   tier?: CustomerTier | CardTier | string | null;
@@ -197,7 +200,7 @@ export async function renderMemberCardImage(
     .toUpperCase()
     .slice(0, 28);
 
-  const cardNumber = formatCardNumber(input.memberId || input.phone);
+  const cardNumber = formatCardNumber(input.memberId || input.customerCode || input.phone);
   const since = input.sinceYear || "2025";
 
   // App URL for QR code
