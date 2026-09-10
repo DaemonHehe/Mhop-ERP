@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 
-const files = ["gadgetos-master-suite.json", "gadgetos-error-handler.json"];
+const files = [
+  "gadgetos-master-suite.json",
+  "gadgetos-error-handler.json",
+];
 const failures = [];
 
 for (const file of files) {

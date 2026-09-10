@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Check,
   CheckCircle2,
   CircleDollarSign,
+  Coins,
   Image as ImageIcon,
+  MapPin,
   PackageCheck,
+  Plus,
   ShieldCheck,
   Truck,
   X,
@@ -16,13 +20,16 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { formatMMK } from "@/lib/data";
-import type { OperationalOrder } from "@/app/actions/store";
+import type { InventoryItem, OperationalOrder } from "@/app/actions/store";
 import {
   addShipmentAction,
   assignDeviceByIdentifierAction,
+  confirmCodCollectionAction,
   reviewPayment,
   updateFulfillmentAction,
 } from "@/app/actions/store";
+import { CreateOrderDialog } from "@/components/create-order-dialog";
+import { OrderDetailModal } from "@/components/order-detail-modal";
 
 const filters = [
   "All",
@@ -57,17 +64,44 @@ const workflow = [
   { name: "Dispatched", helper: "Staff complete", icon: Truck },
 ] as const;
 
-export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
+export function OrderConsole({
+  orders,
+  inventory = [],
+}: {
+  orders: OperationalOrder[];
+  inventory?: InventoryItem[];
+}) {
   const [activeId, setActiveId] = useState(orders[0]?.id || "");
   const [filter, setFilter] = useState<Filter>("All");
   const [notice, setNotice] = useState("");
   const [tracking, setTracking] = useState("");
   const [identifier, setIdentifier] = useState("");
+  const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [slipModalOpen, setSlipModalOpen] = useState(false);
   const [slipZoom, setSlipZoom] = useState(1);
   const [slipRotation, setSlipRotation] = useState(0);
   const [editingTracking, setEditingTracking] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  // Order Detail Modal (Click Triggered)
+  const [modalOrderId, setModalOrderId] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const modalOrder = useMemo(
+    () => orders.find((o) => o.id === modalOrderId) || null,
+    [orders, modalOrderId],
+  );
+
+  const handleRowClick = (order: OperationalOrder) => {
+    setActiveId(order.id);
+    setNotice("");
+    setIdentifier("");
+    setTracking(order.trackingNumber || "");
+    setEditingTracking(false);
+
+    setModalOrderId(order.id);
+    setModalOpen(true);
+  };
 
   const counts = useMemo(
     () =>
@@ -120,8 +154,8 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_410px]">
       <section className="card min-w-0 overflow-hidden">
-        <div className="overflow-x-auto border-b p-3 sm:p-4">
-          <div className="flex min-w-max gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-3 sm:p-4">
+          <div className="flex min-w-max gap-2 overflow-x-auto">
             {filters.map((item) => (
               <button
                 type="button"
@@ -138,23 +172,31 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => setCreateOrderOpen(true)}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-black px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-neutral-800"
+          >
+            <Plus size={14} /> Create Order
+          </button>
         </div>
 
         {visible.length ? (
           visible.map((order) => {
             const orderStage = stageOf(order);
             return (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveId(order.id);
-                  setNotice("");
-                  setIdentifier("");
-                  setTracking(order.trackingNumber || "");
-                  setEditingTracking(false);
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => handleRowClick(order)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleRowClick(order);
+                  }
                 }}
                 key={order.id}
-                className={`relative grid w-full grid-cols-1 gap-3 border-b p-4 text-left transition last:border-0 sm:grid-cols-[1fr_auto] sm:p-5 ${active.id === order.id ? "bg-[#f8f6ef] shadow-[inset_4px_0_0_#171813]" : "hover:bg-[#fbfaf6]"}`}
+                className={`group relative grid w-full cursor-pointer grid-cols-1 gap-3 border-b p-4 text-left transition last:border-0 sm:grid-cols-[1fr_auto] sm:p-5 ${active.id === order.id ? "bg-[#f8f6ef] shadow-[inset_4px_0_0_#171813]" : "hover:bg-[#fbfaf6]"}`}
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -177,16 +219,56 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
                   <p className="mt-1 truncate text-xs text-[#77776f]">
                     {order.item} · {order.created}
                   </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                    {order.destinationCity && (
+                      <span className="inline-flex items-center gap-1 rounded bg-[#f0eee6] px-2 py-0.5 font-medium text-[#55534c]">
+                        <MapPin size={10} /> {order.destinationCity}
+                      </span>
+                    )}
+                    {(order.requiredDeposit ?? 0) > 0 && (
+                      <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 font-bold text-amber-800">
+                        Dep: {formatMMK(order.requiredDeposit!)}
+                      </span>
+                    )}
+                    {(order.codAmount ?? 0) > 0 && (
+                      <span className="rounded border border-sky-200 bg-sky-50 px-2 py-0.5 font-bold text-sky-800">
+                        COD: {formatMMK(order.codAmount!)}
+                      </span>
+                    )}
+                    {order.courierSettlementStatus && order.courierSettlementStatus !== "not_applicable" && (
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                        order.courierSettlementStatus === "settled"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : order.courierSettlementStatus === "discrepancy"
+                          ? "bg-rose-100 text-rose-800"
+                          : "bg-neutral-100 text-neutral-600"
+                      }`}>
+                        Royal: {order.courierSettlementStatus}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
                   <p className="font-bold">{formatMMK(order.amount)}</p>
                   <span
-                    className={`pill py-1 ${order.payment === "Verified" ? "bg-[#effbdd] text-[#31520d]" : order.payment === "Rejected" ? "bg-[#fff0eb] text-[#9b3215]" : "bg-[#fff8dc] text-[#725a00]"}`}
+                    className={`pill py-1 ${
+                      order.customerPaymentStatus === "fully_paid" || order.customerPaymentStatus === "cod_collected" || order.payment === "Verified"
+                        ? "bg-[#effbdd] text-[#31520d]"
+                        : order.payment === "Rejected"
+                        ? "bg-[#fff0eb] text-[#9b3215]"
+                        : order.customerPaymentStatus === "deposit_verified"
+                        ? "border border-sky-300 bg-sky-50 text-sky-900"
+                        : "bg-[#fff8dc] text-[#725a00]"
+                    }`}
                   >
-                    {order.payment}
+                    {order.customerPaymentStatus ? order.customerPaymentStatus.replace("_", " ") : order.payment}
                   </span>
+                  <div className="mt-1.5 hidden items-center justify-end gap-1 text-[11px] text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
+                    <span>Full detail</span>
+                    <ExternalLink size={11} />
+                  </div>
                 </div>
-              </button>
+              </div>
             );
           })
         ) : (
@@ -211,6 +293,16 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
               {stage}
             </span>
           </div>
+        </div>
+
+        <div className="border-b bg-[#faf9f5] p-3">
+          <Link
+            href={`/orders/${active.id}`}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#dedbd0] bg-white py-2.5 px-4 text-xs font-bold text-black shadow-xs transition hover:bg-[#eae8df]"
+          >
+            <span>Open Full Order Console & Accounting</span>
+            <ExternalLink size={13} />
+          </Link>
         </div>
 
         <div className="border-b bg-[#f7f5ee] p-4">
@@ -261,6 +353,35 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
             {active.phone || "Phone not provided"} ·{" "}
             {active.address || "Address not provided"}
           </p>
+
+          <div className="mt-3 space-y-1.5 rounded-xl border border-[#e4e1d5] bg-[#faf9f5] p-3 text-xs">
+            <div className="flex justify-between">
+              <span className="text-[#77776f]">Destination:</span>
+              <span className="font-semibold">{active.destinationCity || "Yangon"} {active.destinationState ? `(${active.destinationState})` : ""}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#77776f]">Total:</span>
+              <span className="font-bold">{formatMMK(active.amount)}</span>
+            </div>
+            {(active.requiredDeposit ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[#77776f]">Required Deposit:</span>
+                <span className="font-bold text-amber-900">{formatMMK(active.requiredDeposit!)}</span>
+              </div>
+            )}
+            {(active.codAmount ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[#77776f]">Remaining COD:</span>
+                <span className="font-bold text-sky-900">{formatMMK(active.codAmount!)}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-[#dedbd0] pt-1.5">
+              <span className="text-[#77776f]">Customer Balance:</span>
+              <span className="font-extrabold text-black">
+                {formatMMK(active.customerBalance ?? (active.amount - (active.customerPaidAmount ?? 0)))}
+              </span>
+            </div>
+          </div>
 
           <div className="my-5 border-t" />
           <div className="flex items-center justify-between gap-3">
@@ -480,6 +601,39 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
                         (10–15 days atwin yout pr mal · Customer notified via Telegram)
                       </span>
                     </div>
+
+                    {active.customerPaymentStatus !== "cod_collected" &&
+                      active.customerPaymentStatus !== "fully_paid" &&
+                      (active.codAmount ?? 0) > 0 && (
+                        <div className="mt-3 rounded-xl border border-sky-300 bg-sky-50 p-3 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sky-950">Royal Express COD</span>
+                            <span className="font-extrabold text-sky-900">
+                              {formatMMK(active.codAmount || 0)}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
+                            Customer pays Royal upon delivery. Recording collection brings customer balance to zero while funds await payout settlement.
+                          </p>
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() =>
+                              act(
+                                () =>
+                                  confirmCodCollectionAction(
+                                    active.id,
+                                    active.codAmount || 0,
+                                  ),
+                                "Royal COD collection confirmed! Customer balance is now zero.",
+                              )
+                            }
+                            className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl bg-sky-700 py-2.5 text-xs font-bold text-white transition hover:bg-sky-800 disabled:opacity-40"
+                          >
+                            <Coins size={14} /> Confirm Royal COD Collected
+                          </button>
+                        </div>
+                      )}
                   </div>
 
                   {/* Toggle edit tracking */}
@@ -692,6 +846,21 @@ export function OrderConsole({ orders }: { orders: OperationalOrder[] }) {
         </div>
       )}
 
-</div>
+      {/* Create Order Dialog Modal */}
+      <CreateOrderDialog
+        open={createOrderOpen}
+        onClose={() => setCreateOrderOpen(false)}
+        inventory={inventory}
+      />
+
+      {/* Order Detail Full Modal (Click Triggered) */}
+      <OrderDetailModal
+        orderId={modalOrderId}
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        initialOrder={modalOrder}
+        inventory={inventory}
+      />
+    </div>
   );
 }

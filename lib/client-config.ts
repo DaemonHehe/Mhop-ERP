@@ -32,6 +32,7 @@ export const clientConfig = {
   },
   shipping: {
     courier: "Royal Express",
+    defaultDeposit: 10000,
     zones: {
       yangonInner: {
         label: "Yangon (Inner)",
@@ -87,3 +88,18 @@ export function calculateOrderShipping(
 ) {
   return digitalOnly ? 0 : calculateShipping(subtotal, zone);
 }
+
+export {
+  calculateRoyalDelivery,
+  calculateRequiredDeposit,
+  type DeliveryQuoteInput,
+  type DeliveryRateSnapshot,
+} from "./shipping/royal-rates";
+export {
+  ROYAL_DESTINATIONS,
+  CHECKOUT_CITIES,
+  getDestinationsByState,
+  findDestinationByCity,
+  type ShippingDestinationItem,
+  type CheckoutCityOption,
+} from "./shipping/destinations-data";

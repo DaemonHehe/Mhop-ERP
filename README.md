@@ -104,7 +104,7 @@ Keep `.env.local` and all service credentials outside Git. Start from `.env.exam
 - Database-backed pages are rendered dynamically so current stock, orders, receipts, alerts, and financial data cannot be frozen into a build.
 - Production deployments must still add object-storage upload scanning, distributed rate limits, CSRF review, audit retention, and encrypted backups.
 
-See `USER_MANUAL.md` for operations and `USER_TESTING.md` for acceptance checks. Open `CLIENT_ONBOARDING_FORM.html` directly in a browser for the implementation intake.
+See `USER_MANUAL.md` for operations and `USER_TESTING.md` for acceptance checks.
 
 Run `npm run check` for lint, type, and unit checks. Run `npm run test:e2e` against a development or staging database to verify customer and staff workflows. Run `scripts/api-smoke.ps1` while the development server is active to verify the daily-stats adapter, Telegram catalog command, and rejection of unsigned n8n traffic.
 

@@ -23,6 +23,7 @@ export interface InventoryItem {
   category: string;
   subcategory: string;
   image: string;
+  images?: string[];
   sku: string;
   color: string | null;
   storage: string | null;
@@ -151,6 +152,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
       category: products.category,
       subcategory: products.subcategory,
       image: products.imageUrl,
+      imageUrls: products.imageUrls,
       sku: productVariants.sku,
       color: productVariants.color,
       storage: productVariants.storage,
@@ -170,18 +172,31 @@ export async function getInventory(): Promise<InventoryItem[]> {
       and(eq(products.isActive, true), eq(productVariants.isActive, true)),
     );
 
-  return rows.map((r) => ({
-    ...r,
-    image: r.image || "/placeholder.svg",
-    price: num(r.price),
-    cost: num(r.cost),
-    tagline: `${r.brand} ${r.category}`,
-    specs: [],
-    description: r.description || "",
-    lowStockThreshold: Number(r.lowStockThreshold),
-    stock: Number(r.stock),
-    warranty: Number(r.warranty),
-  }));
+  return rows.map((r) => {
+    const primaryImage =
+      r.image ||
+      (Array.isArray(r.imageUrls) && (r.imageUrls as string[])[0]) ||
+      "/placeholder.svg";
+    const allImages =
+      Array.isArray(r.imageUrls) && r.imageUrls.length > 0
+        ? (r.imageUrls as string[])
+        : primaryImage && primaryImage !== "/placeholder.svg"
+          ? [primaryImage]
+          : [];
+    return {
+      ...r,
+      image: primaryImage,
+      images: allImages,
+      price: num(r.price),
+      cost: num(r.cost),
+      tagline: `${r.brand} ${r.category}`,
+      specs: [],
+      description: r.description || "",
+      lowStockThreshold: Number(r.lowStockThreshold),
+      stock: Number(r.stock),
+      warranty: Number(r.warranty),
+    };
+  });
 }
 
 export async function getPublicCatalog(): Promise<PublicCatalogItem[]> {
@@ -219,6 +234,16 @@ export async function createCatalogItem(
     const value = parsed.data;
     if (value.category === "PUBG Accounts" && value.listingStatus === "reserved")
       return { ok: false, error: "Only an order can reserve a listing" };
+    const primaryImg =
+      value.imageUrl ||
+      (value.imageUrls && value.imageUrls[0]) ||
+      null;
+    const allImgs =
+      value.imageUrls && value.imageUrls.length > 0
+        ? value.imageUrls
+        : primaryImg
+          ? [primaryImg]
+          : [];
     const variantId = await db.transaction(async (tx) => {
       const [product] = await tx
         .insert(products)
@@ -228,7 +253,8 @@ export async function createCatalogItem(
           category: value.category,
           subcategory: value.subcategory,
           description: value.description || null,
-          imageUrl: value.imageUrl || null,
+          imageUrl: primaryImg,
+          imageUrls: allImgs,
           baseCost: String(value.costPrice),
         })
         .returning({ id: products.id });
@@ -304,6 +330,16 @@ export async function updateCatalogItem(
         throw new Error("Reserved listing status is managed by its order");
       if (current.category !== value.category)
         throw new Error("A listing category cannot be changed after creation");
+      const primaryImg =
+        value.imageUrl ||
+        (value.imageUrls && value.imageUrls[0]) ||
+        null;
+      const allImgs =
+        value.imageUrls && value.imageUrls.length > 0
+          ? value.imageUrls
+          : primaryImg
+            ? [primaryImg]
+            : [];
       await tx
         .update(products)
         .set({
@@ -311,7 +347,8 @@ export async function updateCatalogItem(
           brand: value.brand,
           subcategory: value.subcategory,
           description: value.description || null,
-          imageUrl: value.imageUrl || null,
+          imageUrl: primaryImg,
+          imageUrls: allImgs,
           baseCost: String(value.costPrice),
         })
         .where(eq(products.id, current.productId));

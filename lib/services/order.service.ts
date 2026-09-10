@@ -1,28 +1,50 @@
 import { canPurchaseListing } from "@/lib/listing-rules";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  getTierForPoints,
+  calculateTierPerks,
+  calculatePointsFromAmount,
+} from "@/lib/loyalty";
+import { awardCustomerPoints, generateCustomerCode } from "./customer.service";
+import {
   bundles,
+  courierSettlementAllocations,
+  courierSettlementBatches,
   customers,
   deviceUnits,
   orderBundleSets,
   orderItems,
+  orderPayments,
   orders,
   productVariants,
   products,
   staffAlerts,
 } from "@/db/schema";
 import { formatMMK, orders as demoOrders } from "@/lib/data";
+import { calculateOrderShipping, clientConfig } from "@/lib/client-config";
 import {
-  calculateOrderShipping,
-  clientConfig,
-  type ShippingZone,
-} from "@/lib/client-config";
-import { orderSchema, shipmentSchema } from "@/lib/validation/schemas";
+  adminCreateOrderSchema,
+  failedDeliverySchema,
+  orderPreDispatchEditSchema,
+  orderSchema,
+  postDispatchCorrectionSchema,
+  shipmentSchema,
+} from "@/lib/validation/schemas";
 import { audit } from "./audit.service";
 import type { ActionResult } from "./stock.service";
 import { allocateDiscountedUnits } from "@/lib/order-pricing";
 import { evaluateWarrantyPolicy } from "@/lib/warranty-policy";
+import {
+  calculateRoyalDelivery,
+  calculateRequiredDeposit,
+  isLocationSuspended,
+  SUSPENDED_DELIVERY_NOTICE,
+} from "@/lib/shipping/royal-rates";
+import {
+  recalculateOrderPayments,
+} from "./payment.service";
+import type { z } from "zod";
 import {
   sendTelegramMessage,
   sendTelegramOpsMessage,
@@ -39,17 +61,10 @@ export interface OperationalOrder {
   id: string;
   orderCode?: string;
   customer: string;
-  channel: "Web" | "Telegram" | "POS";
+  channel: string;
   amount: number;
-  payment: "Verified" | "Pending" | "Rejected" | "Refunded";
-  fulfillment:
-    | "New"
-    | "Confirmed"
-    | "Packing"
-    | "Packed"
-    | "Dispatched"
-    | "Delivered"
-    | "Cancelled";
+  payment: string;
+  fulfillment: string;
   item: string;
   created: string;
   createdAt?: Date;
@@ -60,6 +75,23 @@ export interface OperationalOrder {
   telegramUserId?: string | null;
   paymentSlipUrl?: string | null;
   isDigitalOnly?: boolean;
+  orderSource?: string;
+  destinationCity?: string | null;
+  destinationState?: string | null;
+  requiredDeposit?: number;
+  customerPaidAmount?: number;
+  customerBalance?: number;
+  codAmount?: number;
+  expectedCourierCost?: number;
+  actualCourierCost?: number | null;
+  customerPaymentStatus?: string;
+  courierSettlementStatus?: string;
+  commercialFrozen?: boolean;
+  deliveryFeeConfirmed?: boolean;
+  customerTier?: string;
+  tierDiscountAmount?: number;
+  tierDeliveryDiscount?: number;
+  pointsEarned?: number;
 }
 
 export interface WarrantyResult {
@@ -106,6 +138,16 @@ export interface ReceiptOrder {
     warrantyMonths: number;
   }[];
   bundles: string[];
+  requiredDeposit?: number;
+  codAmount?: number;
+  customerPaymentStatus?: string;
+  courierSettlementStatus?: string;
+  destinationCity?: string | null;
+  destinationState?: string | null;
+  customerTier?: string;
+  tierDiscountAmount?: number;
+  tierDeliveryDiscount?: number;
+  pointsEarned?: number;
 }
 
 const errorOf = (error: unknown) => {
@@ -167,10 +209,10 @@ export async function getOrders(): Promise<OperationalOrder[]> {
     id: o.id,
     orderCode: o.orderCode,
     customer: o.customerName,
-    channel: o.telegramUserId ? ("Telegram" as const) : ("Web" as const),
+    channel: o.orderSource ? title(o.orderSource) : o.telegramUserId ? "Telegram" : "Web",
     amount: num(o.totalAmount),
-    payment: title(o.paymentStatus) as OperationalOrder["payment"],
-    fulfillment: title(o.fulfillmentStatus) as OperationalOrder["fulfillment"],
+    payment: title(o.customerPaymentStatus || o.paymentStatus),
+    fulfillment: title(o.fulfillmentStatus),
     item: (
       bundleLabels.get(o.id) ||
       itemLabels.get(o.id) || ["Order items unavailable"]
@@ -190,6 +232,34 @@ export async function getOrders(): Promise<OperationalOrder[]> {
         items.every((category) => category === "PUBG Accounts")
       );
     })(),
+    orderSource: o.orderSource || "web",
+    destinationCity: o.destinationCity,
+    destinationState: o.destinationState,
+    requiredDeposit: num(o.requiredDeposit) || (num(o.totalAmount) > 0 ? (itemCategories.get(o.id)?.every((c) => c === "PUBG Accounts") ? num(o.totalAmount) : Math.min(10000, num(o.totalAmount))) : 0),
+    customerPaidAmount: num(o.customerPaidAmount),
+    customerBalance:
+      o.customerBalance != null && num(o.customerBalance) > 0
+        ? num(o.customerBalance)
+        : (num(o.customerPaidAmount) >= num(o.totalAmount) ? 0 : Math.max(0, num(o.totalAmount) - num(o.customerPaidAmount))),
+    codAmount:
+      o.codAmount != null && num(o.codAmount) > 0
+        ? num(o.codAmount)
+        : (!(itemCategories.get(o.id)?.every((c) => c === "PUBG Accounts")) && num(o.totalAmount) > num(o.customerPaidAmount)
+            ? Math.max(0, num(o.totalAmount) - Math.max(num(o.customerPaidAmount), num(o.requiredDeposit) || 10000))
+            : 0),
+    expectedCourierCost:
+      o.expectedCourierCost != null && num(o.expectedCourierCost) > 0
+        ? num(o.expectedCourierCost)
+        : (!(itemCategories.get(o.id)?.every((c) => c === "PUBG Accounts")) ? 4050 : 0),
+    actualCourierCost: o.actualCourierCost != null ? num(o.actualCourierCost) : null,
+    customerPaymentStatus: o.customerPaymentStatus || "unpaid",
+    courierSettlementStatus: o.courierSettlementStatus || "not_applicable",
+    commercialFrozen: Boolean(o.commercialFrozen),
+    deliveryFeeConfirmed: Boolean(o.deliveryFeeConfirmed),
+    customerTier: o.customerTier || "member",
+    tierDiscountAmount: num(o.tierDiscountAmount),
+    tierDeliveryDiscount: num(o.tierDeliveryDiscount),
+    pointsEarned: Number(o.pointsEarned || 0),
   }));
 }
 
@@ -323,9 +393,18 @@ export async function getReceiptOrders(): Promise<ReceiptOrder[]> {
     total: num(order.totalAmount),
     subtotal: Math.max(0, num(order.totalAmount) - num(order.shippingFee)),
     shippingFee: num(order.shippingFee),
-    paidAmount: order.paymentStatus === "verified" ? num(order.totalAmount) : 0,
-    outstandingBalance:
-      order.paymentStatus === "verified" ? 0 : num(order.totalAmount),
+    paidAmount: num(order.customerPaidAmount ?? (order.paymentStatus === "verified" ? order.totalAmount : 0)),
+    outstandingBalance: num(order.customerBalance ?? (order.paymentStatus === "verified" ? 0 : order.totalAmount)),
+    requiredDeposit: num(order.requiredDeposit),
+    codAmount: num(order.codAmount),
+    customerPaymentStatus: order.customerPaymentStatus || order.paymentStatus,
+    courierSettlementStatus: order.courierSettlementStatus || "not_applicable",
+    destinationCity: order.destinationCity,
+    destinationState: order.destinationState,
+    customerTier: order.customerTier || "member",
+    tierDiscountAmount: num(order.tierDiscountAmount),
+    tierDeliveryDiscount: num(order.tierDeliveryDiscount),
+    pointsEarned: Number(order.pointsEarned || 0),
     paymentMethod: order.paymentMethod || "Not recorded",
     paymentStatus: order.paymentStatus,
     carrier: order.shippingCarrier || "Not assigned",
@@ -456,7 +535,15 @@ export async function createOrder(
       .slice(2, 10)
       .replaceAll("-", "")}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
 
-    const { shippingZone, paymentMethod, ...customer } = parsed.data;
+    const { paymentMethod } = parsed.data;
+    const customer = {
+      customerName: parsed.data.customerName,
+      phone: parsed.data.phone,
+      telegramUserId: parsed.data.telegramUserId,
+      shippingAddress: parsed.data.shippingAddress,
+      destinationCity: parsed.data.destinationCity,
+      orderSource: parsed.data.orderSource,
+    };
 
     const orderSummary = await db.transaction(async (tx) => {
       const selectedBundles = bundleIds.length
@@ -550,15 +637,50 @@ export async function createOrder(
       const digitalOnly = selected.every(
         (item) => item.category === "PUBG Accounts",
       );
-      const shippingFee = calculateOrderShipping(
-        subtotal,
-        shippingZone as ShippingZone,
-        digitalOnly,
-      );
-      const total = subtotal + shippingFee;
+      const destinationCity = parsed.data.destinationCity || "Yangon";
+      if (!digitalOnly && isLocationSuspended(destinationCity)) {
+        throw new Error(SUSPENDED_DELIVERY_NOTICE);
+      }
+      const weightKg = Number(form.get("weightKg")) || 1.0;
+      const royalDelivery = calculateRoyalDelivery({
+        destinationCity,
+        weightKg,
+        isDigitalOnly: digitalOnly,
+      });
+
+      // Check customer loyalty tier for automatic perks
+      const cleanCustomerPhone = (customer.phone || "").trim().replace(/[^\d+]/g, "");
+      const loyaltyConditions = [];
+      if (cleanCustomerPhone) loyaltyConditions.push(eq(customers.phone, cleanCustomerPhone));
+      if (customer.telegramUserId) loyaltyConditions.push(eq(customers.telegramUserId, customer.telegramUserId));
+
+      const [existingCustomer] = loyaltyConditions.length
+        ? await tx
+            .select({ id: customers.id, points: customers.points, tier: customers.tier })
+            .from(customers)
+            .where(and(eq(customers.isActive, true), or(...loyaltyConditions)))
+            .limit(1)
+        : [];
+
+      const customerTier = existingCustomer
+        ? getTierForPoints(existingCustomer.points || 0)
+        : "member";
+
+      const standardShipping = digitalOnly ? 0 : royalDelivery.customerDeliveryFee;
+      const tierPerks = calculateTierPerks(customerTier, subtotal, standardShipping);
+      const shippingFee = digitalOnly ? 0 : tierPerks.netDeliveryFee;
+      const tierDiscountAmount = tierPerks.productDiscountAmount;
+      const tierDeliveryDiscount = digitalOnly ? 0 : tierPerks.deliveryDiscountAmount;
+      const total = tierPerks.netProductSubtotal + shippingFee;
+      const pointsEarned = calculatePointsFromAmount(total);
+
+      const requiredDeposit = calculateRequiredDeposit(total, digitalOnly);
+      const codAmount = Math.max(0, total - requiredDeposit);
+
       const [customerProfile] = await tx
         .insert(customers)
         .values({
+          customerCode: generateCustomerCode(),
           name: customer.customerName,
           phone: customer.phone,
           telegramUserId: customer.telegramUserId || null,
@@ -583,16 +705,36 @@ export async function createOrder(
         .insert(orders)
         .values({
           ...customer,
+          orderSource: parsed.data.orderSource || "web",
+          destinationCity: royalDelivery.destinationCity,
+          destinationState: royalDelivery.destinationState,
+          streetAddress: customer.shippingAddress || null,
+          shippingAddress: customer.shippingAddress || null,
           telegramUserId: customer.telegramUserId || null,
           customerId: customerProfile.id,
           totalAmount: String(total),
-          shippingZone,
+          shippingZone: royalDelivery.zone,
           shippingFee: String(shippingFee),
           shippingCarrier: digitalOnly
             ? "Digital handover"
             : clientConfig.shipping.courier,
           paymentMethod,
           orderCode,
+          isDigitalOnly: digitalOnly,
+          packedWeightKg: String(royalDelivery.weightKg),
+          expectedCourierCost: String(royalDelivery.expectedCourierCost),
+          requiredDeposit: String(requiredDeposit),
+          customerPaidAmount: "0",
+          customerBalance: String(total),
+          codAmount: String(codAmount),
+          customerPaymentStatus: "unpaid",
+          courierSettlementStatus: digitalOnly ? "not_applicable" : "unsettled",
+          deliveryFeeConfirmed: true,
+          commercialFrozen: false,
+          customerTier,
+          tierDiscountAmount: String(tierDiscountAmount),
+          tierDeliveryDiscount: String(tierDeliveryDiscount),
+          pointsEarned,
         })
         .returning({ id: orders.id });
 
@@ -655,9 +797,13 @@ export async function createOrder(
       });
 
       return {
+        orderId: created.id,
         orderCode,
         total,
         shippingFee,
+        requiredDeposit,
+        codAmount,
+        destinationCity: royalDelivery.destinationCity,
         selectedItems: selected.map((item) => ({
           name: item.productName || item.sku,
           quantity: quantities.get(item.sku) || 1,
@@ -683,8 +829,11 @@ export async function createOrder(
       customerName: parsed.data.customerName,
       phone: parsed.data.phone,
       shippingAddress: parsed.data.shippingAddress || "Secure digital handover",
+      destinationCity: orderSummary.destinationCity,
       shippingFee: orderSummary.shippingFee,
       totalAmount: orderSummary.total,
+      requiredDeposit: orderSummary.requiredDeposit,
+      codAmount: orderSummary.codAmount,
       paymentMethod: parsed.data.paymentMethod,
       items: orderSummary.selectedItems,
       bundles: orderSummary.bundleSummaries,
@@ -706,7 +855,7 @@ export async function createOrder(
         const receiptImage = await renderCustomerReceiptImage(receiptData);
         await sendTelegramPhoto(parsed.data.telegramUserId, receiptImage, {
           filename: `${orderSummary.orderCode}-receipt.png`,
-          caption: `🧾 <b>${orderSummary.orderCode}</b> · ${formatMMK(orderSummary.total)}\nငွေလွှဲပြီးပါက Payment Slip ပုံနှင့် Order Code ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။`,
+          caption: `🧾 <b>${orderSummary.orderCode}</b> · စုစုပေါင်း ${formatMMK(orderSummary.total)}\nစရန်ငွေ (Deposit): <b>${formatMMK(orderSummary.requiredDeposit)}</b>\nပစ္စည်းရောက်မှ Royal Express သို့ ပေးချေရန် (COD): <b>${formatMMK(orderSummary.codAmount)}</b>\n\nစရန်ငွေလွှဲပြီးပါက Payment Slip ပုံနှင့် Order Code ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။`,
           parse_mode: "HTML",
         });
         // Also send bank transfer details
@@ -750,6 +899,10 @@ export async function reviewPayment(
           paymentStatus: orders.paymentStatus,
           fulfillmentStatus: orders.fulfillmentStatus,
           paymentSlipUrl: orders.paymentSlipUrl,
+          requiredDeposit: orders.requiredDeposit,
+          totalAmount: orders.totalAmount,
+          codAmount: orders.codAmount,
+          paymentMethod: orders.paymentMethod,
         })
         .from(orders)
         .where(eq(orders.id, orderId))
@@ -774,18 +927,80 @@ export async function reviewPayment(
           "Use the refund or cancellation workflow after approval",
         );
 
+      const now = new Date();
+      if (decision === "verified") {
+        const pendingPayments = await tx
+          .select()
+          .from(orderPayments)
+          .where(
+            and(
+              eq(orderPayments.orderId, orderId),
+              eq(orderPayments.status, "pending"),
+            ),
+          );
+
+        if (pendingPayments.length > 0) {
+          for (const p of pendingPayments) {
+            await tx
+              .update(orderPayments)
+              .set({ status: "verified", verifiedBy: "admin", verifiedAt: now })
+              .where(eq(orderPayments.id, p.id));
+          }
+        } else {
+          const depositAmount = num(current.requiredDeposit) || num(current.totalAmount);
+          await tx.insert(orderPayments).values({
+            orderId,
+            paymentType: num(current.codAmount) > 0 ? "deposit" : "direct_prepayment",
+            amount: String(depositAmount),
+            paymentMethod: current.paymentMethod || "kbzpay",
+            status: "verified",
+            slipUrl: current.paymentSlipUrl,
+            recordedBy: "admin",
+            verifiedBy: "admin",
+            verifiedAt: now,
+            notes: "Verified via order management review",
+            createdAt: now,
+          });
+        }
+        await recalculateOrderPayments(tx, orderId);
+      } else {
+        await tx
+          .update(orderPayments)
+          .set({ status: "rejected", verifiedBy: "admin" })
+          .where(
+            and(
+              eq(orderPayments.orderId, orderId),
+              eq(orderPayments.status, "pending"),
+            ),
+          );
+      }
+
       const changed = await tx
         .update(orders)
         .set({
           paymentStatus: decision,
           ...(decision === "verified"
             ? { fulfillmentStatus: "packing" as const }
-            : {}),
+            : { customerPaymentStatus: "unpaid" }),
         })
         .where(eq(orders.id, orderId))
-        .returning({ code: orders.orderCode, telegramUserId: orders.telegramUserId });
+        .returning({
+          code: orders.orderCode,
+          telegramUserId: orders.telegramUserId,
+          customerId: orders.customerId,
+          pointsEarned: orders.pointsEarned,
+          totalAmount: orders.totalAmount,
+        });
 
       if (!changed[0]) throw new Error("Order not found");
+
+      if (decision === "verified" && changed[0].customerId) {
+        const points =
+          changed[0].pointsEarned > 0
+            ? changed[0].pointsEarned
+            : calculatePointsFromAmount(Number(changed[0].totalAmount || 0));
+        await awardCustomerPoints(tx, changed[0].customerId, points);
+      }
 
       await tx.insert(staffAlerts).values({
         type: `payment.${decision}`,
@@ -961,6 +1176,9 @@ export async function updateFulfillment(
           code: orders.orderCode,
           status: orders.fulfillmentStatus,
           paymentStatus: orders.paymentStatus,
+          customerPaymentStatus: orders.customerPaymentStatus,
+          trackingNumber: orders.trackingNumber,
+          deliveryFeeConfirmed: orders.deliveryFeeConfirmed,
           deliveredAt: orders.deliveredAt,
         })
         .from(orders)
@@ -973,22 +1191,35 @@ export async function updateFulfillment(
         throw new Error(`Order is already ${status}`);
 
       const allowed: Record<string, string[]> = {
-        new: ["packing", "cancelled"],
+        new: ["confirmed", "packing", "cancelled"],
         confirmed: ["packing", "cancelled"],
         packing: ["packed", "cancelled"],
         packed: ["dispatched", "cancelled"],
         dispatched: ["delivered"],
         delivered: [],
+        cancelled: [],
+        returned: [],
       };
       if (!allowed[current.status]?.includes(status))
         throw new Error(
           `Cannot move an order from ${current.status} to ${status}`,
         );
+
+      const isDepositApproved =
+        current.paymentStatus === "verified" ||
+        ["deposit_verified", "cod_collected", "fully_paid"].includes(
+          current.customerPaymentStatus || "",
+        );
+
       if (
         ["packing", "packed", "dispatched", "delivered"].includes(status) &&
-        current.paymentStatus !== "verified"
+        !isDepositApproved
       )
-        throw new Error("Approve the payment before fulfilling this order");
+        throw new Error("Verify the required deposit before fulfilling this order");
+
+      if (status === "packing" && !current.deliveryFeeConfirmed)
+        throw new Error("Delivery fee must be confirmed before packing");
+
       if (status === "packed" || status === "dispatched") {
         const fulfillmentItems = await tx
           .select({
@@ -1001,9 +1232,9 @@ export async function updateFulfillment(
         const digitalOnly =
           fulfillmentItems.length > 0 &&
           fulfillmentItems.every((item) => item.category === "PUBG Accounts");
-        if (status === "dispatched" && !digitalOnly)
+        if (status === "dispatched" && !digitalOnly && !current.trackingNumber)
           throw new Error(
-            "Physical orders must be dispatched with courier tracking",
+            "Physical orders must have courier tracking before dispatch",
           );
       }
       if (status === "cancelled") {
@@ -1067,6 +1298,7 @@ export async function updateFulfillment(
         .update(orders)
         .set({
           fulfillmentStatus: status,
+          ...(status === "dispatched" ? { commercialFrozen: true } : {}),
           ...(status === "delivered" && !current.deliveredAt
             ? { deliveredAt: new Date() }
             : {}),
@@ -1138,6 +1370,7 @@ export async function addShipment(
           trackingNumber: parsed.data.trackingNumber,
           shippingCarrier: parsed.data.carrier,
           fulfillmentStatus: "dispatched",
+          commercialFrozen: true,
         })
         .where(eq(orders.id, orderId))
         .returning({
@@ -1181,3 +1414,779 @@ export async function addShipment(
     return { ok: false, error: errorOf(error) };
   }
 }
+
+/**
+ * Admin order creation across multi-channels (Facebook, Messenger, TikTok, Viber, Phone, Walk-in, etc.)
+ */
+export async function adminCreateOrder(
+  input: z.infer<typeof adminCreateOrderSchema>,
+  actor: string = "admin",
+): Promise<ActionResult<{ orderId: string; orderCode: string }>> {
+  try {
+    if (!db) return { ok: false, error: "Database is not configured." };
+    const parsed = adminCreateOrderSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message || "Invalid order input" };
+    }
+
+    const orderCode = `MHOP-${new Date()
+      .toISOString()
+      .slice(2, 10)
+      .replaceAll("-", "")}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
+
+    const result = await db.transaction(async (tx) => {
+      const skus = [...new Set(parsed.data.items.map((i) => i.sku))];
+      const variants = await tx
+        .select({
+          id: productVariants.id,
+          sku: productVariants.sku,
+          price: productVariants.price,
+          cost: productVariants.costPrice,
+          stock: productVariants.stockQuantity,
+          listingStatus: productVariants.listingStatus,
+          category: products.category,
+          productId: products.id,
+          productName: products.name,
+        })
+        .from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
+        .where(
+          and(
+            inArray(productVariants.sku, skus),
+            eq(products.isActive, true),
+            eq(productVariants.isActive, true),
+          ),
+        )
+        .for("update");
+
+      if (variants.length !== skus.length) {
+        throw new Error("One or more selected products are unavailable");
+      }
+
+      const variantMap = new Map(variants.map((v) => [v.sku, v]));
+      let subtotal = 0;
+      const isDigitalOnly = variants.every((v) => v.category === "PUBG Accounts");
+
+      for (const item of parsed.data.items) {
+        const variant = variantMap.get(item.sku)!;
+        if (!canPurchaseListing(variant, item.quantity)) {
+          throw new Error(`${item.sku} is unavailable for quantity ${item.quantity}`);
+        }
+        const itemPrice = item.agreedPrice != null ? item.agreedPrice : num(variant.price);
+        subtotal += itemPrice * item.quantity;
+      }
+
+      const royalDelivery = calculateRoyalDelivery({
+        destinationCity: parsed.data.destinationCity,
+        weightKg: parsed.data.packedWeightKg,
+        isDigitalOnly,
+        customNormalPrice: parsed.data.customDeliveryFee,
+        customCourierCost: parsed.data.customCourierCost,
+      });
+
+      // Check customer loyalty tier for automatic perks
+      const cleanAdminPhone = (parsed.data.phone || "").trim().replace(/[^\d+]/g, "");
+      const adminLoyaltyConds = [];
+      if (cleanAdminPhone) adminLoyaltyConds.push(eq(customers.phone, cleanAdminPhone));
+      if (parsed.data.telegramUserId) adminLoyaltyConds.push(eq(customers.telegramUserId, parsed.data.telegramUserId));
+
+      const [existingAdminCustomer] = adminLoyaltyConds.length
+        ? await tx
+            .select({ id: customers.id, points: customers.points, tier: customers.tier })
+            .from(customers)
+            .where(and(eq(customers.isActive, true), or(...adminLoyaltyConds)))
+            .limit(1)
+        : [];
+
+      const customerTier = existingAdminCustomer
+        ? getTierForPoints(existingAdminCustomer.points || 0)
+        : "member";
+
+      const standardDelivery = royalDelivery.customerDeliveryFee;
+      const shippingFee =
+        parsed.data.customDeliveryFee != null
+          ? parsed.data.customDeliveryFee
+          : isDigitalOnly
+            ? 0
+            : customerTier !== "member"
+              ? 0
+              : standardDelivery;
+
+      const tierDeliveryDiscount =
+        !isDigitalOnly && customerTier !== "member" && parsed.data.customDeliveryFee == null
+          ? standardDelivery
+          : 0;
+
+      let tierDiscountAmount = 0;
+      if (customerTier === "gold") {
+        tierDiscountAmount = Math.round(subtotal * 0.05);
+      } else if (customerTier === "platinum") {
+        tierDiscountAmount = Math.round(subtotal * 0.10);
+      }
+
+      const courierCost =
+        parsed.data.customCourierCost != null
+          ? parsed.data.customCourierCost
+          : royalDelivery.expectedCourierCost;
+
+      const total = Math.max(0, subtotal - tierDiscountAmount) + shippingFee;
+      const pointsEarned = calculatePointsFromAmount(total);
+      const requiredDeposit =
+        parsed.data.requiredDeposit != null
+          ? Math.min(total, parsed.data.requiredDeposit)
+          : calculateRequiredDeposit(total, isDigitalOnly);
+      const codAmount = Math.max(0, total - requiredDeposit);
+
+      const [customerProfile] = await tx
+        .insert(customers)
+        .values({
+          customerCode: generateCustomerCode(),
+          name: parsed.data.customerName,
+          phone: parsed.data.phone,
+          telegramUserId: parsed.data.telegramUserId || null,
+          primaryAddress: isDigitalOnly ? null : parsed.data.shippingAddress || null,
+        })
+        .onConflictDoUpdate({
+          target: customers.phone,
+          set: {
+            name: parsed.data.customerName,
+            ...(parsed.data.telegramUserId ? { telegramUserId: parsed.data.telegramUserId } : {}),
+            ...(!isDigitalOnly && parsed.data.shippingAddress
+              ? { primaryAddress: parsed.data.shippingAddress }
+              : {}),
+            isActive: true,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({ id: customers.id });
+
+      const [created] = await tx
+        .insert(orders)
+        .values({
+          customerId: customerProfile.id,
+          customerName: parsed.data.customerName,
+          phone: parsed.data.phone,
+          telegramUserId: parsed.data.telegramUserId || null,
+          orderSource: parsed.data.orderSource,
+          orderCode,
+          destinationCity: royalDelivery.destinationCity,
+          destinationState: royalDelivery.destinationState,
+          streetAddress: parsed.data.shippingAddress,
+          shippingAddress: parsed.data.shippingAddress,
+          shippingZone: royalDelivery.zone,
+          shippingFee: String(shippingFee),
+          shippingCarrier: isDigitalOnly ? "Digital handover" : clientConfig.shipping.courier,
+          paymentMethod: parsed.data.paymentMethod,
+          totalAmount: String(total),
+          isDigitalOnly,
+          packedWeightKg: String(royalDelivery.weightKg),
+          expectedCourierCost: String(courierCost),
+          requiredDeposit: String(requiredDeposit),
+          customerPaidAmount: "0",
+          customerBalance: String(total),
+          codAmount: String(codAmount),
+          customerPaymentStatus: "unpaid",
+          courierSettlementStatus: isDigitalOnly ? "not_applicable" : "unsettled",
+          deliveryFeeConfirmed: true,
+          commercialFrozen: false,
+          internalNotes: parsed.data.internalNotes || null,
+          customerTier,
+          tierDiscountAmount: String(tierDiscountAmount),
+          tierDeliveryDiscount: String(tierDeliveryDiscount),
+          pointsEarned,
+        })
+        .returning({ id: orders.id });
+
+      for (const item of parsed.data.items) {
+        const variant = variantMap.get(item.sku)!;
+        const unitPrice = item.agreedPrice != null ? item.agreedPrice : num(variant.price);
+        for (let i = 0; i < item.quantity; i++) {
+          await tx.insert(orderItems).values({
+            orderId: created.id,
+            productId: variant.productId,
+            variantId: variant.id,
+            unitPrice: String(unitPrice),
+            costSnapshot: variant.cost,
+            quantity: 1,
+          });
+        }
+
+        if (variant.category === "PUBG Accounts") {
+          const [reserved] = await tx
+            .update(productVariants)
+            .set({ listingStatus: "reserved" })
+            .where(
+              and(
+                eq(productVariants.id, variant.id),
+                eq(productVariants.listingStatus, "available"),
+              ),
+            )
+            .returning({ id: productVariants.id });
+          if (!reserved) throw new Error(`${variant.sku} is already reserved`);
+        } else {
+          const [updated] = await tx
+            .update(productVariants)
+            .set({
+              stockQuantity: sql`${productVariants.stockQuantity} - ${item.quantity}`,
+            })
+            .where(
+              and(
+                eq(productVariants.id, variant.id),
+                sql`${productVariants.stockQuantity} >= ${item.quantity}`,
+              ),
+            )
+            .returning({ id: productVariants.id });
+          if (!updated) throw new Error(`${variant.sku} went out of stock`);
+        }
+      }
+
+      await tx.insert(staffAlerts).values({
+        type: "order.created",
+        title: `Admin order ${orderCode} (${parsed.data.orderSource.toUpperCase()})`,
+        body: `${parsed.data.customerName} placed order for ${total} MMK via ${parsed.data.orderSource}`,
+        targetCode: orderCode,
+      });
+
+      return { orderId: created.id, orderCode };
+    });
+
+    await audit(
+      "order.created",
+      result.orderCode,
+      `Order created via ${parsed.data.orderSource} by ${actor}. Customer: ${parsed.data.customerName}`,
+      actor,
+    );
+
+    return { ok: true, data: result };
+  } catch (error) {
+    console.error("[adminCreateOrder error]", error);
+    return { ok: false, error: errorOf(error) };
+  }
+}
+
+/**
+ * Fetch full order details by ID for dedicated order console (/orders/[id]).
+ */
+export async function getOrderById(orderId: string) {
+  if (!db || !orderId) return null;
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) return null;
+
+  const [customer] = order.customerId
+    ? await db.select().from(customers).where(eq(customers.id, order.customerId))
+    : [null];
+
+  const items = await db
+    .select({
+      id: orderItems.id,
+      productId: orderItems.productId,
+      variantId: orderItems.variantId,
+      name: products.name,
+      category: products.category,
+      sku: productVariants.sku,
+      unitPrice: orderItems.unitPrice,
+      costSnapshot: orderItems.costSnapshot,
+      quantity: orderItems.quantity,
+      serial: deviceUnits.serialNumber,
+      imei: deviceUnits.imeiNumber,
+      warrantyMonths: productVariants.warrantyMonths,
+    })
+    .from(orderItems)
+    .innerJoin(products, eq(products.id, orderItems.productId))
+    .innerJoin(productVariants, eq(productVariants.id, orderItems.variantId))
+    .leftJoin(deviceUnits, eq(deviceUnits.id, orderItems.deviceUnitId))
+    .where(eq(orderItems.orderId, orderId));
+
+  const payments = await db
+    .select()
+    .from(orderPayments)
+    .where(eq(orderPayments.orderId, orderId))
+    .orderBy(desc(orderPayments.createdAt));
+
+  const allocations = await db
+    .select({
+      id: courierSettlementAllocations.id,
+      settlementBatchId: courierSettlementAllocations.settlementBatchId,
+      batchCode: courierSettlementBatches.batchCode,
+      settlementDate: courierSettlementBatches.settlementDate,
+      allocatedCollected: courierSettlementAllocations.allocatedCollected,
+      allocatedCourierFee: courierSettlementAllocations.allocatedCourierFee,
+      netOrderPayout: courierSettlementAllocations.netOrderPayout,
+    })
+    .from(courierSettlementAllocations)
+    .innerJoin(
+      courierSettlementBatches,
+      eq(courierSettlementBatches.id, courierSettlementAllocations.settlementBatchId),
+    )
+    .where(eq(courierSettlementAllocations.orderId, orderId));
+
+  const totalAmount = num(order.totalAmount);
+  const customerPaidAmount = num(order.customerPaidAmount);
+  const requiredDeposit =
+    num(order.requiredDeposit) ||
+    (totalAmount > 0 ? (order.isDigitalOnly ? totalAmount : Math.min(10000, totalAmount)) : 0);
+
+  const customerBalance =
+    order.customerBalance != null && num(order.customerBalance) > 0
+      ? num(order.customerBalance)
+      : (customerPaidAmount >= totalAmount ? 0 : Math.max(0, totalAmount - customerPaidAmount));
+
+  const codAmount =
+    order.codAmount != null && num(order.codAmount) > 0
+      ? num(order.codAmount)
+      : (!order.isDigitalOnly && totalAmount > customerPaidAmount
+          ? Math.max(0, totalAmount - Math.max(customerPaidAmount, requiredDeposit))
+          : 0);
+
+  const expectedCourierCost =
+    order.expectedCourierCost != null && num(order.expectedCourierCost) > 0
+      ? num(order.expectedCourierCost)
+      : (!order.isDigitalOnly ? 4050 : 0);
+
+  return {
+    ...order,
+    totalAmount,
+    shippingFee: num(order.shippingFee),
+    expectedCourierCost,
+    actualCourierCost: order.actualCourierCost != null ? num(order.actualCourierCost) : null,
+    requiredDeposit,
+    customerPaidAmount,
+    customerBalance,
+    codAmount,
+    packedWeightKg: num(order.packedWeightKg),
+    returnCost: num(order.returnCost),
+    customer,
+    items: items.map((i) => ({
+      ...i,
+      unitPrice: num(i.unitPrice),
+      costSnapshot: num(i.costSnapshot),
+      quantity: Number(i.quantity),
+      warrantyMonths: Number(i.warrantyMonths),
+    })),
+    payments: payments.map((p) => ({
+      ...p,
+      amount: num(p.amount),
+    })),
+    allocations: allocations.map((a) => ({
+      ...a,
+      allocatedCollected: num(a.allocatedCollected),
+      allocatedCourierFee: num(a.allocatedCourierFee),
+      netOrderPayout: num(a.netOrderPayout),
+    })),
+  };
+}
+
+/**
+ * Pre-dispatch order modifications: change items, address, delivery fee, required deposit.
+ * Transactionally adjusts stock reservations and recomputes balances.
+ * Flags overpayment if paid amount exceeds new total.
+ */
+export async function preDispatchEditOrder(
+  orderId: string,
+  input: z.infer<typeof orderPreDispatchEditSchema>,
+  actor: string = "admin",
+): Promise<ActionResult> {
+  try {
+    if (!db) return { ok: false, error: "Database is not configured." };
+    const parsed = orderPreDispatchEditSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message || "Invalid input" };
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+
+      if (!order) throw new Error("Order not found");
+      if (order.commercialFrozen) {
+        throw new Error(
+          "Commercial terms are locked after dispatch. Use post-dispatch corrections instead.",
+        );
+      }
+      if (
+        ["dispatched", "delivered", "cancelled", "returned"].includes(
+          order.fulfillmentStatus,
+        )
+      ) {
+        throw new Error(
+          `Cannot edit commercial terms when order is ${order.fulfillmentStatus}`,
+        );
+      }
+
+      // 1. Fetch current order items to compute stock deltas
+      const currentItems = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, orderId));
+
+      const oldVariantIds = [...new Set(currentItems.map((ci) => ci.variantId))];
+      const currentVariants = oldVariantIds.length
+        ? await tx
+            .select({ id: productVariants.id, sku: productVariants.sku })
+            .from(productVariants)
+            .where(inArray(productVariants.id, oldVariantIds))
+        : [];
+      const variantIdToSku = new Map(currentVariants.map((v) => [v.id, v.sku]));
+
+      const oldQtyBySku = new Map<string, number>();
+      for (const ci of currentItems) {
+        const sku = variantIdToSku.get(ci.variantId);
+        if (sku) {
+          oldQtyBySku.set(sku, (oldQtyBySku.get(sku) || 0) + Number(ci.quantity));
+        }
+      }
+
+      const newQtyBySku = new Map<string, { qty: number; unitPrice: number }>();
+      for (const ni of parsed.data.items) {
+        const existing = newQtyBySku.get(ni.sku) || {
+          qty: 0,
+          unitPrice: ni.unitPrice,
+        };
+        newQtyBySku.set(ni.sku, {
+          qty: existing.qty + ni.quantity,
+          unitPrice: ni.unitPrice,
+        });
+      }
+
+      const allSkus = [...new Set([...oldQtyBySku.keys(), ...newQtyBySku.keys()])];
+      const variants = await tx
+        .select({
+          id: productVariants.id,
+          sku: productVariants.sku,
+          price: productVariants.price,
+          cost: productVariants.costPrice,
+          stock: productVariants.stockQuantity,
+          category: products.category,
+          productId: products.id,
+        })
+        .from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
+        .where(inArray(productVariants.sku, allSkus))
+        .for("update");
+
+      const variantMap = new Map(variants.map((v) => [v.sku, v]));
+
+      // Check stock deltas
+      for (const sku of allSkus) {
+        const oldQty = oldQtyBySku.get(sku) || 0;
+        const newQty = newQtyBySku.get(sku)?.qty || 0;
+        const delta = newQty - oldQty;
+        const variant = variantMap.get(sku);
+        if (!variant) throw new Error(`Product ${sku} not found`);
+
+        if (delta > 0) {
+          if (variant.category !== "PUBG Accounts" && variant.stock < delta) {
+            throw new Error(
+              `Insufficient stock for ${sku}. Available: ${variant.stock}, needed: ${delta}`,
+            );
+          }
+          if (variant.category !== "PUBG Accounts") {
+            await tx
+              .update(productVariants)
+              .set({
+                stockQuantity: sql`${productVariants.stockQuantity} - ${delta}`,
+              })
+              .where(eq(productVariants.id, variant.id));
+          }
+        } else if (delta < 0) {
+          const returnQty = Math.abs(delta);
+          if (variant.category !== "PUBG Accounts") {
+            await tx
+              .update(productVariants)
+              .set({
+                stockQuantity: sql`${productVariants.stockQuantity} + ${returnQty}`,
+              })
+              .where(eq(productVariants.id, variant.id));
+          }
+        }
+      }
+
+      // Delete old items and insert new ones
+      await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+
+      let newSubtotal = 0;
+      const isDigitalOnly = parsed.data.items.every((item) => {
+        const v = variantMap.get(item.sku);
+        return v?.category === "PUBG Accounts";
+      });
+
+      for (const item of parsed.data.items) {
+        const variant = variantMap.get(item.sku)!;
+        newSubtotal += item.unitPrice * item.quantity;
+        for (let i = 0; i < item.quantity; i++) {
+          await tx.insert(orderItems).values({
+            orderId,
+            productId: variant.productId,
+            variantId: variant.id,
+            unitPrice: String(item.unitPrice),
+            costSnapshot: variant.cost,
+            quantity: 1,
+          });
+        }
+      }
+
+      const deliveryFee = parsed.data.deliveryFee;
+      const newTotal = newSubtotal + deliveryFee;
+      const requiredDeposit = Math.min(newTotal, parsed.data.requiredDeposit);
+      const codAmount = Math.max(0, newTotal - requiredDeposit);
+
+      const royalDelivery = calculateRoyalDelivery({
+        destinationCity: parsed.data.destinationCity,
+        weightKg: parsed.data.packedWeightKg,
+        isDigitalOnly,
+      });
+
+      await tx
+        .update(orders)
+        .set({
+          customerName: parsed.data.customerName,
+          phone: parsed.data.phone,
+          shippingAddress: parsed.data.shippingAddress,
+          streetAddress: parsed.data.shippingAddress,
+          destinationCity: royalDelivery.destinationCity,
+          destinationState: royalDelivery.destinationState,
+          shippingZone: royalDelivery.zone,
+          packedWeightKg: String(parsed.data.packedWeightKg),
+          shippingFee: String(deliveryFee),
+          expectedCourierCost: String(royalDelivery.expectedCourierCost),
+          totalAmount: String(newTotal),
+          requiredDeposit: String(requiredDeposit),
+          codAmount: String(codAmount),
+          deliveryFeeConfirmed: true,
+          internalNotes: parsed.data.internalNotes || order.internalNotes,
+        })
+        .where(eq(orders.id, orderId));
+
+      const paymentRecalc = await recalculateOrderPayments(tx, orderId);
+
+      if (paymentRecalc.customerPaymentStatus === "overpaid") {
+        await tx.insert(staffAlerts).values({
+          type: "order.overpaid",
+          title: `Overpayment detected • ${order.orderCode}`,
+          body: `Order edited. Customer paid ${paymentRecalc.paidAmount} MMK, but new total is ${newTotal} MMK. Process refund for difference.`,
+          targetCode: order.orderCode,
+        });
+      }
+
+      return {
+        orderCode: order.orderCode,
+        newTotal,
+        paymentRecalc,
+      };
+    });
+
+    await audit(
+      "order.pre_dispatch_edit",
+      result.orderCode,
+      `Pre-dispatch order modified by ${actor}. New total: ${result.newTotal} MMK. Status: ${result.paymentRecalc.customerPaymentStatus}.`,
+      actor,
+    );
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[preDispatchEditOrder error]", error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to edit order",
+    };
+  }
+}
+
+/**
+ * Post-dispatch operational correction. Freezes commercial terms and allows only
+ * tracking number, courier, shipping address notes, or internal notes.
+ */
+export async function postDispatchCorrection(
+  orderId: string,
+  input: z.infer<typeof postDispatchCorrectionSchema>,
+  actor: string = "admin",
+): Promise<ActionResult> {
+  try {
+    if (!db) return { ok: false, error: "Database is not configured." };
+    const parsed = postDispatchCorrectionSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message || "Invalid input" };
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+
+      if (!order) throw new Error("Order not found");
+
+      const updates: Partial<typeof orders.$inferInsert> = {};
+      if (parsed.data.trackingNumber) updates.trackingNumber = parsed.data.trackingNumber;
+      if (parsed.data.shippingCarrier) updates.shippingCarrier = parsed.data.shippingCarrier;
+      if (parsed.data.shippingAddress) {
+        updates.shippingAddress = parsed.data.shippingAddress;
+        updates.streetAddress = parsed.data.shippingAddress;
+      }
+      if (parsed.data.phone) updates.phone = parsed.data.phone;
+
+      const appendNote = `[Correction by ${actor} on ${new Date().toISOString().slice(0, 10)}: ${parsed.data.reason}]`;
+      updates.internalNotes = order.internalNotes
+        ? `${order.internalNotes}\n${appendNote}`
+        : appendNote;
+
+      await tx.update(orders).set(updates).where(eq(orders.id, orderId));
+      return { orderCode: order.orderCode };
+    });
+
+    await audit(
+      "order.post_dispatch_correction",
+      result.orderCode,
+      `Post-dispatch update: ${parsed.data.reason}`,
+      actor,
+    );
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[postDispatchCorrection error]", error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to update order",
+    };
+  }
+}
+
+/**
+ * Record a failed delivery / customer return.
+ * Sets fulfillment to 'returned', stores return cost & reason,
+ * handles stock disposition (return to inventory or write-off),
+ * and handles deposit retention vs refund reversal.
+ */
+export async function recordFailedDelivery(
+  orderId: string,
+  input: z.infer<typeof failedDeliverySchema>,
+  actor: string = "admin",
+): Promise<ActionResult> {
+  try {
+    if (!db) return { ok: false, error: "Database is not configured." };
+    const parsed = failedDeliverySchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message || "Invalid input" };
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+
+      if (!order) throw new Error("Order not found");
+      if (!["dispatched", "delivered"].includes(order.fulfillmentStatus)) {
+        throw new Error(
+          "Failed delivery can only be recorded for dispatched or delivered orders",
+        );
+      }
+
+      const now = new Date();
+
+      if (parsed.data.stockDisposition === "return_to_stock") {
+        const items = await tx
+          .select({
+            variantId: orderItems.variantId,
+            quantity: orderItems.quantity,
+            deviceUnitId: orderItems.deviceUnitId,
+            category: products.category,
+          })
+          .from(orderItems)
+          .innerJoin(products, eq(products.id, orderItems.productId))
+          .where(eq(orderItems.orderId, orderId));
+
+        for (const item of items) {
+          if (item.category === "PUBG Accounts") {
+            await tx
+              .update(productVariants)
+              .set({ listingStatus: "available" })
+              .where(eq(productVariants.id, item.variantId));
+          } else {
+            await tx
+              .update(productVariants)
+              .set({
+                stockQuantity: sql`${productVariants.stockQuantity} + ${item.quantity}`,
+              })
+              .where(eq(productVariants.id, item.variantId));
+          }
+          if (item.deviceUnitId) {
+            await tx
+              .update(deviceUnits)
+              .set({ status: "in_stock" })
+              .where(eq(deviceUnits.id, item.deviceUnitId));
+          }
+        }
+      }
+
+      if (
+        (parsed.data.depositDisposition === "refund_fully" ||
+          parsed.data.depositDisposition === "partial_refund") &&
+        num(order.customerPaidAmount) > 0
+      ) {
+        const refundAmt =
+          parsed.data.depositDisposition === "refund_fully"
+            ? num(order.customerPaidAmount)
+            : parsed.data.refundAmount;
+
+        if (refundAmt > 0) {
+          await tx.insert(orderPayments).values({
+            orderId,
+            paymentType: "refund_reversal",
+            amount: String(-refundAmt),
+            paymentMethod: "refund",
+            status: "verified",
+            recordedBy: actor,
+            verifiedBy: actor,
+            verifiedAt: now,
+            notes: `Failed delivery refund. Reason: ${parsed.data.reason}`,
+            createdAt: now,
+          });
+          await recalculateOrderPayments(tx, orderId);
+        }
+      }
+
+      await tx
+        .update(orders)
+        .set({
+          fulfillmentStatus: "returned",
+          returnCost: String(parsed.data.returnCost),
+          returnReason: parsed.data.reason,
+          failedDeliveryAt: now,
+          courierSettlementStatus: "unsettled",
+        })
+        .where(eq(orders.id, orderId));
+
+      await tx.insert(staffAlerts).values({
+        type: "order.returned",
+        title: `Delivery failed / returned • ${order.orderCode}`,
+        body: `Order returned. Courier return fee: ${parsed.data.returnCost} MMK. Stock: ${parsed.data.stockDisposition}. Reason: ${parsed.data.reason}`,
+        targetCode: order.orderCode,
+      });
+
+      return { orderCode: order.orderCode };
+    });
+
+    await audit(
+      "order.failed_delivery",
+      result.orderCode,
+      `Failed delivery recorded: ${parsed.data.reason}. Return cost: ${parsed.data.returnCost} MMK.`,
+      actor,
+    );
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[recordFailedDelivery error]", error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to record failed delivery",
+    };
+  }
+}
+

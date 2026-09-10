@@ -111,6 +111,26 @@ setup.push(
   ...(await statementsFrom("migrations/0010_categorized_audit_history.sql")),
 );
 
+setup.push(
+  ...(await statementsFrom("migrations/0015_deposit_cod_royal_settlement.sql")),
+);
+
+setup.push(
+  ...(await statementsFrom("migrations/0017_bot_message_templates.sql")),
+);
+
+setup.push(
+  ...(await statementsFrom("migrations/0018_ai_sales_qa.sql")),
+);
+
+setup.push(
+  ...(await statementsFrom("migrations/0019_customer_points_and_tiers.sql")),
+);
+
+setup.push(
+  ...(await statementsFrom("migrations/0020_customer_code_and_telegram_username.sql")),
+);
+
 setup.push(...(await statementsFrom("seed-test.sql")));
 await sql.transaction((tx) => setup.map((statement) => tx(statement)));
 await import("./migrate-audit.mjs");

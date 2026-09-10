@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  sendTelegramMessage,
   sendTelegramOpsMessage,
   sendTelegramPhoto,
 } from "@/lib/telegram/bot";
@@ -25,7 +24,7 @@ describe("sendTelegramPhoto", () => {
 
     global.fetch = vi.fn().mockImplementation(async (url, init) => {
       capturedUrl = String(url);
-      capturedBody = init.body;
+      capturedBody = (init?.body as unknown as FormData) ?? null;
       return new Response(
         JSON.stringify({ ok: true, result: { message_id: 999 } }),
         { status: 200 },
@@ -42,12 +41,38 @@ describe("sendTelegramPhoto", () => {
     expect(res.delivered).toBe(true);
     expect(capturedUrl).toBe("https://api.telegram.org/bottest-token-xyz/sendPhoto");
     expect(capturedBody).toBeInstanceOf(FormData);
-    expect(capturedBody?.get("chat_id")).toBe("1670134164");
-    expect(capturedBody?.get("caption")).toBe("🧾 <b>MHOP-260906-TEST</b>");
-    expect(capturedBody?.get("parse_mode")).toBe("HTML");
-    const file = capturedBody?.get("photo") as File;
+    const form = capturedBody as unknown as FormData;
+    expect(form.get("chat_id")).toBe("1670134164");
+    expect(form.get("caption")).toBe("🧾 <b>MHOP-260906-TEST</b>");
+    expect(form.get("parse_mode")).toBe("HTML");
+    const file = form.get("photo") as File;
     expect(file).toBeDefined();
     expect(file.name).toBe("test-order-receipt.png");
+  });
+
+  it("includes serialized reply_markup in FormData when provided", async () => {
+    process.env.TELEGRAM_CUSTOMER_BOT_TOKEN = "test-token-xyz";
+
+    let capturedBody: FormData | null = null;
+    global.fetch = vi.fn().mockImplementation(async (_url, init) => {
+      capturedBody = (init?.body as unknown as FormData) ?? null;
+      return new Response(
+        JSON.stringify({ ok: true, result: { message_id: 1000 } }),
+        { status: 200 },
+      );
+    });
+
+    const keyboard = {
+      inline_keyboard: [[{ text: "👑 My VIP Card", callback_data: "cmd:member" }]],
+    };
+    await sendTelegramPhoto("12345", new Uint8Array([137, 80, 78, 71]), {
+      caption: "Card caption",
+      reply_markup: keyboard,
+    });
+
+    expect(capturedBody).toBeInstanceOf(FormData);
+    const form = capturedBody as unknown as FormData;
+    expect(form.get("reply_markup")).toBe(JSON.stringify(keyboard));
   });
 
   it("throws descriptive error when Telegram API rejects the photo", async () => {
@@ -82,11 +107,11 @@ describe("sendTelegramOpsMessage", () => {
     process.env.TELEGRAM_STAFF_CHAT_ID = "-100123456789";
 
     let capturedUrl = "";
-    let capturedBody: any = null;
+    let capturedBody: { chat_id?: string; text?: string; parse_mode?: string } | null = null;
 
     global.fetch = vi.fn().mockImplementation(async (url, init) => {
       capturedUrl = String(url);
-      capturedBody = JSON.parse(init.body);
+      capturedBody = JSON.parse(init?.body as string);
       return new Response(
         JSON.stringify({ ok: true, result: { message_id: 1001 } }),
         { status: 200 },
@@ -99,8 +124,62 @@ describe("sendTelegramOpsMessage", () => {
 
     expect(res.delivered).toBe(true);
     expect(capturedUrl).toBe("https://api.telegram.org/botops-token-123/sendMessage");
-    expect(capturedBody.chat_id).toBe("-100123456789");
-    expect(capturedBody.text).toBe("🆘 <b>Customer Support Request</b>");
-    expect(capturedBody.parse_mode).toBe("HTML");
+    const body = capturedBody as unknown as { chat_id?: string; text?: string; parse_mode?: string };
+    expect(body?.chat_id).toBe("-100123456789");
+    expect(body?.text).toBe("🆘 <b>Customer Support Request</b>");
+    expect(body?.parse_mode).toBe("HTML");
   });
 });
+
+describe("Telegram Webhook /member command", () => {
+  it("delivers VIP member card photo upon /member command", async () => {
+    process.env.TELEGRAM_CUSTOMER_BOT_TOKEN = "test-token-xyz";
+
+    let capturedUrl = "";
+    let capturedBody: FormData | null = null;
+    global.fetch = vi.fn().mockImplementation(async (url, init) => {
+      capturedUrl = String(url);
+      capturedBody = (init?.body as unknown as FormData) ?? null;
+      return new Response(
+        JSON.stringify({ ok: true, result: { message_id: 1234 } }),
+        { status: 200 },
+      );
+    });
+
+    const { POST: handleWebhook } = await import(
+      "@/app/api/telegram/webhook/route"
+    );
+    const { NextRequest } = await import("next/server");
+
+    const update = {
+      update_id: 999,
+      message: {
+        message_id: 1,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: 88888, type: "private" },
+        from: { id: 88888, is_bot: false, first_name: "Ko Min", username: "komin" },
+        text: "/member",
+      },
+    };
+
+    const req = new NextRequest("http://localhost:3000/api/telegram/webhook", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(update),
+    });
+
+    const res = await handleWebhook(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.action).toBe("send_photo");
+    expect(data.caption).toContain("MH OP VIP MEMBERSHIP CARD");
+    expect(capturedUrl).toContain("/sendPhoto");
+    expect(capturedBody).toBeInstanceOf(FormData);
+    const form = capturedBody as unknown as FormData;
+    expect(form.get("chat_id")).toBe("88888");
+    expect(form.get("photo")).toBeDefined();
+    expect(form.get("reply_markup")).toBeDefined();
+  });
+});
+

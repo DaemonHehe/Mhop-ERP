@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
 import {
@@ -63,6 +63,12 @@ export interface ErpSnapshot {
   openPurchases: number;
   warrantyCost: number;
   refunds: number;
+  expectedRoyalPayment: number;
+  expectedRoyalCod: number;
+  expectedRoyalCourierCost: number;
+  unsettledRoyalOrdersCount: number;
+  courierHeldFunds?: number;
+  pendingCustomerBalances?: number;
 }
 const num = (value: string | number) => Number(value);
 function failure(error: unknown, fallback: string) {
@@ -87,6 +93,10 @@ export async function getErpSnapshot(): Promise<ErpSnapshot> {
       openPurchases: 2,
       warrantyCost: 18000,
       refunds: 0,
+      expectedRoyalPayment: 1_583_250,
+      expectedRoyalCod: 1_603_500,
+      expectedRoyalCourierCost: 20_250,
+      unsettledRoyalOrdersCount: 6,
     };
   const [
     [sales],
@@ -94,12 +104,13 @@ export async function getErpSnapshot(): Promise<ErpSnapshot> {
     [costs],
     [stock],
     [open],
-    [deliveryFees],
+    [deliveryFigures],
     [warranty],
+    [balances],
   ] = await Promise.all([
     db
       .select({
-        revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.totalAmount} else 0 end),0)`,
+        revenue: sql<string>`coalesce(sum(case when ${orders.customerPaymentStatus} in ('cod_collected', 'fully_paid') or ${orders.paymentStatus}='verified' then ${orders.totalAmount} else 0 end),0)`,
       })
       .from(orders),
     db
@@ -108,7 +119,12 @@ export async function getErpSnapshot(): Promise<ErpSnapshot> {
       })
       .from(orderItems)
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
-      .where(eq(orders.paymentStatus, "verified")),
+      .where(
+        or(
+          inArray(orders.customerPaymentStatus, ["cod_collected", "fully_paid"]),
+          eq(orders.paymentStatus, "verified"),
+        ),
+      ),
     db
       .select({ value: sql<string>`coalesce(sum(${expenses.amount}),0)` })
       .from(expenses),
@@ -127,7 +143,8 @@ export async function getErpSnapshot(): Promise<ErpSnapshot> {
       .where(eq(purchaseOrders.status, "ordered")),
     db
       .select({
-        revenue: sql<string>`coalesce(sum(case when ${orders.paymentStatus}='verified' then ${orders.shippingFee} else 0 end),0)`,
+        collectedFees: sql<string>`coalesce(sum(case when ${orders.customerPaymentStatus} in ('cod_collected', 'fully_paid') or ${orders.paymentStatus}='verified' then ${orders.shippingFee} else 0 end),0)`,
+        actualCourierCost: sql<string>`coalesce(sum(case when ${orders.customerPaymentStatus} in ('cod_collected', 'fully_paid') or ${orders.paymentStatus}='verified' then coalesce(${orders.actualCourierCost}, ${orders.expectedCourierCost}, 0) else 0 end),0)`,
       })
       .from(orders),
     db
@@ -136,11 +153,27 @@ export async function getErpSnapshot(): Promise<ErpSnapshot> {
         refunds: sql<string>`coalesce(sum(${tickets.refundAmount}),0)`,
       })
       .from(tickets),
+    db
+      .select({
+        unsettledCount: sql<number>`count(case when ${orders.courierSettlementStatus} in ('unsettled', 'allocated_partial', 'discrepancy') and ${orders.codAmount} > 0 and ${orders.fulfillmentStatus} not in ('cancelled', 'returned') then 1 end)`,
+        totalCod: sql<string>`coalesce(sum(case when ${orders.courierSettlementStatus} in ('unsettled', 'allocated_partial', 'discrepancy') and ${orders.codAmount} > 0 and ${orders.fulfillmentStatus} not in ('cancelled', 'returned') then ${orders.codAmount} else 0 end),0)`,
+        courierDeduction: sql<string>`coalesce(sum(case when ${orders.courierSettlementStatus} in ('unsettled', 'allocated_partial', 'discrepancy') and ${orders.codAmount} > 0 and ${orders.fulfillmentStatus} not in ('cancelled', 'returned') then ${orders.expectedCourierCost} else 0 end),0)`,
+        courierHeld: sql<string>`coalesce(sum(case when ${orders.customerPaymentStatus}='cod_collected' and ${orders.courierSettlementStatus} in ('unsettled', 'allocated_partial') then ${orders.codAmount} else 0 end),0)`,
+        customerBalances: sql<string>`coalesce(sum(case when ${orders.fulfillmentStatus} != 'cancelled' then ${orders.customerBalance} else 0 end),0)`,
+      })
+      .from(orders),
   ]);
-  const grossProfit = num(profit.value) + num(deliveryFees.revenue),
+  const deliveryMargin =
+    num(deliveryFigures.collectedFees) - num(deliveryFigures.actualCourierCost);
+  const grossProfit = num(profit.value) + deliveryMargin,
     expenseTotal = num(costs.value),
     warrantyCost = num(warranty.cost),
     refunds = num(warranty.refunds);
+  const expectedRoyalCod = num(balances.totalCod);
+  const expectedRoyalCourierCost = num(balances.courierDeduction);
+  const expectedRoyalPayment = Math.max(0, expectedRoyalCod - expectedRoyalCourierCost);
+  const unsettledRoyalOrdersCount = Number(balances.unsettledCount) || 0;
+
   return {
     mode: "database",
     sales: num(sales.revenue),
@@ -151,6 +184,12 @@ export async function getErpSnapshot(): Promise<ErpSnapshot> {
     openPurchases: Number(open.value),
     warrantyCost,
     refunds,
+    expectedRoyalPayment,
+    expectedRoyalCod,
+    expectedRoyalCourierCost,
+    unsettledRoyalOrdersCount,
+    courierHeldFunds: num(balances.courierHeld),
+    pendingCustomerBalances: num(balances.customerBalances),
   };
 }
 export async function getSuppliers(): Promise<SupplierRecord[]> {

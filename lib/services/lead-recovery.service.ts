@@ -4,6 +4,7 @@ import { sendTelegramMessage } from "@/lib/telegram/bot";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { audit } from "./audit.service";
 import type { BotSessionState } from "./bot-session.service";
+import { formatRecoveryReminder } from "./bot-settings.service";
 
 export type RecoveryLead = {
   id: string;
@@ -22,7 +23,11 @@ export async function getRecoveryLeads(): Promise<RecoveryLead[]> {
   ]);
   const result: RecoveryLead[] = [];
   for (const order of purchases) {
-    if (order.paymentStatus !== "pending" || order.paymentSlipUrl ||
+    const isUnpaid =
+      order.customerPaymentStatus === "unpaid" ||
+      order.customerPaymentStatus === "deposit_pending" ||
+      order.paymentStatus === "pending";
+    if (!isUnpaid || order.paymentSlipUrl ||
         !["new", "confirmed"].includes(order.fulfillmentStatus)) continue;
     const person = people.find((p) => p.id === order.customerId);
     const telegramId = order.telegramUserId || person?.telegramUserId || null;
@@ -67,9 +72,11 @@ export async function sendRecoveryReminder(id: string, expectedActivityAt?: stri
   if (!Number.isSafeInteger(chatId) || chatId <= 0) return { ok: false, error: "No Telegram customer chat is linked." };
   if (!consumeRateLimit(`lead-reminder:${chatId}`, 1, 60_000))
     return { ok: false, error: "Please wait one minute before sending another reminder to this customer." };
-  const text = lead.stage === "unpaid"
-    ? `မင်္ဂလာပါခင်ဗျာ။ MH OP မှ ${lead.detail.split(" · ")[0]} အတွက် ဝယ်ယူမှု မပြီးဆုံးသေးပါ။ ဝယ်ယူမှုဆက်လက်လုပ်ဆောင်ရန် သို့မဟုတ် အကူအညီလိုပါက ဒီ bot ကို စာပြန်ပေးနိုင်ပါတယ်။ ငွေလွှဲပြီးပါက payment slip ပေးပို့ပေးပါခင်ဗျာ။`
-    : "မင်္ဂလာပါခင်ဗျာ။ MH OP မှာ ကြည့်ရှုထားတဲ့ ပစ္စည်းများကို စိတ်ဝင်စားသေးပါသလား။ /catalog ဖြင့် ပြန်ကြည့်နိုင်ပြီး ဝယ်ယူရန် အကူအညီလိုပါက ဒီ bot ကို စာပြန်ပေးနိုင်ပါတယ်ခင်ဗျာ။";
+  const text = await formatRecoveryReminder({
+    stage: lead.stage,
+    orderCode: lead.detail.split(" · ")[0],
+    customer: lead.customerName,
+  });
   try {
     const delivery = await sendTelegramMessage(chatId, text);
     if (!delivery.delivered) return { ok: false, error: "The Telegram customer sales bot is not configured." };

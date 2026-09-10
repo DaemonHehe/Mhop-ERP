@@ -21,6 +21,7 @@ import {
   Layers3,
   UserCog,
   Store,
+  Bot,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "./logo";
@@ -38,6 +39,7 @@ const nav = [
   ["/tickets", "Warranty & RMA", LifeBuoy],
   ["/customers", "Customers", Users],
   ["/leads", "Leads", Magnet],
+  ["/bot", "Bot & Messages", Bot],
   ["/ai-studio", "AI Creative Studio", WandSparkles],
   ["/staff", "Staff & access", UserCog],
   ["/logs", "Activity logs", ScrollText],

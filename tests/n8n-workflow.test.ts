@@ -41,14 +41,9 @@ describe("n8n workflow data contracts", () => {
     expect(runCode("Normalize Critical Event", [{ body: { type: "staff.created" } }])).toEqual([]);
   });
 
-  it("does not require or advertise non-redeemable voucher codes", () => {
-    const result = runCode("Keep Valid Follow Up Recipients", [
-      { order_code: "A", telegram_user_id: "12345", customer: "Customer" },
-      { order_code: "B", telegram_user_id: "12345", customer: "Customer" },
-    ]);
-    expect(result).toHaveLength(1);
-    const node = nodes.find((item) => item.name === "Send Accessory Follow Up")!;
-    expect(node.parameters.text).not.toMatch(/voucher|10% OFF/i);
+  it("decommissions the old 21–30 day cross-sell workflow", () => {
+    expect(nodes.find((item) => item.name === "Send Accessory Follow Up")).toBeUndefined();
+    expect(nodes.find((item) => item.name === "13:00 Cross Sell Scan")).toBeUndefined();
   });
 
   it("renders bounded, escaped Telegram text and real line breaks", () => {

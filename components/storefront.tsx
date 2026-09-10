@@ -7,7 +7,17 @@ import { formatMMK } from "@/lib/data";
 import type { PublicCatalogItem } from "@/lib/services/stock.service";
 import type { PublicBundleSet } from "@/lib/services/bundle.service";
 import { Logo } from "./logo";
-import { Search, ShoppingBag, ArrowRight, Check, Plus, X } from "lucide-react";
+import {
+  Search,
+  ShoppingBag,
+  ArrowRight,
+  Check,
+  Plus,
+  X,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { clientConfig } from "@/lib/client-config";
 
 const departments = ["All", "PUBG Accounts", "Gaming Gadgets"] as const;
@@ -42,6 +52,11 @@ export function Storefront({
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<string[]>([]);
   const [compare, setCompare] = useState<string[]>([]);
+  const [galleryModal, setGalleryModal] = useState<{
+    title: string;
+    images: string[];
+    activeIndex: number;
+  } | null>(null);
 
   const filtered = useMemo(
     () =>
@@ -242,7 +257,20 @@ export function Storefront({
             key={p.variantId}
             className="group overflow-hidden rounded-[22px] border border-[#ddd9ce] bg-[#fffef9]"
           >
-            <div className="relative aspect-[4/3] overflow-hidden bg-[#e8e6df]">
+            <div
+              className={`relative aspect-[4/3] overflow-hidden bg-[#e8e6df] ${
+                p.images && p.images.length > 1 ? "cursor-pointer" : ""
+              }`}
+              onClick={() => {
+                if (p.images && p.images.length > 1) {
+                  setGalleryModal({
+                    title: p.name,
+                    images: p.images,
+                    activeIndex: 0,
+                  });
+                }
+              }}
+            >
               <Image
                 src={p.image}
                 alt={p.name}
@@ -251,6 +279,22 @@ export function Storefront({
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                 className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
               />
+              {p.images && p.images.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGalleryModal({
+                      title: p.name,
+                      images: p.images!,
+                      activeIndex: 0,
+                    });
+                  }}
+                  className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/75 px-2.5 py-1 text-[11px] font-bold text-white shadow-xs backdrop-blur-md hover:bg-black transition"
+                >
+                  <Camera size={12} /> {p.images.length} photos
+                </button>
+              )}
               <button
                 aria-label={`${compare.includes(p.sku) ? "Remove" : "Add"} ${p.name} ${compare.includes(p.sku) ? "from" : "to"} comparison`}
                 onClick={() =>
@@ -464,6 +508,117 @@ export function Storefront({
           <button aria-label="Clear comparison" onClick={() => setCompare([])}>
             <X size={16} />
           </button>
+        </div>
+      )}
+
+      {galleryModal && (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 p-4 backdrop-blur-md animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="relative flex w-full max-w-4xl flex-col items-center">
+            <div className="mb-3 flex w-full items-center justify-between text-white">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#c7f36b]">
+                  Verified Account Screenshots
+                </p>
+                <h3 className="text-base font-bold text-white sm:text-lg">
+                  {galleryModal.title}
+                </h3>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold text-white backdrop-blur-xs">
+                  {galleryModal.activeIndex + 1} / {galleryModal.images.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setGalleryModal(null)}
+                  className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="relative flex aspect-[16/10] w-full max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl bg-black">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={galleryModal.images[galleryModal.activeIndex]}
+                alt={`${galleryModal.title} screenshot ${galleryModal.activeIndex + 1}`}
+                className="max-h-full max-w-full object-contain"
+              />
+
+              {galleryModal.images.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGalleryModal((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              activeIndex:
+                                (prev.activeIndex - 1 + prev.images.length) %
+                                prev.images.length,
+                            }
+                          : null,
+                      )
+                    }
+                    className="absolute left-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGalleryModal((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              activeIndex:
+                                (prev.activeIndex + 1) % prev.images.length,
+                            }
+                          : null,
+                      )
+                    }
+                    className="absolute right-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {galleryModal.images.length > 1 && (
+              <div className="mt-3 flex max-w-full gap-2 overflow-x-auto p-1">
+                {galleryModal.images.map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() =>
+                      setGalleryModal((prev) =>
+                        prev ? { ...prev, activeIndex: idx } : null,
+                      )
+                    }
+                    className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 transition ${
+                      galleryModal.activeIndex === idx
+                        ? "border-[#c7f36b] scale-105"
+                        : "border-transparent opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img}
+                      alt={`Thumbnail ${idx + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

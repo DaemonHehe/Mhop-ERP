@@ -2,21 +2,30 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { createOrder } from "@/app/actions/store";
+import { createOrder, lookupCustomerLoyaltyAction, type CustomerLoyaltyProfile } from "@/app/actions/store";
 import {
   ArrowRight,
   Check,
   CheckCircle2,
   Copy,
+  Crown,
+  MapPin,
   Send,
   ShoppingBag,
+  Sparkles,
 } from "lucide-react";
-import {
-  calculateOrderShipping,
-  clientConfig,
-  type ShippingZone,
-} from "@/lib/client-config";
+import { calculateTierPerks } from "@/lib/loyalty";
+import { clientConfig } from "@/lib/client-config";
 import { formatMMK } from "@/lib/data";
+import {
+  CHECKOUT_CITIES,
+  SUSPENDED_DELIVERY_NOTICE,
+  isLocationSuspended,
+} from "@/lib/shipping/destinations-data";
+import {
+  calculateRoyalDelivery,
+  calculateRequiredDeposit,
+} from "@/lib/shipping/royal-rates";
 
 declare global {
   interface Window {
@@ -54,9 +63,13 @@ const paymentEntries = [
 interface CompletedOrderData {
   orderCode: string;
   total: number;
+  requiredDeposit: number;
+  codAmount: number;
+  destinationCity: string;
   paymentMethod: "kbzpay" | "wavepay" | "bank";
   customerName: string;
   phone: string;
+  isDigitalOnly: boolean;
 }
 
 export function CheckoutForm({
@@ -65,16 +78,18 @@ export function CheckoutForm({
   bundleIds,
   disabled,
   digitalOnly,
+  isMixedCart,
 }: {
   total: number;
   skus: string[];
   bundleIds: string[];
   disabled: boolean;
   digitalOnly: boolean;
+  isMixedCart?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
-  const [zone] = useState<ShippingZone>("yangonInner");
+  const [selectedCity, setSelectedCity] = useState("Yangon");
   const [customerName, setCustomerName] = useState("");
   const [telegramUserId, setTelegramUserId] = useState("");
   const [completedOrder, setCompletedOrder] =
@@ -125,11 +140,65 @@ export function CheckoutForm({
     }
   }, [completedOrder]);
 
-  const shipping = calculateOrderShipping(total, zone, digitalOnly);
+  const [phone, setPhone] = useState("");
+  const [loyalty, setLoyalty] = useState<CustomerLoyaltyProfile | null>(null);
+
+  useEffect(() => {
+    const clean = phone.trim().replace(/[^\d+]/g, "");
+    if (clean.length < 8 && !telegramUserId) {
+      setLoyalty((prev) => (prev?.found ? null : prev));
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await lookupCustomerLoyaltyAction({
+          phone: clean.length >= 8 ? clean : null,
+          telegramUserId: telegramUserId || null,
+        });
+        if (active && res) {
+          setLoyalty(res);
+        }
+      } catch (err) {
+        console.error("Loyalty lookup error", err);
+      }
+    }, 400);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [phone, telegramUserId]);
+
+  const deliverySnapshot = calculateRoyalDelivery({
+    destinationCity: selectedCity,
+    weightKg: 1.0,
+    isDigitalOnly: digitalOnly,
+  });
+
+  const customerTier = loyalty?.tier || "member";
+  const standardShipping = digitalOnly ? 0 : deliverySnapshot.customerDeliveryFee;
+  const tierPerks = calculateTierPerks(customerTier, total, standardShipping);
+
+  const discountAmount = tierPerks.productDiscountAmount;
+  const discountedSubtotal = tierPerks.netProductSubtotal;
+  const shipping = digitalOnly ? 0 : tierPerks.netDeliveryFee;
+  const orderTotal = discountedSubtotal + shipping;
+  const pointsToEarn = tierPerks.pointsToEarn;
+  const requiredDeposit = calculateRequiredDeposit(orderTotal, digitalOnly);
+  const codAmount = Math.max(0, orderTotal - requiredDeposit);
 
   const submit = (form: FormData) =>
     startTransition(async () => {
       setMessage("");
+      if (!digitalOnly && isLocationSuspended(selectedCity)) {
+        setMessage(SUSPENDED_DELIVERY_NOTICE);
+        return;
+      }
+      form.set("destinationCity", selectedCity);
+      form.set("weightKg", "1.0");
+      form.set("orderSource", "web");
       const result = await createOrder(form);
       if (result.ok && result.data?.orderCode) {
         const pMethod =
@@ -139,10 +208,14 @@ export function CheckoutForm({
         const cPhone = (form.get("phone") as string) || "";
         setCompletedOrder({
           orderCode: result.data.orderCode,
-          total: total + shipping,
+          total: orderTotal,
+          requiredDeposit,
+          codAmount,
+          destinationCity: deliverySnapshot.destinationCity,
           paymentMethod: pMethod,
           customerName: cName,
           phone: cPhone,
+          isDigitalOnly: digitalOnly,
         });
       } else {
         setMessage(
@@ -228,11 +301,26 @@ export function CheckoutForm({
               )}
             </button>
           </div>
-          <div className="mt-4 flex items-center justify-between border-t border-[#f1efe8] pt-3 text-xs">
-            <span className="text-[#777]">Total Payable · စုစုပေါင်း ကျသင့်ငွေ</span>
-            <span className="font-bold text-black">
-              {formatMMK(completedOrder.total)}
-            </span>
+
+          <div className="mt-4 space-y-2 border-t border-[#f1efe8] pt-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[#777]">Order Total · စုစုပေါင်း</span>
+              <span className="font-bold text-black">
+                {formatMMK(completedOrder.total)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between font-bold text-[#ff6b35]">
+              <span>Deposit Required Now · ယခုလွှဲရမည့် စရန်ငွေ</span>
+              <span>{formatMMK(completedOrder.requiredDeposit)}</span>
+            </div>
+            {!completedOrder.isDigitalOnly && (
+              <div className="flex items-center justify-between text-[#555]">
+                <span>Remaining COD on Delivery · ပစ္စည်းရောက်မှ ပေးချေရန်</span>
+                <span className="font-bold text-black">
+                  {formatMMK(completedOrder.codAmount)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -281,17 +369,37 @@ export function CheckoutForm({
                 </strong>
               </p>
               <p className="text-[#777]">
-                Transfer Amount:{" "}
+                {completedOrder.isDigitalOnly
+                  ? "Transfer Full Amount: "
+                  : "Deposit to Transfer Now: "}
                 <strong className="font-bold text-[#ff6b35]">
-                  {formatMMK(completedOrder.total)}
+                  {formatMMK(completedOrder.requiredDeposit)}
                 </strong>
               </p>
             </div>
           </div>
           <div className="mt-3 text-xs leading-5 text-[#62635d]">
-            💡 ငွေလွှဲပြီးပါက <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order
-            Code <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram Bot
-            သို့ ပေးပို့ပေးပါခင်ဗျာ။ Admin Team မှ အမြန်ဆုံး စစ်ဆေးအတည်ပြုပေးပါမည်။
+            {completedOrder.isDigitalOnly ? (
+              <>
+                💡 PUBG Account မှာ 100% Prepayment စနစ်ဖြစ်ပါသဖြင့် စုစုပေါင်း{" "}
+                <strong>{formatMMK(completedOrder.total)}</strong> ကို
+                လွှဲပေးပြီးပါက <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order
+                Code <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram
+                Bot သို့ ပေးပို့ပေးပါခင်ဗျာ။ Admin Team မှ အကောင့်အချက်အလက်ကို
+                ချက်ချင်း လွှဲပြောင်းပေးပါမည်။
+              </>
+            ) : (
+              <>
+                💡 စရန်ငွေ{" "}
+                <strong>{formatMMK(completedOrder.requiredDeposit)}</strong> ကို
+                လွှဲပြီးပါက <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order
+                Code <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram
+                Bot သို့ ပေးပို့ပေးပါခင်ဗျာ။ စရန်ငွေ စစ်ဆေးအတည်ပြုပြီးသည်နှင့်
+                Royal Express ဖြင့် ထုတ်ပိုးပို့ဆောင်ပေးမည်ဖြစ်ပြီး ကျန်ငွေ{" "}
+                <strong>{formatMMK(completedOrder.codAmount)}</strong> ကို
+                ပစ္စည်းရောက်ရှိချိန်တွင် Royal Express courier သို့ ပေးချေနိုင်ပါသည်။
+              </>
+            )}
           </div>
         </div>
 
@@ -325,10 +433,19 @@ export function CheckoutForm({
         Complete your order.
       </h1>
 
+      {isMixedCart && (
+        <div className="mt-4 rounded-xl border border-[#ffcdbe] bg-[#fff2ee] p-4 text-xs text-[#b83814]">
+          <p className="font-bold">⚠️ Mixed Cart Not Allowed</p>
+          <p className="mt-1">
+            PUBG accounts require full prepayment, whereas physical items require 10,000 MMK deposit + Royal Express COD. Please separate into two orders.
+          </p>
+        </div>
+      )}
+
       <form action={submit} className="mt-8 space-y-4">
         <input type="hidden" name="skus" value={skus.join(",")} />
         <input type="hidden" name="bundleIds" value={bundleIds.join(",")} />
-        <input type="hidden" name="shippingZone" value={zone} />
+        <input type="hidden" name="destinationCity" value={selectedCity} />
         {telegramUserId && (
           <input type="hidden" name="telegramUserId" value={telegramUserId} />
         )}
@@ -357,28 +474,159 @@ export function CheckoutForm({
             <input
               id="checkout-phone"
               name="phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="09..."
               required
               maxLength={40}
               className="mt-2 h-12 w-full rounded-xl border bg-white px-4"
             />
           </div>
         </div>
+
+        {/* Customer Loyalty Tier & Perks Banner */}
+        {loyalty?.found ? (
+          <div
+            className={`rounded-2xl border p-4 ${
+              customerTier === "platinum"
+                ? "border-purple-200 bg-purple-50/80 text-purple-950"
+                : customerTier === "gold"
+                  ? "border-amber-200 bg-amber-50/80 text-amber-950"
+                  : customerTier === "silver"
+                    ? "border-blue-200 bg-blue-50/80 text-blue-950"
+                    : "border-[#e3e0d5] bg-[#f8f7f2] text-[#333]"
+            } shadow-sm transition-all`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl leading-none">{loyalty.icon}</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-extrabold text-sm">
+                      {loyalty.tierName} Member ({loyalty.points} pts)
+                    </p>
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black/10">
+                      {loyalty.burmeseName}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs opacity-90">
+                    {loyalty.perks.description}
+                  </p>
+                </div>
+              </div>
+              {loyalty.progress.nextTier && (
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] uppercase font-bold tracking-wider opacity-70">
+                    Next Tier
+                  </p>
+                  <p className="text-xs font-bold capitalize">
+                    +{loyalty.progress.pointsNeeded} pts to {loyalty.progress.nextTier}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {(customerTier === "silver" || customerTier === "gold" || customerTier === "platinum") && (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-black/5 pt-2.5 text-xs font-bold">
+                <span className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1 text-[#2e7d32] shadow-xs">
+                  <Check size={13} />
+                  <span>Free Delivery Perk Active</span>
+                </span>
+                {customerTier === "gold" && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1 text-[#b45309] shadow-xs">
+                    <Sparkles size={13} />
+                    <span>5% Product Discount Active (-{formatMMK(discountAmount)})</span>
+                  </span>
+                )}
+                {customerTier === "platinum" && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2.5 py-1 text-[#7e22ce] shadow-xs">
+                    <Crown size={13} />
+                    <span>10% Product Discount Active (-{formatMMK(discountAmount)})</span>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        ) : phone.trim().length >= 8 ? (
+          <div className="rounded-2xl border border-dashed border-[#d8d5cb] bg-[#fbfaf6] p-3.5 text-xs text-[#666a60]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span>👤</span>
+                <p>
+                  <strong>New Customer</strong> · Earn <strong>1 point</strong> per <strong>1,000 MMK</strong> spent! Reach 200 pts for <strong>Free Delivery</strong>.
+                </p>
+              </div>
+              <span className="shrink-0 font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[10px]">
+                +{pointsToEarn} pts to earn
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         {!digitalOnly && (
-          <>
+          <div className="space-y-4">
+            {/* Suspended Delivery Routes Alert */}
+            <div className="rounded-2xl border border-amber-300 bg-amber-50/90 p-3.5 text-xs text-amber-950 shadow-sm">
+              <div className="flex items-start gap-2">
+                <span className="text-base leading-none">⚠️</span>
+                <div className="space-y-1">
+                  <p className="font-bold text-amber-900">
+                    ပို့ဆောင်မှု ယာယီရပ်ဆိုင်းထားသော နယ်မြေများ အသိပေးချက်
+                  </p>
+                  <p className="leading-relaxed text-amber-900/90 font-medium">
+                    {SUSPENDED_DELIVERY_NOTICE}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="checkout-city"
+                className="text-xs font-bold text-[#1f1f1d]"
+              >
+                City · မြို့ (Royal Express)
+              </label>
+              <div className="mt-2">
+                <select
+                  id="checkout-city"
+                  value={selectedCity}
+                  onChange={(e) => setSelectedCity(e.target.value)}
+                  required
+                  className="h-12 w-full rounded-xl border border-[#dcd9cf] bg-white px-3.5 text-sm font-semibold text-[#1f1f1d] shadow-sm transition hover:border-black focus:border-black focus:outline-none"
+                >
+                  {CHECKOUT_CITIES.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}- {c.fee.toLocaleString()} MMK
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#777]">
+                <MapPin size={12} />
+                <span>
+                  Royal Express Delivery to <strong>{selectedCity}</strong>:{" "}
+                  {formatMMK(shipping)}
+                </span>
+              </p>
+            </div>
+
             <div>
               <label htmlFor="checkout-address" className="text-xs font-bold">
-                Delivery address
+                Street address / Ward / Building · လမ်း၊ ရပ်ကွက်၊ အိမ်အမှတ်
               </label>
               <textarea
                 id="checkout-address"
                 name="shippingAddress"
                 required
                 maxLength={500}
-                className="mt-2 min-h-28 w-full rounded-xl border bg-white p-4"
+                placeholder="အိမ်အမှတ်၊ လမ်းအမည်၊ ရပ်ကွက် သို့မဟုတ် အနီးအနား အထင်ကရနေရာ..."
+                className="mt-2 min-h-24 w-full rounded-xl border bg-white p-3 text-sm"
               />
             </div>
-          </>
+          </div>
         )}
+
         {digitalOnly && (
           <input
             type="hidden"
@@ -386,6 +634,7 @@ export function CheckoutForm({
             value="Secure digital handover"
           />
         )}
+
         <fieldset className="rounded-xl border bg-white p-4">
           <legend className="px-1 text-xs font-bold">Payment method</legend>
           <div className="mt-3 grid gap-2">
@@ -407,10 +656,62 @@ export function CheckoutForm({
             ))}
           </div>
         </fieldset>
-        <div className="flex justify-between rounded-xl bg-[#f1efe8] p-4 text-sm font-bold">
-          <span>Order total</span>
-          <span>{formatMMK(total + shipping)}</span>
+
+        {/* Pricing Breakdown Card */}
+        <div className="rounded-xl border border-[#dedbd1] bg-[#f7f6f1] p-4 space-y-2 text-xs">
+          <div className="flex justify-between text-[#666]">
+            <span>Products Subtotal · ပစ္စည်းတန်ဖိုး</span>
+            <span className="font-semibold text-black">{formatMMK(total)}</span>
+          </div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between font-bold text-[#2e7d32]">
+              <span className="flex items-center gap-1">
+                <Sparkles size={13} />
+                <span>{loyalty?.tierName} VIP Perk ({tierPerks.discountPercent}% Discount)</span>
+              </span>
+              <span>-{formatMMK(discountAmount)}</span>
+            </div>
+          )}
+          {!digitalOnly && (
+            <div className="flex justify-between text-[#666]">
+              <span>Delivery Fee ({deliverySnapshot.destinationCity})</span>
+              {tierPerks.isFreeDelivery ? (
+                <span className="font-bold text-[#2e7d32]">
+                  <span className="line-through text-[#888] mr-1.5 font-normal">
+                    {formatMMK(standardShipping)}
+                  </span>
+                  FREE · အခမဲ့ (VIP Perk)
+                </span>
+              ) : (
+                <span className="font-semibold text-black">
+                  {formatMMK(shipping)}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex justify-between border-t border-[#e5e2d8] pt-2 text-sm font-bold text-black">
+            <span>Total Order Amount · စုစုပေါင်း</span>
+            <span>{formatMMK(orderTotal)}</span>
+          </div>
+          <div className="flex justify-between rounded-lg bg-[#fef9c3] p-2.5 font-bold text-[#854d0e]">
+            <span className="flex items-center gap-1.5">
+              <span>⭐</span>
+              <span>Points earned on this order · ရရှိမည့် Point</span>
+            </span>
+            <span>+{pointsToEarn} pts</span>
+          </div>
+          <div className="flex justify-between rounded-lg bg-[#effbdc] p-2.5 font-bold text-[#376911]">
+            <span>Deposit to pay now · ယခုလွှဲရမည့် စရန်ငွေ</span>
+            <span>{formatMMK(requiredDeposit)}</span>
+          </div>
+          {!digitalOnly && (
+            <div className="flex justify-between rounded-lg bg-[#fff8e8] p-2.5 font-bold text-[#9e5d00]">
+              <span>Pay Royal on delivery (COD) · ပစ္စည်းရောက်မှ ပေးချေရန်</span>
+              <span>{formatMMK(codAmount)}</span>
+            </div>
+          )}
         </div>
+
         {message && (
           <p
             role="status"
@@ -419,6 +720,7 @@ export function CheckoutForm({
             {message}
           </p>
         )}
+
         <button
           disabled={disabled || pending}
           className="flex w-full items-center justify-between rounded-xl bg-black px-5 py-4 text-xs font-bold text-white disabled:opacity-40"

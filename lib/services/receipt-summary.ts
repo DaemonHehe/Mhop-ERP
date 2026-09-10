@@ -19,18 +19,49 @@ export interface ReceiptSummaryInput {
     name: string;
     price: number;
   }>;
+  subtotal?: number;
+  requiredDeposit?: number;
+  customerPaidAmount?: number;
+  customerBalance?: number;
+  codAmount?: number;
+  customerPaymentStatus?: string;
+  destinationCity?: string | null;
+  destinationState?: string | null;
+  expectedCourierCost?: number;
+  customerTier?: string;
+  tierDiscountAmount?: number;
+  tierDeliveryDiscount?: number;
+  pointsEarned?: number;
 }
 
 /**
  * Format customer-facing order receipt for Telegram dispatch.
+ * Distinguishes between Deposit Confirmation and Final Paid Receipt.
  */
 export function formatCustomerReceipt(order: ReceiptSummaryInput): string {
   const lines: string[] = [];
+  const subtotal = order.subtotal ?? Math.max(0, order.totalAmount - order.shippingFee);
+  const isPaidFull =
+    order.customerPaymentStatus === "cod_collected" ||
+    order.customerPaymentStatus === "fully_paid";
+  const isDepositVerified = order.customerPaymentStatus === "deposit_verified";
+  const hasDeposit = (order.requiredDeposit ?? 0) > 0;
+  const remainingCod = order.codAmount ?? Math.max(0, order.totalAmount - (order.requiredDeposit ?? 0));
 
-  lines.push(`🧾 <b>${clientConfig.receipt.storeName} — အရောင်းပြေစာ</b>`);
+  if (isPaidFull) {
+    lines.push(`🧾 <b>${clientConfig.receipt.storeName} — အရောင်းပြေစာ (Paid Receipt)</b>`);
+  } else if (hasDeposit) {
+    lines.push(`🧾 <b>${clientConfig.receipt.storeName} — စရန်ငွေပြေစာ (Deposit Confirmation)</b>`);
+  } else {
+    lines.push(`🧾 <b>${clientConfig.receipt.storeName} — အရောင်းပြေစာ</b>`);
+  }
+
   lines.push(`Order Code: <code>${order.orderCode}</code>`);
   lines.push(`အမည်: ${order.customerName}`);
   lines.push(`ဖုန်း: ${order.phone}`);
+  if (order.destinationCity) {
+    lines.push(`မြို့နယ်: ${order.destinationCity}${order.destinationState ? ` (${order.destinationState})` : ""}`);
+  }
   if (order.shippingAddress && order.shippingAddress !== "Secure digital handover") {
     lines.push(`လိပ်စာ: ${order.shippingAddress}`);
   }
@@ -49,32 +80,68 @@ export function formatCustomerReceipt(order: ReceiptSummaryInput): string {
   }
 
   lines.push("");
+  lines.push(`ပစ္စည်းစုစုပေါင်း (Subtotal): ${formatMMK(subtotal)}`);
+  if (order.tierDiscountAmount && order.tierDiscountAmount > 0) {
+    lines.push(`🎁 VIP လျှော့စျေး (${(order.customerTier || "VIP").toUpperCase()}): -${formatMMK(order.tierDiscountAmount)}`);
+  }
   if (order.shippingFee > 0) {
-    lines.push(`ပို့ဆောင်ခ (Delivery): ${formatMMK(order.shippingFee)}`);
+    lines.push(`ပို့ဆောင်ခ (Delivery Fee): ${formatMMK(order.shippingFee)}`);
+  } else if (order.tierDeliveryDiscount && order.tierDeliveryDiscount > 0) {
+    lines.push(`🚚 ပို့ဆောင်ခ: အခမဲ့ (VIP Perk)`);
   }
   lines.push(`<b>ကျသင့်ငွေ စုစုပေါင်း: ${formatMMK(order.totalAmount)}</b>`);
-  lines.push("");
-
-  // Payment information
-  const paymentKey = order.paymentMethod.toLowerCase();
-  let paymentInfo = "";
-  if (paymentKey.includes("kbz") || paymentKey === "kbzpay") {
-    const p = clientConfig.payments.kbzPay;
-    paymentInfo = `${p.label}\nအကောင့်အမည်: ${p.holder}\nနံပါတ်: <code>${p.account}</code>`;
-  } else if (paymentKey.includes("wave") || paymentKey === "wavepay") {
-    const p = clientConfig.payments.wavePay;
-    paymentInfo = `${p.label}\nအကောင့်အမည်: ${p.holder}\nနံပါတ်: <code>${p.account}</code>`;
-  } else {
-    const p = clientConfig.payments.bank;
-    paymentInfo = `${p.label}\nအကောင့်အမည်: ${p.holder}\nအကောင့်နံပါတ်: <code>${p.account}</code>`;
+  if (order.pointsEarned && order.pointsEarned > 0) {
+    lines.push(`⭐ ရရှိမည့် Loyalty Point: +${order.pointsEarned} pts`);
   }
+  lines.push("--------------------------------");
 
-  lines.push("<b>ငွေပေးချေရန် အချက်အလက်များ—</b>");
-  lines.push(paymentInfo);
-  lines.push("");
-  lines.push("📸 <b>Payment Slip ပေးပို့ရန်:</b>");
-  lines.push(`ငွေလွှဲပြီးပါက ငွေလွှဲပြေစာ (Slip) ဓာတ်ပုံကို Order Code <code>${order.orderCode}</code> နှင့်အတူ ဤ Bot သို့ တိုက်ရိုက် ပေးပို့နိုင်ပါပြီခင်ဗျာ။`);
-  lines.push("Admin Team မှ စစ်ဆေးအတည်ပြုပြီးပါက ပစ္စည်းထုတ်ပိုးပို့ဆောင်ပေးပါမည်။");
+  if (isPaidFull) {
+    lines.push(`✅ <b>ပေးချေပြီးငွေ (Paid in Full): ${formatMMK(order.totalAmount)}</b>`);
+    lines.push(`ကျန်ရှိငွေ (Balance Due): <b>0 MMK</b>`);
+    lines.push("");
+    lines.push("✨ <i>လူကြီးမင်း၏ ပေးချေမှု အောင်မြင်စွာ ပြီးဆုံးပြီး ဖြစ်ပါသည်ခင်ဗျာ။ အားပေးမှုကို အထူးပင် ကျေးဇူးတင်ရှိပါသည်။</i>");
+  } else if (hasDeposit) {
+    lines.push(`စရန်ငွေ (Required Deposit): ${formatMMK(order.requiredDeposit!)}`);
+    lines.push(`📦 <b>Royal Express COD (ပစ္စည်းရောက်မှ ပေးချေရန်): ${formatMMK(remainingCod)}</b>`);
+    lines.push("");
+
+    if (isDepositVerified) {
+      lines.push(`✅ <b>စရန်ငွေ ${formatMMK(order.requiredDeposit!)} လက်ခံအတည်ပြုပြီးပါပြီခင်ဗျာ။</b>`);
+      lines.push(`ကျန်ရှိငွေ <b>${formatMMK(remainingCod)}</b> ကို Royal Express ပစ္စည်းရောက်ရှိချိန်တွင် ပေးချေပေးပါခင်ဗျာ။`);
+    } else {
+      lines.push(`⏳ <b>စရန်ငွေ ${formatMMK(order.requiredDeposit!)} ပေးချေရန် လိုအပ်ပါသည်ခင်ဗျာ။</b>`);
+      lines.push(`(ကျန်ရှိငွေ <b>${formatMMK(remainingCod)}</b> ကို ပစ္စည်းရောက်မှ Royal Express သို့ ပေးချေရပါမည်)`);
+      lines.push("");
+      lines.push("<b>စရန်ငွေ ပေးချေရန် အချက်အလက်များ—</b>");
+
+      const paymentKey = order.paymentMethod.toLowerCase();
+      let paymentInfo = "";
+      if (paymentKey.includes("kbz") || paymentKey === "kbzpay") {
+        const p = clientConfig.payments.kbzPay;
+        paymentInfo = `${p.label}\nအကောင့်အမည်: ${p.holder}\nနံပါတ်: <code>${p.account}</code>`;
+      } else if (paymentKey.includes("wave") || paymentKey === "wavepay") {
+        const p = clientConfig.payments.wavePay;
+        paymentInfo = `${p.label}\nအကောင့်အမည်: ${p.holder}\nနံပါတ်: <code>${p.account}</code>`;
+      } else {
+        const p = clientConfig.payments.bank;
+        paymentInfo = `${p.label}\nအကောင့်အမည်: ${p.holder}\nအကောင့်နံပါတ်: <code>${p.account}</code>`;
+      }
+      lines.push(paymentInfo);
+      lines.push("");
+      lines.push("📸 <b>Payment Slip ပေးပို့ရန်:</b>");
+      lines.push(`ငွေလွှဲပြီးပါက စရန်ငွေပြေစာ (Slip) ကို Order Code <code>${order.orderCode}</code> နှင့်အတူ ပေးပို့ပေးပါခင်ဗျာ။`);
+    }
+  } else {
+    // Digital full payment orders (e.g. PUBG accounts)
+    lines.push(`ပေးချေရမည့်ငွေ: <b>${formatMMK(order.totalAmount)}</b>`);
+    lines.push("");
+    lines.push("<b>ငွေပေးချေရန် အချက်အလက်များ—</b>");
+    const p = clientConfig.payments.kbzPay;
+    lines.push(`${p.label}\nအကောင့်အမည်: ${p.holder}\nနံပါတ်: <code>${p.account}</code>`);
+    lines.push("");
+    lines.push("📸 <b>Payment Slip ပေးပို့ရန်:</b>");
+    lines.push(`ငွေလွှဲပြီးပါက Slip ဓာတ်ပုံကို Order Code <code>${order.orderCode}</code> နှင့်အတူ ပေးပို့နိုင်ပါပြီခင်ဗျာ။`);
+  }
 
   return lines.join("\n");
 }
@@ -84,15 +151,31 @@ export function formatCustomerReceipt(order: ReceiptSummaryInput): string {
  */
 export function formatManagerOrderAlert(order: ReceiptSummaryInput): string {
   const lines: string[] = [];
+  const subtotal = order.subtotal ?? Math.max(0, order.totalAmount - order.shippingFee);
+  const deposit = order.requiredDeposit ?? 0;
+  const cod = order.codAmount ?? Math.max(0, order.totalAmount - deposit);
+  const expectedCourier = order.expectedCourierCost ?? 0;
+  const expectedTransfer = cod > 0 ? cod - expectedCourier : 0;
 
   lines.push(`🔔 <b>အော်ဒါအသစ် ရောက်ရှိပါသည် (New Order)</b>`);
   lines.push(`Order Code: <code>${order.orderCode}</code>`);
   lines.push(`Customer: <b>${order.customerName}</b> (${order.phone})`);
+  if (order.destinationCity) {
+    lines.push(`Destination: <b>${order.destinationCity}</b>${order.destinationState ? ` (${order.destinationState})` : ""}`);
+  }
   if (order.shippingAddress && order.shippingAddress !== "Secure digital handover") {
     lines.push(`Address: ${order.shippingAddress}`);
   }
   lines.push(`Payment Method: <b>${order.paymentMethod.toUpperCase()}</b>`);
+  lines.push(`Subtotal: <b>${formatMMK(subtotal)}</b> | Delivery: <b>${formatMMK(order.shippingFee)}</b>`);
   lines.push(`Total Amount: <b>${formatMMK(order.totalAmount)}</b>`);
+  if (deposit > 0) {
+    lines.push(`Required Deposit: <b>${formatMMK(deposit)}</b>`);
+    lines.push(`Royal COD to collect: <b>${formatMMK(cod)}</b>`);
+    if (expectedCourier > 0) {
+      lines.push(`Expected Royal Deduction: <b>${formatMMK(expectedCourier)}</b> | Expected Shop Transfer: <b>${formatMMK(expectedTransfer)}</b>`);
+    }
+  }
   lines.push("");
   lines.push("<b>Items:</b>");
 
@@ -107,7 +190,7 @@ export function formatManagerOrderAlert(order: ReceiptSummaryInput): string {
   }
 
   lines.push("");
-  lines.push("⏳ <i>Status: Awaiting customer payment slip & admin manual verification.</i>");
+  lines.push("⏳ <i>Status: Awaiting customer deposit verification & warehouse packing.</i>");
 
   return lines.join("\n");
 }

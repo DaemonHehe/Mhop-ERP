@@ -338,9 +338,19 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="text-sm font-black">{paymentLabel}</span>
               <span
-                className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${paymentComplete ? "bg-[#e8f4cf] text-[#34431a]" : "bg-[#fff0cc] text-[#74530b]"}`}
+                className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${
+                  paymentComplete
+                    ? "bg-[#e8f4cf] text-[#34431a]"
+                    : order.customerPaymentStatus === "deposit_verified"
+                    ? "border border-sky-300 bg-sky-100 text-sky-900"
+                    : "bg-[#fff0cc] text-[#74530b]"
+                }`}
               >
-                {paymentComplete ? "Paid in full" : title(order.paymentStatus)}
+                {paymentComplete
+                  ? "Paid in full"
+                  : order.customerPaymentStatus
+                  ? order.customerPaymentStatus.replace("_", " ")
+                  : title(order.paymentStatus)}
               </span>
             </div>
             <p className="mt-2 text-[10px] text-[#666a60]">
@@ -349,20 +359,58 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
                 {number.format(order.paidAmount)} MMK
               </b>
             </p>
+            {(order.codAmount ?? 0) > 0 && !paymentComplete && (
+              <p className="mt-1 text-[10px] text-sky-800">
+                Remaining Royal COD: <b>{number.format(order.codAmount!)} MMK</b>
+              </p>
+            )}
           </div>
           <dl className="grid grid-cols-[1fr_auto] gap-x-5 gap-y-2 rounded-xl bg-[#f3f4ef] p-4 text-right text-[10px]">
             <dt className="text-[#666a60]">Subtotal</dt>
             <dd>{number.format(order.subtotal)} MMK</dd>
+            {order.tierDiscountAmount && order.tierDiscountAmount > 0 ? (
+              <>
+                <dt className="text-emerald-700 font-semibold">
+                  VIP Discount ({order.customerTier ? order.customerTier.toUpperCase() : ""})
+                </dt>
+                <dd className="text-emerald-700 font-bold">
+                  -{number.format(order.tierDiscountAmount)} MMK
+                </dd>
+              </>
+            ) : null}
             <dt className="text-[#666a60]">Delivery fee</dt>
-            <dd>{number.format(order.shippingFee)} MMK</dd>
+            <dd>
+              {order.shippingFee === 0 && order.tierDeliveryDiscount ? (
+                <span className="text-emerald-700 font-bold">FREE (VIP Perk)</span>
+              ) : (
+                `${number.format(order.shippingFee)} MMK`
+              )}
+            </dd>
+            {order.pointsEarned && order.pointsEarned > 0 ? (
+              <>
+                <dt className="text-amber-800 font-semibold">Points Earned</dt>
+                <dd className="text-amber-800 font-bold">+{order.pointsEarned} pts</dd>
+              </>
+            ) : null}
             <dt className="border-t border-[#ccd0c5] pt-2 text-sm font-black">
               Total
             </dt>
             <dd className="border-t border-[#ccd0c5] pt-2 text-sm font-black">
               {number.format(order.total)} MMK
             </dd>
-            <dt className="text-[#666a60]">Paid</dt>
-            <dd>{number.format(order.paidAmount)} MMK</dd>
+            {(order.requiredDeposit ?? 0) > 0 && !paymentComplete ? (
+              <>
+                <dt className="text-[#666a60]">Deposit paid</dt>
+                <dd>{number.format(order.paidAmount)} MMK</dd>
+                <dt className="font-semibold text-sky-800">Royal COD (On delivery)</dt>
+                <dd className="font-bold text-sky-900">{number.format(order.codAmount ?? order.outstandingBalance)} MMK</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-[#666a60]">Paid</dt>
+                <dd>{number.format(order.paidAmount)} MMK</dd>
+              </>
+            )}
             <dt className="font-black">Balance due</dt>
             <dd className="font-black">
               {number.format(order.outstandingBalance)} MMK
@@ -499,13 +547,44 @@ function ThermalReceipt({
         ))}
       </div>
       <div className="my-3 border-t border-dashed border-black" />
-      <div className="flex justify-between text-sm font-bold">
-        <span>TOTAL</span>
-        <span>{new Intl.NumberFormat("en-US").format(order.total)} MMK</span>
+      <div className="space-y-1 text-[9px]">
+        <div className="flex justify-between">
+          <span>SUBTOTAL</span>
+          <span>{new Intl.NumberFormat("en-US").format(order.subtotal)} MMK</span>
+        </div>
+        <div className="flex justify-between">
+          <span>DELIVERY</span>
+          <span>{new Intl.NumberFormat("en-US").format(order.shippingFee)} MMK</span>
+        </div>
+        <div className="flex justify-between border-t border-black pt-1 text-xs font-black">
+          <span>TOTAL</span>
+          <span>{new Intl.NumberFormat("en-US").format(order.total)} MMK</span>
+        </div>
+        {(order.requiredDeposit ?? 0) > 0 && order.outstandingBalance > 0 ? (
+          <>
+            <div className="flex justify-between">
+              <span>DEPOSIT PAID</span>
+              <span>{new Intl.NumberFormat("en-US").format(order.paidAmount)} MMK</span>
+            </div>
+            <div className="flex justify-between font-bold">
+              <span>ROYAL COD</span>
+              <span>{new Intl.NumberFormat("en-US").format(order.codAmount ?? order.outstandingBalance)} MMK</span>
+            </div>
+          </>
+        ) : (
+          <div className="flex justify-between">
+            <span>PAID</span>
+            <span>{new Intl.NumberFormat("en-US").format(order.paidAmount)} MMK</span>
+          </div>
+        )}
+        <div className="flex justify-between font-bold">
+          <span>BALANCE DUE</span>
+          <span>{new Intl.NumberFormat("en-US").format(order.outstandingBalance)} MMK</span>
+        </div>
       </div>
-      <p className="mt-1 text-right text-[8px]">
+      <p className="mt-2 text-right text-[8px]">
         {order.paymentMethod.toUpperCase()} ·{" "}
-        {title(order.paymentStatus).toUpperCase()}
+        {(order.customerPaymentStatus || order.paymentStatus).toUpperCase()}
       </p>
       <Barcode code={order.code} />
       {warrantyUntil && (

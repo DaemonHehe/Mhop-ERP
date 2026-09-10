@@ -13,11 +13,16 @@ export function evaluateWarrantyPolicy(input: WarrantyPolicyInput) {
   expiresAt.setMonth(expiresAt.getMonth() + Math.max(0, input.warrantyMonths));
   const now = input.now || new Date();
 
-  if (input.paymentStatus !== "verified")
+  const isPaid =
+    input.paymentStatus === "verified" ||
+    input.paymentStatus === "cod_collected" ||
+    input.paymentStatus === "fully_paid";
+
+  if (!isPaid)
     return {
       eligible: false,
       status: "Pending delivery" as const,
-      reason: "Warranty starts only after payment is verified.",
+      reason: "Warranty starts only after customer payment is completed.",
       startAt,
       expiresAt,
     };

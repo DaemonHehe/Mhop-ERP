@@ -7,6 +7,7 @@ export interface TelegramPhotoOptions {
   caption?: string;
   parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
   filename?: string;
+  reply_markup?: Record<string, unknown>;
 }
 
 /**
@@ -94,6 +95,9 @@ export async function sendTelegramPhoto(
   );
   if (extra.caption) form.set("caption", extra.caption);
   if (extra.parse_mode) form.set("parse_mode", extra.parse_mode);
+  if (extra.reply_markup) {
+    form.set("reply_markup", JSON.stringify(extra.reply_markup));
+  }
 
   const response = await fetch(
     `https://api.telegram.org/bot${token}/sendPhoto`,

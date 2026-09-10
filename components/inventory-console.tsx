@@ -1,7 +1,9 @@
 "use client";
-import { FormEvent, useMemo, useState, useTransition } from "react";
-import { AlertTriangle, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import { AlertTriangle, Image as ImageIcon, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { formatMMK } from "@/lib/data";
+import { ImageUpload } from "@/components/image-upload";
 import type {
   CatalogItemInput,
   InventoryItem,
@@ -19,6 +21,7 @@ type CatalogDraft = {
   subcategory: string;
   description: string;
   imageUrl: string;
+  imageUrls: string[];
   sku: string;
   color: string;
   price: string;
@@ -35,6 +38,7 @@ const emptyCatalog: CatalogDraft = {
   subcategory: "Gaming Headphones",
   description: "",
   imageUrl: "",
+  imageUrls: [],
   sku: "",
   color: "",
   price: "",
@@ -48,38 +52,61 @@ const inputClass = "h-11 w-full rounded-xl border px-3 text-sm outline-none";
 
 function Modal({
   title,
+  subtitle,
   onClose,
   children,
 }: {
   title: string;
+  subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  return (
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  if (!mounted || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/45 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 sm:p-6 backdrop-blur-sm transition-opacity duration-200"
+      onClick={onClose}
     >
-      <div className="card my-8 w-full max-w-3xl p-5 md:p-7">
-        <div className="mb-5 flex items-center justify-between">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        className="relative flex max-h-[92vh] w-full max-w-3xl flex-col rounded-3xl border border-[#dedbd1] bg-[#fffef9] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      >
+        <div className="flex items-center justify-between border-b border-[#eee] bg-white px-6 py-4 shrink-0">
           <div>
-            <p className="eyebrow">Products & Stock</p>
-            <h2 className="display mt-1 text-2xl font-bold">{title}</h2>
+            <p className="eyebrow text-xs">Products & Stock</p>
+            <h2 className="display mt-0.5 text-xl font-bold text-[#1f1f1d]">{title}</h2>
+            {subtitle && <p className="text-xs text-[#777] mt-0.5">{subtitle}</p>}
           </div>
           <button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full border"
+            className="grid h-9 w-9 place-items-center rounded-full border border-[#dedbd1] text-[#777] hover:bg-[#f1efe8] hover:text-black transition"
           >
             <X size={16} />
           </button>
         </div>
-        {children}
+        <div className="flex-1 overflow-y-auto min-h-0 p-6">
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 function Field({
@@ -152,7 +179,15 @@ export function InventoryConsole({
         });
       }
     });
-  const editCatalog = (item: InventoryItem) =>
+  const editCatalog = (item: InventoryItem) => {
+    const rawImage = item.image === "/placeholder.svg" ? "" : item.image;
+    const initialImages =
+      item.images && item.images.length > 0
+        ? item.images
+        : rawImage
+          ? [rawImage]
+          : [];
+
     setCatalogEditor({
       id: item.variantId,
       draft: {
@@ -161,7 +196,8 @@ export function InventoryConsole({
         category: item.category as CatalogDraft["category"],
         subcategory: item.subcategory,
         description: item.description,
-        imageUrl: item.image === "/placeholder.svg" ? "" : item.image,
+        imageUrl: rawImage,
+        imageUrls: initialImages,
         sku: item.sku,
         color: item.color || "",
         price: String(item.price),
@@ -172,11 +208,26 @@ export function InventoryConsole({
         lowStockThreshold: String(item.lowStockThreshold),
       },
     });
+  };
   const saveCatalog = (event: FormEvent) => {
     event.preventDefault();
     if (!catalogEditor) return;
     const { id, draft } = catalogEditor;
-    const payload: CatalogItemInput = draft;
+    const primaryImg =
+      draft.imageUrl ||
+      (draft.imageUrls && draft.imageUrls[0]) ||
+      "";
+    const allImgs =
+      draft.imageUrls && draft.imageUrls.length > 0
+        ? draft.imageUrls
+        : primaryImg
+          ? [primaryImg]
+          : [];
+    const payload: CatalogItemInput = {
+      ...draft,
+      imageUrl: primaryImg,
+      imageUrls: allImgs,
+    };
     safely(
       () =>
         id
@@ -234,15 +285,22 @@ export function InventoryConsole({
             {filtered.map((product) => (
               <article className="card p-4" key={product.variantId}>
                 <div className="flex items-start gap-3">
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                    loading="lazy"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = "/placeholder.svg";
-                    }}
-                    className="h-14 w-14 shrink-0 rounded-xl object-cover bg-[#f1efe8]"
-                  />
+                  <div className="relative shrink-0">
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = "/placeholder.svg";
+                      }}
+                      className="h-14 w-14 rounded-xl object-cover bg-[#f1efe8]"
+                    />
+                    {product.images && product.images.length > 1 && (
+                      <span className="absolute -bottom-1 -right-1 flex items-center gap-0.5 rounded-md bg-black/80 px-1 py-0.5 text-[8px] font-bold text-white shadow-xs">
+                        <ImageIcon size={8} /> {product.images.length}
+                      </span>
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{product.name}</p>
                     <p className="mt-1 truncate font-mono text-[10px] text-[#77776f]">
@@ -327,15 +385,22 @@ export function InventoryConsole({
                   <tr key={p.variantId} className="border-b last:border-0">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={p.image}
-                          alt={p.name}
-                          loading="lazy"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src = "/placeholder.svg";
-                          }}
-                          className="h-12 w-12 rounded-xl object-cover bg-[#f1efe8]"
-                        />
+                        <div className="relative shrink-0">
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = "/placeholder.svg";
+                            }}
+                            className="h-12 w-12 rounded-xl object-cover bg-[#f1efe8]"
+                          />
+                          {p.images && p.images.length > 1 && (
+                            <span className="absolute -bottom-1 -right-1 flex items-center gap-0.5 rounded-md bg-black/80 px-1 py-0.5 text-[8px] font-bold text-white shadow-xs">
+                              <ImageIcon size={8} /> {p.images.length}
+                            </span>
+                          )}
+                        </div>
                         <div>
                           <p className="font-bold">{p.name}</p>
                           <p className="text-xs text-[#77776f]">{p.brand}</p>
@@ -414,7 +479,20 @@ export function InventoryConsole({
 
       {catalogEditor && (
         <Modal
-          title={catalogEditor.id ? "Edit listing" : "Create listing"}
+          title={
+            catalogEditor.id
+              ? catalogEditor.draft.category === "PUBG Accounts"
+                ? "Edit PUBG Account"
+                : "Edit Gadget Product"
+              : catalogEditor.draft.category === "PUBG Accounts"
+                ? "Add PUBG Account"
+                : "Add Gadget Product"
+          }
+          subtitle={
+            catalogEditor.draft.category === "PUBG Accounts"
+              ? "Digital account specifications, verification screenshots, and pricing"
+              : "Physical gadget inventory details, pricing, warranty, and image"
+          }
           onClose={() => setCatalogEditor(null)}
         >
           <form onSubmit={saveCatalog}>
@@ -610,22 +688,41 @@ export function InventoryConsole({
                 />
               </Field>
               <div className="md:col-span-2">
-                <Field label="HTTPS image URL">
-                  <input
-                    type="url"
-                    className={inputClass}
-                    value={catalogEditor.draft.imageUrl}
-                    onChange={(e) =>
+                {catalogEditor.draft.category === "PUBG Accounts" ? (
+                  <ImageUpload
+                    mode="multiple"
+                    label="PUBG Account Screenshots"
+                    hint="Upload multiple screenshots of the account (Lobby, RP, Gun Skins, Outfits, Stats). The first screenshot is the cover photo."
+                    value={catalogEditor.draft.imageUrls || []}
+                    onChange={(urls: string[]) => {
                       setCatalogEditor({
                         ...catalogEditor,
                         draft: {
                           ...catalogEditor.draft,
-                          imageUrl: e.target.value,
+                          imageUrls: urls,
+                          imageUrl: urls[0] || "",
                         },
-                      })
-                    }
+                      });
+                    }}
                   />
-                </Field>
+                ) : (
+                  <ImageUpload
+                    mode="single"
+                    label="Gadget Product Image"
+                    hint="Upload an authentic photo of the gadget or product packaging."
+                    value={catalogEditor.draft.imageUrl || ""}
+                    onChange={(url: string) => {
+                      setCatalogEditor({
+                        ...catalogEditor,
+                        draft: {
+                          ...catalogEditor.draft,
+                          imageUrl: url,
+                          imageUrls: url ? [url] : [],
+                        },
+                      });
+                    }}
+                  />
+                )}
               </div>
               <div className="md:col-span-2">
                 <Field label="Description">
@@ -646,16 +743,26 @@ export function InventoryConsole({
                 </Field>
               </div>
             </div>
-            <button
-              disabled={pending}
-              className="mt-5 w-full rounded-xl bg-black py-3 text-xs font-bold text-white disabled:opacity-40"
-            >
-              {pending
-                ? "Saving…"
-                : catalogEditor.id
-                  ? "Save changes"
-                  : "Create listing"}
-            </button>
+            <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#eee] pt-4">
+              <button
+                type="button"
+                onClick={() => setCatalogEditor(null)}
+                className="rounded-xl border border-[#dedbd1] px-5 py-2.5 text-xs font-bold text-[#555] hover:bg-[#f1efe8] transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={pending}
+                className="rounded-xl bg-black px-6 py-2.5 text-xs font-bold text-white hover:bg-black/80 disabled:opacity-40 shadow-sm transition"
+              >
+                {pending
+                  ? "Saving…"
+                  : catalogEditor.id
+                    ? "Save changes"
+                    : "Create listing"}
+              </button>
+            </div>
           </form>
         </Modal>
       )}

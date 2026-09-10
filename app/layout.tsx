@@ -1,4 +1,4 @@
-import { brandAssets } from "@/lib/brand-assets";
+﻿import { brandAssets } from "@/lib/brand-assets";
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import Script from "next/script";
@@ -57,14 +57,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <Script
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="beforeInteractive"
         />
       </head>
-      <body className={`${inter.variable} ${space.variable}`}>
+      <body
+        className={`${inter.variable} ${space.variable}`}
+        suppressHydrationWarning
+      >
         {children}
         <Analytics />
       </body>

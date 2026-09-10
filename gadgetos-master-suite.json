@@ -312,7 +312,7 @@
       "parameters": {
         "operation": "sendMessage",
         "chatId": "={{ $env.TELEGRAM_STAFF_CHAT_ID }}",
-        "text": "={{ ('GOOD MORNING · MH OP\\nUnshipped orders: ' + $json.unshipped + '\\nPending payments: ' + $json.pending_slips + '\\nCumulative verified revenue: ' + Number($json.revenue || 0).toLocaleString() + ' MMK\\nLow-stock listings: ' + (Array.isArray($json.low_stock) ? $json.low_stock.length : 0) + '\\n\\n' + (Array.isArray($json.low_stock) && $json.low_stock.length ? $json.low_stock.slice(0, 8).map((item) => '• ' + item.name + ' (' + item.sku + '): ' + item.stock).join('\\n') : 'No low-stock listings.')).slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "text": "={{ ($json.morning_message || ('GOOD MORNING · MH OP\\nUnshipped orders: ' + $json.unshipped + '\\nPending payments: ' + $json.pending_slips + '\\nCumulative verified revenue: ' + Number($json.revenue || 0).toLocaleString() + ' MMK\\nLow-stock listings: ' + (Array.isArray($json.low_stock) ? $json.low_stock.length : 0) + '\\n\\n' + (Array.isArray($json.low_stock) && $json.low_stock.length ? $json.low_stock.slice(0, 8).map((item) => '• ' + item.name + ' (' + item.sku + '): ' + item.stock).join('\\n') : 'No low-stock listings.'))).slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -379,122 +379,7 @@
       "parameters": {
         "operation": "sendMessage",
         "chatId": "={{ $env.TELEGRAM_STAFF_CHAT_ID }}",
-        "text": "={{ ('NIGHTLY SNAPSHOT · MH OP\\nCumulative verified revenue: ' + Number($json.revenue || 0).toLocaleString() + ' MMK\\nCumulative gross profit: ' + Number($json.gross_profit || 0).toLocaleString() + ' MMK\\nOpen fulfillment: ' + $json.unshipped + '\\nPending payments: ' + $json.pending_slips).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
-        }
-      },
-      "notes": "Automatic retries are disabled because Telegram sendMessage has no idempotency key. Check Telegram before manually retrying an ambiguous failure."
-    },
-    {
-      "id": "cross-note",
-      "name": "Cross Sell Notes",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -40,
-        1300
-      ],
-      "parameters": {
-        "width": 1260,
-        "height": 280,
-        "content": "### 21–30 day follow-up\nOnly verified Telegram orders inside the API purchase-age window qualify. No coupon promise: checkout does not implement voucher redemption. Recipients are deduplicated within each scan and order references across executions."
-      }
-    },
-    {
-      "id": "cross-sell",
-      "name": "13:00 Cross Sell Scan",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        1420
-      ],
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 13 * * *"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "cross-fetch",
-      "name": "Find 21–30 Day Buyers",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        240,
-        1420
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000,
-      "parameters": {
-        "url": "={{ $env.GADGETOS_URL.replace(/\\/$/, '') }}/api/internal/customers/cross-sell?minDays=21&maxDays=30",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {
-          "timeout": 15000,
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "cross-normalize",
-      "name": "Keep Valid Follow Up Recipients",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        480,
-        1420
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const rows = $input.all().flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]);\nconst seen = new Set();\nreturn rows.filter(Boolean).map((row) => ({ ...row, telegram_user_id: String(row.telegram_user_id ?? row.telegramUserId ?? '') })).filter((row) => {\n  if (!/^[1-9][0-9]*$/.test(row.telegram_user_id) || !row.order_code || seen.has(row.telegram_user_id)) return false;\n  seen.add(row.telegram_user_id);\n  return true;\n}).map((row) => ({ json: row }));"
-      }
-    },
-    {
-      "id": "cross-dedupe",
-      "name": "Do Not Repeat Follow Up",
-      "type": "n8n-nodes-base.removeDuplicates",
-      "typeVersion": 2,
-      "position": [
-        720,
-        1420
-      ],
-      "parameters": {
-        "operation": "removeItemsSeenInPreviousExecutions",
-        "logic": "removeItemsWithAlreadySeenKeyValues",
-        "dedupeValue": "={{ String($json.order_code) }}",
-        "options": {
-          "scope": "node",
-          "historySize": 10000
-        }
-      }
-    },
-    {
-      "id": "cross-send",
-      "name": "Send Accessory Follow Up",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        960,
-        1420
-      ],
-      "retryOnFail": false,
-      "parameters": {
-        "operation": "sendMessage",
-        "chatId": "={{ $json.telegram_user_id }}",
-        "text": "={{ ('မင်္ဂလာပါ ' + ($json.customer || 'အကို/အမ') + '။ MH OP မှာ ဝယ်ယူအားပေးထားတာ ကျေးဇူးတင်ပါတယ်ခင်ဗျာ။ Gaming accessories သို့မဟုတ် upgrade ရှာနေပါက အသုံးပြုမယ့် device နဲ့ budget ကို ပြောပေးပါ။ ရရှိနိုင်တဲ့ ပစ္စည်းများကို ရွေးချယ်ပေးပါမယ်ခင်ဗျာ။').slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "text": "={{ ($json.night_message || ('NIGHTLY SNAPSHOT · MH OP\\nCumulative verified revenue: ' + Number($json.revenue || 0).toLocaleString() + ' MMK\\nCumulative gross profit: ' + Number($json.gross_profit || 0).toLocaleString() + ' MMK\\nOpen fulfillment: ' + $json.unshipped + '\\nPending payments: ' + $json.pending_slips)).slice(0, 3500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -625,51 +510,6 @@
             "index": 0
           }
         ]
-      ]
-    },
-    "13:00 Cross Sell Scan": {
-      "main": [
-        [
-          {
-            "node": "Find 21–30 Day Buyers",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Find 21–30 Day Buyers": {
-      "main": [
-        [
-          {
-            "node": "Keep Valid Follow Up Recipients",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Keep Valid Follow Up Recipients": {
-      "main": [
-        [
-          {
-            "node": "Do Not Repeat Follow Up",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Do Not Repeat Follow Up": {
-      "main": [
-        [
-          {
-            "node": "Send Accessory Follow Up",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
       ]
     }
   },

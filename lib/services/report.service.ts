@@ -273,6 +273,7 @@ export async function generateMonthlyReportData(
         totalAmount: orders.totalAmount,
         shippingFee: orders.shippingFee,
         paymentStatus: orders.paymentStatus,
+        customerPaymentStatus: orders.customerPaymentStatus,
         fulfillmentStatus: orders.fulfillmentStatus,
         createdAt: orders.createdAt,
       })
@@ -316,7 +317,12 @@ export async function generateMonthlyReportData(
       ),
   ]);
 
-  const verifiedOrders = allOrdersInPeriod.filter((o) => o.paymentStatus === "verified");
+  const verifiedOrders = allOrdersInPeriod.filter(
+    (o) =>
+      o.customerPaymentStatus === "cod_collected" ||
+      o.customerPaymentStatus === "fully_paid" ||
+      o.paymentStatus === "verified",
+  );
   const verifiedOrderIds = verifiedOrders.map((o) => o.id);
 
   // Fetch Order Items for verified orders

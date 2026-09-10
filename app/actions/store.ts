@@ -4,6 +4,8 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import * as auditService from "@/lib/services/audit.service";
 import * as customerService from "@/lib/services/customer.service";
 import * as orderService from "@/lib/services/order.service";
+import * as paymentService from "@/lib/services/payment.service";
+import * as settlementService from "@/lib/services/settlement.service";
 import * as searchService from "@/lib/services/search.service";
 import * as stockService from "@/lib/services/stock.service";
 import * as ticketService from "@/lib/services/ticket.service";
@@ -20,7 +22,7 @@ export type {
 export type { LeadInput } from "@/lib/services/ticket.service";
 export type { OperationalOrder } from "@/lib/services/order.service";
 export type { RevenuePoint, ReceiptOrder } from "@/lib/services/order.service";
-export type { CustomerSummary } from "@/lib/services/customer.service";
+export type { CustomerSummary, CustomerLoyaltyProfile } from "@/lib/services/customer.service";
 export type { GlobalSearchResult } from "@/lib/services/search.service";
 
 // --- Read Actions ---
@@ -83,6 +85,13 @@ export async function getAuditLogsAction(before?: {
 export async function getCustomersAction() {
   await requireStaff(["admin", "staff"]);
   return customerService.getCustomers();
+}
+
+export async function lookupCustomerLoyaltyAction(query: {
+  phone?: string | null;
+  telegramUserId?: string | null;
+}) {
+  return customerService.lookupCustomerLoyalty(query);
 }
 
 export async function getReceiptSettingsAction() {
@@ -355,5 +364,216 @@ export async function convertLeadToCustomerAction(leadId: string) {
   }
   return result;
 }
+
+// --- Order Workflow Actions ---
+
+export async function adminCreateOrderAction(
+  input: Parameters<typeof orderService.adminCreateOrder>[0],
+) {
+  const staff = await authorizeStaff(["admin", "staff"]);
+  if (!staff) return { ok: false as const, error: "Unauthorized" };
+  const result = await orderService.adminCreateOrder(input, staff.email);
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath("/inventory");
+  }
+  return result;
+}
+
+export async function getOrderByIdAction(orderId: string) {
+  await requireStaff(["admin", "staff"]);
+  return orderService.getOrderById(orderId);
+}
+
+export async function preDispatchEditOrderAction(
+  orderId: string,
+  input: Parameters<typeof orderService.preDispatchEditOrder>[1],
+) {
+  const staff = await authorizeStaff(["admin", "staff"]);
+  if (!staff) return { ok: false as const, error: "Unauthorized" };
+  const result = await orderService.preDispatchEditOrder(orderId, input, staff.email);
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/inventory");
+  }
+  return result;
+}
+
+export async function postDispatchCorrectionAction(
+  orderId: string,
+  input: Parameters<typeof orderService.postDispatchCorrection>[1],
+) {
+  const staff = await authorizeStaff(["admin", "staff"]);
+  if (!staff) return { ok: false as const, error: "Unauthorized" };
+  const result = await orderService.postDispatchCorrection(orderId, input, staff.email);
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+  }
+  return result;
+}
+
+export async function recordFailedDeliveryAction(
+  orderId: string,
+  input: Parameters<typeof orderService.recordFailedDelivery>[1],
+) {
+  const staff = await authorizeStaff(["admin"]);
+  if (!staff)
+    return {
+      ok: false as const,
+      error: "Unauthorized: Admin access required for failed delivery and return disposition.",
+    };
+  const result = await orderService.recordFailedDelivery(orderId, input, staff.email);
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/inventory");
+  }
+  return result;
+}
+
+// --- Payment Ledger Actions ---
+
+export async function recordPaymentAction(input: paymentService.RecordPaymentInput) {
+  const staff = await authorizeStaff(["admin", "staff"]);
+  if (!staff) return { ok: false as const, error: "Unauthorized" };
+  const result = await paymentService.recordPayment({
+    ...input,
+    recordedBy: staff.email,
+  });
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${input.orderId}`);
+  }
+  return result;
+}
+
+export async function verifyPaymentAction(paymentId: string) {
+  const staff = await authorizeStaff(["admin"]);
+  if (!staff)
+    return { ok: false as const, error: "Unauthorized: Admin access required to approve payments." };
+  const result = await paymentService.verifyPayment(paymentId, staff.email);
+  if (result.ok) {
+    revalidatePath("/orders");
+  }
+  return result;
+}
+
+export async function rejectPaymentAction(paymentId: string, reason?: string) {
+  const staff = await authorizeStaff(["admin"]);
+  if (!staff)
+    return { ok: false as const, error: "Unauthorized: Admin access required to reject payments." };
+  const result = await paymentService.rejectPayment(paymentId, staff.email, reason);
+  if (result.ok) {
+    revalidatePath("/orders");
+  }
+  return result;
+}
+
+export async function confirmCodCollectionAction(
+  orderId: string,
+  collectedAmount?: number,
+  notes?: string,
+) {
+  const staff = await authorizeStaff(["admin", "staff"]);
+  if (!staff) return { ok: false as const, error: "Unauthorized" };
+  const result = await paymentService.confirmCodCollection(
+    orderId,
+    staff.email,
+    collectedAmount,
+    notes,
+  );
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/erp");
+  }
+  return result;
+}
+
+export async function recordRefundReversalAction(
+  paymentId: string,
+  reason: string,
+) {
+  const staff = await authorizeStaff(["admin"]);
+  if (!staff)
+    return {
+      ok: false as const,
+      error: "Unauthorized: Admin access required to issue refund reversals.",
+    };
+  const result = await paymentService.recordRefundReversal(
+    paymentId,
+    staff.email,
+    reason,
+  );
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath("/erp");
+  }
+  return result;
+}
+
+// --- Courier Settlement Actions ---
+
+export async function getUnsettledOrdersAction() {
+  await requireStaff(["admin", "staff"]);
+  return settlementService.getUnsettledOrders();
+}
+
+export async function getSettlementBatchesAction() {
+  await requireStaff(["admin", "staff"]);
+  return settlementService.getSettlementBatches();
+}
+
+export async function getSettlementBatchByIdAction(batchId: string) {
+  await requireStaff(["admin", "staff"]);
+  return settlementService.getSettlementBatchById(batchId);
+}
+
+export async function createSettlementBatchAction(
+  input: Omit<settlementService.CreateSettlementBatchInput, "recordedBy">,
+) {
+  const staff = await authorizeStaff(["admin"]);
+  if (!staff)
+    return {
+      ok: false as const,
+      error: "Unauthorized: Admin access required to record courier settlements.",
+    };
+  const result = await settlementService.createSettlementBatch({
+    ...input,
+    recordedBy: staff.email,
+  });
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath("/erp");
+    revalidatePath("/erp/settlements");
+  }
+  return result;
+}
+
+export async function reverseSettlementBatchAction(
+  batchId: string,
+  reason: string,
+) {
+  const staff = await authorizeStaff(["admin"]);
+  if (!staff)
+    return {
+      ok: false as const,
+      error: "Unauthorized: Admin access required to reverse settlements.",
+    };
+  const result = await settlementService.reverseSettlementBatch(
+    batchId,
+    staff.email,
+    reason,
+  );
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath("/erp");
+    revalidatePath("/erp/settlements");
+  }
+  return result;
+}
+
 
 

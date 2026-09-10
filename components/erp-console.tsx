@@ -1,5 +1,6 @@
 "use client";
 import { FormEvent, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Banknote,
   CheckCircle2,
@@ -8,6 +9,7 @@ import {
   ReceiptText,
   ShoppingCart,
   Trash2,
+  Truck,
   X,
 } from "lucide-react";
 import { formatMMK } from "@/lib/data";
@@ -218,7 +220,43 @@ export function ErpConsole({
           </div>
         ))}
       </section>
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="card p-4 border-sky-200 bg-sky-50/40 relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="eyebrow text-sky-900 flex items-center gap-1.5 font-bold">
+                <Truck size={13} className="text-sky-700" /> Expected payment from Royal COD
+              </p>
+              <Link
+                href="/erp/settlements"
+                className="text-[11px] font-bold text-sky-700 hover:underline flex items-center gap-0.5"
+                title="View Royal Express settlements"
+              >
+                Settlements →
+              </Link>
+            </div>
+            <p className="display mt-2 text-2xl font-black text-sky-950">
+              {formatMMK(snapshot.expectedRoyalPayment)}
+            </p>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 text-[10px] text-sky-800/90 font-medium">
+            <span>
+              COD: <strong>{formatMMK(snapshot.expectedRoyalCod)}</strong>
+            </span>
+            <span>−</span>
+            <span>
+              Royal fee: <strong>{formatMMK(snapshot.expectedRoyalCourierCost)}</strong>
+            </span>
+            {snapshot.unsettledRoyalOrdersCount > 0 && (
+              <>
+                <span>·</span>
+                <span className="font-bold text-sky-950">
+                  {snapshot.unsettledRoyalOrdersCount} {snapshot.unsettledRoyalOrdersCount === 1 ? "order" : "orders"}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
         <div className="card p-4">
           <p className="eyebrow">Inventory asset value</p>
           <p className="display mt-2 text-2xl font-bold">
@@ -257,6 +295,18 @@ export function ErpConsole({
               {l}
             </button>
           ))}
+          <Link
+            href="/erp/settlements"
+            className="flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold text-[#77776f] transition hover:text-black"
+          >
+            <Truck size={13} /> Courier Settlements
+            {snapshot.expectedRoyalPayment > 0 && (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">
+                {formatMMK(snapshot.expectedRoyalPayment)}
+              </span>
+            )}
+            <span>→</span>
+          </Link>
         </div>
         <div className="flex items-center gap-2">
           <MonthlyReportButton variant="pill" />

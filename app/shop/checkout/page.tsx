@@ -32,10 +32,11 @@ export default async function Checkout({
       .map((item) => products.find((p) => p.sku === item.sku))
       .filter(Boolean),
   ) as typeof products;
-  const allProducts = [...selected, ...bundleProducts],
-    digitalOnly =
-      allProducts.length > 0 &&
-      allProducts.every((p) => p.category === "PUBG Accounts");
+  const allProducts = [...selected, ...bundleProducts];
+  const hasDigital = allProducts.some((p) => p.category === "PUBG Accounts");
+  const hasPhysical = allProducts.some((p) => p.category !== "PUBG Accounts");
+  const isMixedCart = hasDigital && hasPhysical;
+  const digitalOnly = hasDigital && !hasPhysical;
   const empty = selected.length === 0 && selectedBundles.length === 0;
   return (
     <main className="min-h-screen p-5 md:p-10">
@@ -46,14 +47,23 @@ export default async function Checkout({
             ← Continue shopping
           </Link>
         </div>
-        <div className="mt-12 grid gap-8 lg:grid-cols-[1fr_420px]">
+        {isMixedCart && (
+          <div className="mt-8 rounded-2xl border border-[#ffcdbe] bg-[#fff2ee] p-5 text-sm text-[#b83814]">
+            <p className="font-bold">⚠️ Mixed Cart Detected · ပစ္စည်းအမျိုးအစား ခွဲခြား၍ ဝယ်ယူပေးပါရန်</p>
+            <p className="mt-1 leading-6">
+              PUBG Accounts (Digital delivery with 100% prepayment) and Physical Gaming Gadgets (Royal Express shipping with 10,000 MMK deposit & COD) cannot be ordered in the same checkout. Please return to shop and checkout digital accounts and physical gadgets separately.
+            </p>
+          </div>
+        )}
+        <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_420px]">
           <section>
             <CheckoutForm
               total={total}
               skus={selected.map((p) => p.sku)}
               bundleIds={selectedBundles.map((b) => b.id)}
-              disabled={empty}
+              disabled={empty || isMixedCart}
               digitalOnly={digitalOnly}
+              isMixedCart={isMixedCart}
             />
           </section>
           <aside className="card h-fit p-5">

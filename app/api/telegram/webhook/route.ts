@@ -11,11 +11,22 @@ import {
   saveBotConversationTurn,
   updateBotSessionActivity,
 } from "@/lib/services/bot-session.service";
+import {
+  linkCustomerTelegram,
+  getOrCreateTelegramCustomer,
+  generateCustomerCode,
+} from "@/lib/services/customer.service";
 import { clientConfig } from "@/lib/client-config";
-import { sendTelegramMessage } from "@/lib/telegram/bot";
+import { sendTelegramMessage, sendTelegramPhoto } from "@/lib/telegram/bot";
 import { telegramUpdateSchema } from "@/lib/validation/schemas";
 import { answerSalesQuestion } from "@/lib/ai/sales-agent";
 import { allowRequest } from "@/lib/security/rate-limit";
+import {
+  formatWelcomeMessage,
+  formatSlipAcknowledgment,
+} from "@/lib/services/bot-settings.service";
+import { renderMemberCardImage } from "@/lib/services/member-card-image";
+import { getCardTier, TIERS } from "@/lib/loyalty";
 
 function authorized(request: NextRequest) {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -49,6 +60,40 @@ async function reply(
       { ok: false, error: "Telegram delivery failed" },
       { status: 502 },
     );
+  }
+}
+
+async function replyPhoto(
+  chatId: number,
+  photo: Uint8Array,
+  caption: string,
+  extra: Record<string, unknown> = {},
+) {
+  try {
+    const delivery = await sendTelegramPhoto(chatId, photo, {
+      caption,
+      parse_mode: (extra.parse_mode as "HTML" | "Markdown" | "MarkdownV2") || "HTML",
+      filename: (extra.filename as string) || "mhop-vip-member-card.png",
+      reply_markup: extra.reply_markup as Record<string, unknown> | undefined,
+    });
+    if (!delivery.delivered && delivery.reason) {
+      // Fallback gracefully to text if photo delivery cannot be made
+      return reply(chatId, caption, extra);
+    }
+    return NextResponse.json({
+      ok: true,
+      action: "send_photo",
+      chat_id: chatId,
+      caption,
+      ...extra,
+      ...delivery,
+    });
+  } catch (error) {
+    console.error(
+      "[MH OP Telegram Photo Delivery Failed]",
+      error instanceof Error ? error.message : error,
+    );
+    return reply(chatId, caption, extra);
   }
 }
 
@@ -113,9 +158,10 @@ export async function POST(request: NextRequest) {
       String(userId),
     );
 
+    const slipAck = await formatSlipAcknowledgment({ orderCode });
     const confirmationText = autoResolved
-      ? `✅ Order <b>${orderCode}</b> အတွက် Payment Slip ကို ချိတ်ဆက်လက်ခံရရှိပါသည်ခင်ဗျာ။\n\n${clientConfig.telegram.slipAcknowledgment}`
-      : `✅ Order <b>${orderCode}</b>\n\n${clientConfig.telegram.slipAcknowledgment}`;
+      ? `✅ Order <b>${orderCode}</b> အတွက် Payment Slip ကို ချိတ်ဆက်လက်ခံရရှိပါသည်ခင်ဗျာ။\n\n${slipAck}`
+      : `✅ Order <b>${orderCode}</b>\n\n${slipAck}`;
 
     return reply(
       chatId,
@@ -133,8 +179,9 @@ export async function POST(request: NextRequest) {
   const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
   const shopMiniAppUrl = `${appBaseUrl}/shop`;
 
-  if (text.startsWith("/start"))
-    return reply(chatId, clientConfig.telegram.welcome, {
+  if (text.startsWith("/start")) {
+    const welcomeText = await formatWelcomeMessage();
+    return reply(chatId, welcomeText, {
       reply_markup: {
         inline_keyboard: [
           [
@@ -142,10 +189,15 @@ export async function POST(request: NextRequest) {
               text: "🛍️ Open MH OP Store",
               web_app: { url: shopMiniAppUrl },
             },
+            {
+              text: "👑 VIP Member Card",
+              callback_data: "cmd:member",
+            },
           ],
         ],
       },
     });
+  }
   if (text.startsWith("/catalog")) {
     const stock = (await getPublicCatalog())
       .filter((p) => p.availability !== "sold_out")
@@ -192,6 +244,228 @@ export async function POST(request: NextRequest) {
       chatId,
       "Order code နှင့် ဝယ်ယူစဉ်သုံးခဲ့သော ဖုန်းနံပါတ်ကို ပေးပို့ပါခင်ဗျာ။ Warranty record ကို စစ်ဆေးပေးပါမယ်။",
     );
+  if (callback?.data === "cmd:tier_perks") {
+    return reply(
+      chatId,
+      [
+        "💎 <b>MH OP VIP Privilege Club · Tiers & Perks</b>",
+        "",
+        "ဝယ်ယူသုံးစွဲမှု 1,000 MMK တိုင်းအတွက် 1 Point ရရှိပါမည်။",
+        "",
+        "• 👤 <b>CLASSIC (0–199 pts)</b>",
+        "  — ပုံမှန် အသင်းဝင်နှုန်းထား",
+        "",
+        "• 🥈 <b>SILVER VIP (200–499 pts)</b>",
+        "  — မြန်မာတစ်နိုင်ငံလုံး ပို့ဆောင်ခ အခမဲ့ (Free Delivery)",
+        "",
+        "• 🥇 <b>GOLD VIP (500–1,000 pts)</b>",
+        "  — Free Delivery + ပစ္စည်းတန်ဖိုး <b>5% VIP Discount</b>",
+        "",
+        "• 💎 <b>PLATINUM VIP (1,001–2,499 pts)</b>",
+        "  — Free Delivery + ပစ္စည်းတန်ဖိုး <b>10% VIP Discount</b>",
+        "",
+        "• 💠 <b>DIAMOND LIMITLESS (2,500+ pts)</b>",
+        "  — Free Delivery + ပစ္စည်းတန်ဖိုး <b>15% VIP Discount</b> + VIP Priority",
+        "",
+        "လူကြီးမင်း၏ VIP Card ကို ကြည့်ရှုရန် အောက်ပါ ခလုတ်ကို နှိပ်ပါခင်ဗျာ။",
+      ].join("\n"),
+      {
+        parse_mode: "HTML",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "👑 My VIP Card", callback_data: "cmd:member" },
+              { text: "🛍️ Open MH OP Store", web_app: { url: shopMiniAppUrl } },
+            ],
+          ],
+        },
+      },
+    );
+  }
+
+  if (callback?.data === "cmd:link_phone") {
+    return reply(
+      chatId,
+      [
+        "📱 <b>MH OP Account & Points ချိတ်ဆက်ခြင်း</b>",
+        "",
+        "ယခင်က MH OP တွင် ဝယ်ယူစဉ် အသုံးပြုခဲ့သော ဖုန်းနံပါတ် (ဥပမာ <code>09123456789</code>) ကို ဤ Chat ထဲသို့ ပေးပို့ပေးပါခင်ဗျာ။",
+        "",
+        "စနစ်မှ လူကြီးမင်း၏ ဖုန်းနံပါတ်ဖြင့် ဝယ်ယူမှုမှတ်တမ်းများနှင့် Point များကို Telegram အကောင့်နှင့် ချိတ်ဆက်ပေးပြီး VIP Member Card အသစ်ကို ထုတ်ပေးပါမည်။",
+      ].join("\n"),
+      { parse_mode: "HTML" },
+    );
+  }
+
+  // Handle direct phone number input to link account
+  const rawPhoneMatch = text.replace(/[\s\-()]/g, "").match(/^(09|\+?959)\d{7,9}$/);
+  const phoneCandidate = message?.contact?.phone_number || (rawPhoneMatch ? rawPhoneMatch[0] : null);
+  if (phoneCandidate) {
+    const telegramUsername =
+      message?.from?.username || callback?.from?.username || null;
+    const telegramName =
+      [message?.from?.first_name, message?.from?.last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      (telegramUsername ? `@${telegramUsername}` : null) ||
+      "VIP Member";
+
+    const linkResult = await linkCustomerTelegram(
+      phoneCandidate,
+      telegramUserId,
+      telegramUsername,
+      telegramName,
+    );
+
+    if (linkResult.success) {
+      const customerCode =
+        linkResult.profile.customerCode || generateCustomerCode(telegramUserId.slice(-4));
+      const cardBuffer = await renderMemberCardImage({
+        customerName: linkResult.profile.name || telegramName,
+        memberId: customerCode,
+        phone: linkResult.profile.phone,
+        tier: linkResult.profile.tier,
+        points: linkResult.profile.points,
+      });
+
+      return replyPhoto(
+        chatId,
+        cardBuffer,
+        [
+          `✅ <b>ဖုန်းနံပါတ် ချိတ်ဆက်မှု အောင်မြင်ပါသည်!</b>`,
+          ``,
+          `ဖုန်းနံပါတ် <code>${phoneCandidate}</code> ကို လူကြီးမင်း၏ Telegram အကောင့်နှင့် အောင်မြင်စွာ ချိတ်ဆက်ပြီးပါပြီခင်ဗျာ။`,
+          ``,
+          `• Customer ID: <code>${customerCode}</code>`,
+          `• အသင်းဝင်: <b>${linkResult.profile.name || telegramName}</b>`,
+          ...(telegramUsername ? [`• Telegram Tag: <b>@${telegramUsername.replace(/^@/, "")}</b>`] : []),
+          `• စုစုပေါင်း Point: <b>${linkResult.profile.points.toLocaleString()} PTS</b>`,
+          `• လက်ရှိအဆင့်: <b>${linkResult.profile.tierName} (${linkResult.profile.burmeseName})</b>`,
+        ].join("\n"),
+        {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "🛍️ Open MH OP Store", web_app: { url: shopMiniAppUrl } },
+                { text: "👑 My VIP Card", callback_data: "cmd:member" },
+              ],
+            ],
+          },
+        },
+      );
+    }
+  }
+
+  // Handle /member, /card, /vip, /points, /tier commands
+  if (
+    text.startsWith("/member") ||
+    text.startsWith("/card") ||
+    text.startsWith("/vip") ||
+    text.startsWith("/points") ||
+    text.startsWith("/tier") ||
+    callback?.data === "cmd:member" ||
+    callback?.data === "cmd:refresh_card"
+  ) {
+    const telegramUsername =
+      message?.from?.username || callback?.from?.username || null;
+    const telegramName =
+      [message?.from?.first_name, message?.from?.last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      (telegramUsername ? `@${telegramUsername}` : null) ||
+      callback?.from?.first_name ||
+      "Valued Member";
+
+    // Auto-resolve or create customer record storing unique customerCode & telegram tag
+    const loyalty = await getOrCreateTelegramCustomer({
+      telegramUserId,
+      telegramUsername,
+      displayName: telegramName,
+    });
+
+    const customerName = loyalty.name || telegramName;
+    const customerCode =
+      loyalty.customerCode || generateCustomerCode(telegramUserId.slice(-4));
+    const currentPoints = loyalty.points || 0;
+    const currentTier = loyalty.tier || "member";
+    const tierDef = TIERS[currentTier] || TIERS.member;
+    const cardTier = getCardTier(currentTier, currentPoints);
+    const isPhoneLinked = Boolean(loyalty.phone && !loyalty.phone.startsWith("TG-"));
+
+    const cardBuffer = await renderMemberCardImage({
+      customerName,
+      memberId: customerCode,
+      phone: loyalty.phone,
+      tier: cardTier,
+      points: currentPoints,
+    });
+
+    const percent = loyalty.progress.percentToNext || 0;
+    const filledBars = Math.min(10, Math.max(0, Math.round(percent / 10)));
+    const emptyBars = 10 - filledBars;
+    const progressBar = `[${"▓".repeat(filledBars)}${"░".repeat(emptyBars)}] ${percent}%`;
+
+    const nextTierText = loyalty.progress.nextTier
+      ? `🚀 နောက်တစ်ဆင့် (<b>${loyalty.progress.nextTier.toUpperCase()} VIP</b>) သို့ ရောက်ရှိရန် <b>${loyalty.progress.pointsNeeded.toLocaleString()} pts</b> လိုအပ်ပါသည်ခင်ဗျာ။\n${progressBar}`
+      : "🏆 <b>ဂုဏ်ယူပါတယ်!</b> လူကြီးမင်းသည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိပြီးဖြစ်ပါသည်ခင်ဗျာ။";
+
+    const caption = [
+      `👑 <b>MH OP VIP MEMBERSHIP CARD</b>`,
+      ``,
+      `• Customer ID: <code>${customerCode}</code>`,
+      `• အသင်းဝင်: <b>${customerName}</b>`,
+      ...(loyalty.telegramUsername ? [`• Telegram Tag: <b>@${loyalty.telegramUsername.replace(/^@/, "")}</b>`] : []),
+      ...(isPhoneLinked && loyalty.phone ? [`• ဖုန်းနံပါတ်: <code>${loyalty.phone}</code>`] : []),
+      `• လက်ရှိအဆင့်: ${tierDef.icon} <b>${tierDef.cardTitle} (${tierDef.burmeseName})</b>`,
+      `• စုစုပေါင်း Point: <b>${currentPoints.toLocaleString()} PTS</b>`,
+      ``,
+      `✨ <b>ခံစားခွင့်များ:</b>`,
+      loyalty.perks.freeDelivery
+        ? `✅ ပို့ဆောင်ခ အခမဲ့ (Free Delivery across Myanmar)`
+        : `• ပုံမှန် ပို့ဆောင်ခနှုန်းထား`,
+      loyalty.perks.discountPercent > 0
+        ? `✅ ပစ္စည်းတန်ဖိုး ${loyalty.perks.discountPercent}% VIP လျှော့စျေး`
+        : ``,
+      ``,
+      nextTierText,
+      ``,
+      `<i>(1,000 MMK သုံးစွဲတိုင်း 1 Point ရရှိပါမည်)</i>`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const inlineKeyboard = [
+      [
+        {
+          text: "🛍️ Open MH OP Store",
+          web_app: { url: shopMiniAppUrl },
+        },
+        {
+          text: "🔄 Refresh Card",
+          callback_data: "cmd:refresh_card",
+        },
+      ],
+      [
+        ...(!isPhoneLinked
+          ? [
+              {
+                text: "📱 Link Phone (Claim Points)",
+                callback_data: "cmd:link_phone",
+              },
+            ]
+          : []),
+        {
+          text: "💎 View Tier Privileges",
+          callback_data: "cmd:tier_perks",
+        },
+      ],
+    ];
+
+    return replyPhoto(chatId, cardBuffer, caption, {
+      reply_markup: { inline_keyboard: inlineKeyboard },
+    });
+  }
   if (text.startsWith("/support")) {
     const supportQuery = text.replace(/^\/support(@\w+)?\s*/i, "").trim();
     let orderCode = supportQuery.match(/MHOP-\d{6}-[A-Z0-9]{4}/i)?.[0];

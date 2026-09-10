@@ -196,7 +196,22 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
       : pMethod.includes("wave") || pMethod === "wavepay"
         ? "WavePay"
         : "KBZ Bank";
-  const subtotal = order.totalAmount - order.shippingFee;
+  const subtotal = order.subtotal ?? (order.totalAmount - order.shippingFee);
+
+  const isPaidFull =
+    order.customerPaymentStatus === "cod_collected" ||
+    order.customerPaymentStatus === "fully_paid";
+  const isDepositVerified = order.customerPaymentStatus === "deposit_verified";
+  const hasDeposit = (order.requiredDeposit ?? 0) > 0;
+  const depositPaid = isPaidFull
+    ? order.totalAmount
+    : order.customerPaidAmount ?? (isDepositVerified ? (order.requiredDeposit ?? 0) : 0);
+  const remainingCod = isPaidFull
+    ? 0
+    : order.codAmount ?? Math.max(0, order.totalAmount - depositPaid);
+  const balanceDue = isPaidFull
+    ? 0
+    : order.customerBalance ?? remainingCod;
 
   const svg = `
   <svg width="${WIDTH}" height="${totalHeight}" viewBox="0 0 ${WIDTH} ${totalHeight}" xmlns="http://www.w3.org/2000/svg">
@@ -304,34 +319,75 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
     <g transform="translate(${PAD}, ${paymentBoxY})">
       <!-- Left: Payment details -->
       <g transform="translate(0, 0)">
-        <text x="0" y="14" class="txt" font-size="9" font-weight="900" fill="#777b70" letter-spacing="1.5">PAYMENT</text>
-        <text x="0" y="40" class="txt" font-size="15" font-weight="900" fill="#1f211d">${xml(paymentLabel)}</text>
-        <!-- Status badge -->
-        <rect x="52" y="27" width="70" height="18" rx="9" fill="#fff0cc"/>
-        <text x="87" y="40" text-anchor="middle" class="txt" font-size="8" font-weight="900" fill="#74530b" letter-spacing="1">PENDING</text>
-        <text x="0" y="64" class="txt" font-size="11" fill="#666a60">Received: <tspan font-weight="700" fill="#252820">0 MMK</tspan></text>
+        <text x="0" y="14" class="txt" font-size="9" font-weight="900" fill="#777b70" letter-spacing="1.5">PAYMENT &amp; STATUS</text>
+        <text x="0" y="38" class="txt" font-size="15" font-weight="900" fill="#1f211d">${xml(paymentLabel)}</text>
+        ${
+          isPaidFull
+            ? `
+          <rect x="0" y="48" width="94" height="20" rx="10" fill="#e8f4cf"/>
+          <text x="47" y="62" text-anchor="middle" class="txt" font-size="8.5" font-weight="900" fill="#34431a" letter-spacing="0.8">PAID IN FULL</text>
+          <text x="0" y="86" class="txt" font-size="11" fill="#666a60">Total Received: <tspan font-weight="700" fill="#252820">${order.totalAmount.toLocaleString()} MMK</tspan></text>
+          <text x="0" y="104" class="txt" font-size="10" font-weight="700" fill="#31520d">Customer Balance: 0 MMK</text>
+        `
+            : hasDeposit
+              ? `
+          <rect x="0" y="48" width="116" height="20" rx="10" fill="${depositPaid > 0 ? "#e0f2fe" : "#fff0cc"}"/>
+          <text x="58" y="62" text-anchor="middle" class="txt" font-size="8.5" font-weight="900" fill="${depositPaid > 0 ? "#0369a1" : "#74530b"}" letter-spacing="0.8">${depositPaid > 0 ? "DEPOSIT VERIFIED" : "DEPOSIT PENDING"}</text>
+          <text x="0" y="86" class="txt" font-size="11" fill="#666a60">Deposit Paid: <tspan font-weight="700" fill="#252820">${depositPaid.toLocaleString()} MMK</tspan></text>
+          <text x="0" y="104" class="txt" font-size="10" font-weight="700" fill="#0369a1">Pay Royal COD: ${remainingCod.toLocaleString()} MMK</text>
+        `
+              : `
+          <rect x="0" y="48" width="80" height="20" rx="10" fill="#fff0cc"/>
+          <text x="40" y="62" text-anchor="middle" class="txt" font-size="8.5" font-weight="900" fill="#74530b" letter-spacing="0.8">PENDING</text>
+          <text x="0" y="86" class="txt" font-size="11" fill="#666a60">Received: <tspan font-weight="700" fill="#252820">${depositPaid.toLocaleString()} MMK</tspan></text>
+          <text x="0" y="104" class="txt" font-size="10" font-weight="700" fill="#74530b">Balance Due: ${balanceDue.toLocaleString()} MMK</text>
+        `
+        }
       </g>
 
       <!-- Right: Totals Breakdown Box -->
       <g transform="translate(${CONTENT_W - 320}, 0)">
         <rect x="0" y="0" width="320" height="136" rx="10" fill="#f3f4ef"/>
         <g transform="translate(16, 0)">
-          <text x="0" y="28" class="txt" font-size="11" fill="#666a60">Subtotal</text>
-          <text x="288" y="28" text-anchor="end" class="txt" font-size="11" fill="#1f211d">${subtotal.toLocaleString()} MMK</text>
+          <text x="0" y="24" class="txt" font-size="10.5" fill="#666a60">Subtotal</text>
+          <text x="288" y="24" text-anchor="end" class="txt" font-size="10.5" fill="#1f211d">${subtotal.toLocaleString()} MMK</text>
 
-          <text x="0" y="52" class="txt" font-size="11" fill="#666a60">Delivery fee</text>
-          <text x="288" y="52" text-anchor="end" class="txt" font-size="11" fill="#1f211d">${order.shippingFee.toLocaleString()} MMK</text>
+          <text x="0" y="44" class="txt" font-size="10.5" fill="#666a60">Delivery fee</text>
+          <text x="288" y="44" text-anchor="end" class="txt" font-size="10.5" fill="#1f211d">${order.shippingFee.toLocaleString()} MMK</text>
 
-          <line x1="0" y1="64" x2="288" y2="64" stroke="#ccd0c5" stroke-width="1"/>
+          <line x1="0" y1="54" x2="288" y2="54" stroke="#ccd0c5" stroke-width="1"/>
 
-          <text x="0" y="86" class="txt" font-size="14" font-weight="900" fill="#1f211d">Total</text>
-          <text x="288" y="86" text-anchor="end" class="txt" font-size="14" font-weight="900" fill="#1f211d">${order.totalAmount.toLocaleString()} MMK</text>
+          <text x="0" y="72" class="txt" font-size="13" font-weight="900" fill="#1f211d">Total</text>
+          <text x="288" y="72" text-anchor="end" class="txt" font-size="13" font-weight="900" fill="#1f211d">${order.totalAmount.toLocaleString()} MMK</text>
 
-          <text x="0" y="106" class="txt" font-size="10" fill="#666a60">Paid</text>
-          <text x="288" y="106" text-anchor="end" class="txt" font-size="10" fill="#1f211d">0 MMK</text>
+          ${
+            isPaidFull
+              ? `
+            <text x="0" y="92" class="txt" font-size="10" fill="#666a60">Paid in full</text>
+            <text x="288" y="92" text-anchor="end" class="txt" font-size="10" font-weight="700" fill="#31520d">${order.totalAmount.toLocaleString()} MMK</text>
 
-          <text x="0" y="124" class="txt" font-size="11" font-weight="900" fill="#1f211d">Balance due</text>
-          <text x="288" y="124" text-anchor="end" class="txt" font-size="11" font-weight="900" fill="#1f211d">${order.totalAmount.toLocaleString()} MMK</text>
+            <text x="0" y="114" class="txt" font-size="11" font-weight="900" fill="#1f211d">Customer balance</text>
+            <text x="288" y="114" text-anchor="end" class="txt" font-size="11" font-weight="900" fill="#31520d">0 MMK</text>
+          `
+              : hasDeposit
+                ? `
+            <text x="0" y="90" class="txt" font-size="9.5" fill="#666a60">Verified Deposit</text>
+            <text x="288" y="90" text-anchor="end" class="txt" font-size="9.5" font-weight="700" fill="#1f211d">${depositPaid.toLocaleString()} MMK</text>
+
+            <text x="0" y="108" class="txt" font-size="9.5" font-weight="700" fill="#0369a1">Royal COD on Delivery</text>
+            <text x="288" y="108" text-anchor="end" class="txt" font-size="9.5" font-weight="900" fill="#0369a1">${remainingCod.toLocaleString()} MMK</text>
+
+            <text x="0" y="126" class="txt" font-size="10.5" font-weight="900" fill="#1f211d">Balance due</text>
+            <text x="288" y="126" text-anchor="end" class="txt" font-size="10.5" font-weight="900" fill="#1f211d">${balanceDue.toLocaleString()} MMK</text>
+          `
+                : `
+            <text x="0" y="92" class="txt" font-size="10" fill="#666a60">Paid</text>
+            <text x="288" y="92" text-anchor="end" class="txt" font-size="10" fill="#1f211d">${depositPaid.toLocaleString()} MMK</text>
+
+            <text x="0" y="114" class="txt" font-size="11" font-weight="900" fill="#1f211d">Balance due</text>
+            <text x="288" y="114" text-anchor="end" class="txt" font-size="11" font-weight="900" fill="#1f211d">${balanceDue.toLocaleString()} MMK</text>
+          `
+          }
         </g>
       </g>
     </g>

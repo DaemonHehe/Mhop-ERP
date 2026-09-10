@@ -16,10 +16,22 @@ export const orderSchema = z.object({
   phone: text(40),
   telegramUserId: z.string().trim().max(80).optional(),
   shippingAddress: z.string().trim().max(500).default(""),
-  shippingZone: z
-    .enum(["yangonInner", "yangonOuter", "otherCities"])
-    .default("yangonInner"),
-  paymentMethod: z.enum(["kbzpay", "wavepay", "bank"]).default("kbzpay"),
+  destinationCity: z.string().trim().max(120).default("Yangon"),
+  shippingZone: z.string().trim().max(40).default("yangonInner"),
+  paymentMethod: z.enum(["kbzpay", "wavepay", "bank", "cash"]).default("kbzpay"),
+  orderSource: z
+    .enum([
+      "web",
+      "telegram",
+      "facebook",
+      "messenger",
+      "tiktok",
+      "viber",
+      "phone",
+      "walk_in",
+      "other",
+    ])
+    .default("web"),
 });
 export const ticketSchema = z.object({
   orderCode: z
@@ -85,6 +97,16 @@ const optionalText = (max: number) =>
     .transform((v) => v.replace(/[\u0000-\u001F\u007F]/g, ""))
     .default("");
 const money = z.coerce.number().finite().min(0).max(1_000_000_000);
+const imageSource = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine(
+    (v) => !v || /^https?:\/\//i.test(v) || /^\/[a-zA-Z0-9_.~%/-]/.test(v),
+    "Image URL must use HTTPS or a valid media path",
+  )
+  .default("");
+
 export const catalogItemSchema = z
   .object({
     name: text(180),
@@ -92,12 +114,8 @@ export const catalogItemSchema = z
     category: z.enum(["Gaming Gadgets", "PUBG Accounts"]),
     subcategory: text(80),
     description: optionalText(1000),
-    imageUrl: z
-      .string()
-      .trim()
-      .max(2048)
-      .refine((v) => !v || /^https:\/\//i.test(v), "Image URL must use HTTPS")
-      .default(""),
+    imageUrl: imageSource,
+    imageUrls: z.array(imageSource).max(25).default([]),
     sku: z
       .string()
       .trim()
@@ -231,6 +249,7 @@ export const telegramUpdateSchema = z.object({
           id: z.number(),
           username: z.string().optional(),
           first_name: z.string().optional(),
+          last_name: z.string().optional(),
         })
         .optional(),
       chat: z.object({ id: z.number() }),
@@ -238,12 +257,24 @@ export const telegramUpdateSchema = z.object({
       caption: z.string().max(1000).optional(),
       voice: z.object({ file_id: z.string() }).optional(),
       photo: z.array(z.object({ file_id: z.string() })).optional(),
+      contact: z
+        .object({
+          phone_number: z.string(),
+          first_name: z.string().optional(),
+          last_name: z.string().optional(),
+        })
+        .optional(),
     })
     .optional(),
   callback_query: z
     .object({
       data: z.string().max(200).optional(),
-      from: z.object({ id: z.number() }),
+      from: z.object({
+        id: z.number(),
+        username: z.string().optional(),
+        first_name: z.string().optional(),
+        last_name: z.string().optional(),
+      }),
       message: z.object({ chat: z.object({ id: z.number() }) }).optional(),
     })
     .optional(),
@@ -258,3 +289,108 @@ export function safeImageUrl(value: unknown) {
     return null;
   }
 }
+
+export const adminCreateOrderSchema = z.object({
+  customerName: text(120),
+  phone: text(40),
+  telegramUserId: z.string().trim().max(80).optional().or(z.literal("")),
+  orderSource: z.enum([
+    "web",
+    "telegram",
+    "facebook",
+    "messenger",
+    "tiktok",
+    "viber",
+    "phone",
+    "walk_in",
+    "other",
+  ]),
+  destinationCity: text(120),
+  shippingAddress: z.string().trim().max(500).default(""),
+  packedWeightKg: z.coerce.number().min(0.1).max(100).default(1.0),
+  requiredDeposit: z.coerce.number().min(0).max(1_000_000_000).optional(),
+  customDeliveryFee: z.coerce.number().min(0).max(1_000_000_000).optional(),
+  customCourierCost: z.coerce.number().min(0).max(1_000_000_000).optional(),
+  internalNotes: z.string().trim().max(2000).default(""),
+  paymentMethod: z.enum(["kbzpay", "wavepay", "bank", "cash"]).default("kbzpay"),
+  items: z
+    .array(
+      z.object({
+        sku: text(80),
+        quantity: z.coerce.number().int().min(1).max(100),
+        agreedPrice: z.coerce.number().min(0).max(1_000_000_000).optional(),
+      }),
+    )
+    .min(1, "Order requires at least one catalog item"),
+});
+
+export const orderPreDispatchEditSchema = z.object({
+  customerName: text(120),
+  phone: text(40),
+  shippingAddress: z.string().trim().max(500).default(""),
+  destinationCity: text(120),
+  packedWeightKg: z.coerce.number().min(0.1).max(100).default(1.0),
+  requiredDeposit: z.coerce.number().min(0).max(1_000_000_000),
+  deliveryFee: z.coerce.number().min(0).max(1_000_000_000),
+  internalNotes: z.string().trim().max(2000).default(""),
+  items: z
+    .array(
+      z.object({
+        sku: text(80),
+        quantity: z.coerce.number().int().min(1).max(100),
+        unitPrice: z.coerce.number().min(0).max(1_000_000_000),
+      }),
+    )
+    .min(1, "Order must contain at least one item"),
+});
+
+export const postDispatchCorrectionSchema = z.object({
+  trackingNumber: text(100).optional().or(z.literal("")),
+  shippingCarrier: text(80).optional().or(z.literal("")),
+  shippingAddress: text(500).optional().or(z.literal("")),
+  phone: text(40).optional().or(z.literal("")),
+  reason: text(500),
+});
+
+export const failedDeliverySchema = z.object({
+  returnCost: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  stockDisposition: z.enum(["return_to_stock", "write_off", "customer_hold"]).default("return_to_stock"),
+  depositDisposition: z.enum(["retain_fully", "refund_fully", "partial_refund"]).default("retain_fully"),
+  refundAmount: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  reason: text(500),
+});
+
+export const paymentEntrySchema = z.object({
+  paymentType: z.enum([
+    "deposit",
+    "cod_collection",
+    "direct_prepayment",
+    "refund",
+    "adjustment",
+  ]),
+  amount: z.coerce.number().finite(),
+  paymentMethod: z.string().trim().max(40).default("kbzpay"),
+  reference: z.string().trim().max(120).default(""),
+  slipUrl: z.string().trim().max(2048).default(""),
+  notes: z.string().trim().max(1000).default(""),
+});
+
+export const settlementBatchSchema = z.object({
+  courierName: text(80).default("Royal Express"),
+  bankAccount: text(120),
+  transferReference: text(120),
+  settlementDate: text(50),
+  bankReceivedAmount: z.coerce.number().min(0).max(1_000_000_000),
+  otherFees: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  notes: z.string().trim().max(2000).default(""),
+  allocations: z
+    .array(
+      z.object({
+        orderId: z.string().uuid(),
+        allocatedCollected: z.coerce.number().min(0).max(1_000_000_000),
+        allocatedCourierFee: z.coerce.number().min(0).max(1_000_000_000),
+      }),
+    )
+    .min(1, "Settlement must allocate to at least one order"),
+});
+
