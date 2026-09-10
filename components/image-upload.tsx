@@ -272,7 +272,6 @@ export function ImageUpload({
           {imageList.length > 0 ? (
             <div className="relative group overflow-hidden rounded-2xl border border-[#dedbd0] bg-neutral-50 flex items-center gap-4 p-3">
               <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-neutral-200 bg-white">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={imageList[0]}
                   alt="Product preview"
@@ -380,7 +379,6 @@ export function ImageUpload({
                         : "border-[#dedbd0] hover:border-neutral-400"
                     }`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={url}
                       alt={`Account screenshot ${idx + 1}`}

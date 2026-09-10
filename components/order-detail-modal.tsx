@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, X, CircleAlert } from "lucide-react";
+import { X, CircleAlert } from "lucide-react";
 import {
   getOrderByIdAction,
   type InventoryItem,

@@ -1508,7 +1508,18 @@ function PreDispatchEditModal({
             ))}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="font-bold">Packed Weight (kg)</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={packedWeightKg}
+                onChange={(e) => setPackedWeightKg(Number(e.target.value) || 1.0)}
+                className="mt-1 h-9 w-full rounded-xl border px-3"
+              />
+            </div>
 
             <div>
               <label className="font-bold">Delivery Fee (MMK)</label>

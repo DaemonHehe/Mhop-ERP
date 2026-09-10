@@ -542,7 +542,6 @@ export function Storefront({
             </div>
 
             <div className="relative flex aspect-[16/10] w-full max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl bg-black">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={galleryModal.images[galleryModal.activeIndex]}
                 alt={`${galleryModal.title} screenshot ${galleryModal.activeIndex + 1}`}
@@ -608,7 +607,6 @@ export function Storefront({
                         : "border-transparent opacity-60 hover:opacity-100"
                     }`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img}
                       alt={`Thumbnail ${idx + 1}`}

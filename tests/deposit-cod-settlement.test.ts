@@ -9,7 +9,6 @@ import {
   isLocationSuspended,
   SUSPENDED_DELIVERY_NOTICE,
   SUSPENDED_CITIES,
-  STATE_DELIVERY_FEES,
   CHECKOUT_CITIES,
   DELIVERABLE_DESTINATIONS_BY_STATE,
 } from "@/lib/shipping/royal-rates";

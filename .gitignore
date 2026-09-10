@@ -26,6 +26,8 @@ blob-report/
 .local/
 .n8n/
 drizzle/meta/
+public/uploads/*
+!public/uploads/.gitkeep
 
 # Editor and operating-system files
 .vscode/
