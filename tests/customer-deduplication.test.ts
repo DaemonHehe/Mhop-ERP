@@ -152,5 +152,35 @@ describe("Customer Deduplication and Secondary Phone", () => {
       expect(effectiveAddress).toBe("Tutu pl");
       expect(getTierForPoints(mergedPoints)).toBe("silver");
     });
+
+    it("executes customer resolution query with secondary_phone on database successfully", async () => {
+      const { db } = await import("@/db");
+      if (!db) return;
+      const { customers } = await import("@/db/schema");
+      const { and, desc, eq, or } = await import("drizzle-orm");
+
+      const cleanCustomerPhone = "0922483935";
+      const cleanCustomerTag = "Sayarg";
+      const telegramUserId = "1670134164";
+
+      const loyaltyConditions = [];
+      if (cleanCustomerPhone) {
+        loyaltyConditions.push(eq(customers.phone, cleanCustomerPhone));
+        loyaltyConditions.push(eq(customers.secondaryPhone, cleanCustomerPhone));
+      }
+      if (telegramUserId) loyaltyConditions.push(eq(customers.telegramUserId, telegramUserId));
+      if (cleanCustomerTag) {
+        loyaltyConditions.push(eq(customers.telegramUsername, cleanCustomerTag));
+        loyaltyConditions.push(eq(customers.telegramUsername, `@${cleanCustomerTag}`));
+      }
+
+      const matchingCustomers = await db
+        .select()
+        .from(customers)
+        .where(and(eq(customers.isActive, true), or(...loyaltyConditions)))
+        .orderBy(desc(customers.points));
+
+      expect(Array.isArray(matchingCustomers)).toBe(true);
+    });
   });
 });

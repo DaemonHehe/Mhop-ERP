@@ -131,6 +131,14 @@ setup.push(
   ...(await statementsFrom("migrations/0020_customer_code_and_telegram_username.sql")),
 );
 
+setup.push(
+  ...(await statementsFrom("migrations/0021_drop_leads_table.sql")),
+);
+
+setup.push(
+  ...(await statementsFrom("migrations/0022_customer_secondary_phone.sql")),
+);
+
 setup.push(...(await statementsFrom("seed-test.sql")));
 await sql.transaction((tx) => setup.map((statement) => tx(statement)));
 await import("./migrate-audit.mjs");
