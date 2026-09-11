@@ -1,7 +1,5 @@
 "use client";
-import { brandAssets } from "@/lib/brand-assets";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
@@ -26,7 +24,6 @@ import { useEffect, useState } from "react";
 import { Logo } from "./logo";
 import { LiveRefresh } from "./live-refresh";
 import { GlobalSearch } from "./global-search";
-import { clientConfig } from "@/lib/client-config";
 
 const nav = [
   ["/dashboard", "Command center", LayoutDashboard],
@@ -67,7 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
       <aside
-        className={`app-sidebar fixed inset-y-0 left-0 z-50 w-[248px] overflow-y-auto p-5 pb-28 text-white transition-transform lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`app-sidebar fixed inset-y-0 left-0 z-50 w-[248px] overflow-y-auto p-5 pb-6 text-white transition-transform lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex items-center justify-between">
           <Logo light />
@@ -104,26 +101,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/10 bg-white/[.035] p-3 shadow-[inset_2px_2px_8px_rgba(0,0,0,.22)]">
-          <div className="flex items-center gap-3">
-            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-white/20 bg-black shadow-[0_2px_8px_rgba(0,0,0,0.4)]">
-              <Image
-                src={brandAssets.logo}
-                alt="MH OP Admin"
-                fill
-                sizes="36px"
-                className="object-contain"
-              />
-            </div>
-            <div>
-              <p className="text-sm font-semibold">MH OP Admin</p>
-              <p className="text-[11px] text-white/45">Operations</p>
-              <p className="mt-0.5 text-[9px] text-white/30">
-                Built by {clientConfig.developer.name}
-              </p>
-            </div>
-          </div>
-        </div>
       </aside>
       <main className="app-main min-w-0 lg:col-start-2">
         <header className="app-topbar sticky top-0 z-30 flex h-16 items-center justify-between gap-2 border-b px-3 sm:px-4 md:px-8">
