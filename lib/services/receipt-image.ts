@@ -93,18 +93,17 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
   try {
     const logoPath = path.join(process.cwd(), "public", "mhop-logo-minimal.jpg");
     logoBuf = await sharp(logoPath)
-      .extract({ left: 115, top: 295, width: 790, height: 430 })
-      .resize({ width: 44, height: 44, fit: "fill" })
+      .resize({ width: 88, height: 88, fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 1 } })
       .png()
       .toBuffer();
   } catch (err) {
     console.error("[renderCustomerReceiptImage logo load error, using blank]", err);
     logoBuf = await sharp({
       create: {
-        width: 44,
-        height: 44,
+        width: 88,
+        height: 88,
         channels: 4,
-        background: { r: 32, g: 34, b: 29, alpha: 1 },
+        background: { r: 0, g: 0, b: 0, alpha: 1 },
       },
     })
       .png()
@@ -229,7 +228,7 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
     <!-- Header -->
     <g transform="translate(${PAD}, 56)">
       <!-- Logo image -->
-      <rect x="0" y="0" width="48" height="48" rx="8" fill="#ffffff" stroke="#e0e2db" stroke-width="1"/>
+      <rect x="0" y="0" width="48" height="48" rx="8" fill="#000000" stroke="#252a20" stroke-width="1"/>
       <image href="data:image/png;base64,${logoBuf.toString("base64")}" x="4" y="4" width="40" height="40" preserveAspectRatio="xMidYMid meet"/>
 
       <!-- Store Name & Tagline -->

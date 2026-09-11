@@ -106,13 +106,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/10 bg-white/[.035] p-3 shadow-[inset_2px_2px_8px_rgba(0,0,0,.22)]">
           <div className="flex items-center gap-3">
-            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-white/20 shadow-[0_2px_8px_rgba(0,0,0,0.4)]">
+            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-white/20 bg-black shadow-[0_2px_8px_rgba(0,0,0,0.4)]">
               <Image
                 src={brandAssets.logo}
                 alt="MH OP Admin"
                 fill
                 sizes="36px"
-                className="object-cover"
+                className="object-contain"
               />
             </div>
             <div>

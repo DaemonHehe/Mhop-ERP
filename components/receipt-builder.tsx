@@ -189,13 +189,13 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
       <div className="receipt-voucher-inner p-5 sm:p-9">
         <header className="grid gap-5 border-b-2 border-[#252a20] pb-6 sm:grid-cols-[1fr_auto] sm:items-start">
           <div className="flex items-center gap-3.5">
-            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-black/15 shadow-sm">
+            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-black/15 bg-black shadow-sm">
               <Image
                 src={brandAssets.logo}
                 alt="MH OP"
                 fill
                 sizes="44px"
-                className="object-cover"
+                className="object-contain"
               />
             </div>
             <div>
@@ -492,7 +492,7 @@ function ThermalReceipt({
       className="receipt-document bg-white p-5 font-mono text-[10px] text-black shadow-xl"
     >
       <div className="text-center">
-        <Image src={brandAssets.logo} alt="MH OP" width={96} height={40} unoptimized className="mx-auto h-10 w-24 object-cover grayscale" />
+        <Image src={brandAssets.logo} alt="MH OP" width={112} height={40} unoptimized className="mx-auto h-10 w-28 object-cover grayscale rounded-md" />
         <p className="font-sans text-xl font-black tracking-tight">
           {clientConfig.brand.name}
         </p>

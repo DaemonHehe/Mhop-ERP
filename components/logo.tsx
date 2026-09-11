@@ -21,15 +21,15 @@ export function Logo({
       className={`group inline-flex items-center gap-2.5 transition-opacity hover:opacity-90 ${className}`}
     >
       <div
-        className={`relative h-10 ${showText ? "w-24" : "w-10"} shrink-0 overflow-hidden rounded-xl border ${
-          light ? "border-white/20 bg-[#23251e]" : "border-black/10 bg-white"
+        className={`relative h-10 ${showText ? "w-28" : "w-10"} shrink-0 overflow-hidden rounded-xl border ${
+          light ? "border-white/20 bg-black" : "border-black/15 bg-black"
         } shadow-sm transition-transform duration-200 group-hover:scale-105`}
       >
         <Image
           src={brandAssets.logo}
           alt="MH OP Logo"
           fill
-          sizes={showText ? "96px" : "40px"}
+          sizes={showText ? "112px" : "40px"}
           className="object-cover"
           priority
         />
