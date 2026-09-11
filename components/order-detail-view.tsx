@@ -11,6 +11,7 @@ import {
   Edit,
   Lock,
   Package,
+  PackageCheck,
   Plus,
   Printer,
   RotateCcw,
@@ -28,6 +29,7 @@ import {
 import { formatMMK } from "@/lib/data";
 import {
   addShipmentAction,
+  assignDeviceByIdentifierAction,
   confirmCodCollectionAction,
   postDispatchCorrectionAction,
   preDispatchEditOrderAction,
@@ -162,6 +164,8 @@ export function OrderDetailView({
   const [slipViewingUrl, setSlipViewingUrl] = useState<string | null>(null);
   const [trackingInput, setTrackingInput] = useState(order.trackingNumber || "");
   const [isEditingTracking, setIsEditingTracking] = useState(false);
+  const [serialInput, setSerialInput] = useState("");
+  const [assigningSerial, setAssigningSerial] = useState(false);
 
   useEffect(() => {
     setTrackingInput(order.trackingNumber || "");
@@ -215,6 +219,25 @@ export function OrderDetailView({
         onRefresh?.();
       } else {
         notify(res.error || "Failed to dispatch order", "error");
+      }
+    });
+  };
+
+  const handleAssignSerial = (customSerial?: string) => {
+    const code = (customSerial ?? serialInput).trim();
+    if (!code) {
+      notify("Please enter a Serial number or IMEI", "error");
+      return;
+    }
+    startTransition(async () => {
+      const res = await assignDeviceByIdentifierAction(order.id, code);
+      if (res.ok) {
+        notify("Serial / IMEI assigned to order item!");
+        setSerialInput("");
+        setAssigningSerial(false);
+        onRefresh?.();
+      } else {
+        notify(res.error || "Failed to assign Serial / IMEI", "error");
       }
     });
   };
@@ -495,13 +518,58 @@ export function OrderDetailView({
               )}
 
               {order.fulfillmentStatus === "packing" && (
-                <button
-                  disabled={pending}
-                  onClick={() => handleFulfillment("packed")}
-                  className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40"
-                >
-                  Confirm Items Packed
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!order.isDigitalOnly && (
+                    assigningSerial ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={serialInput}
+                          onChange={(e) => setSerialInput(e.target.value)}
+                          placeholder="Scan / enter Serial or IMEI"
+                          disabled={pending}
+                          className="h-9 w-48 sm:w-60 rounded-xl border border-violet-300 bg-white px-3 font-mono text-xs font-bold text-black outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 disabled:bg-neutral-100"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          disabled={pending || !serialInput.trim()}
+                          onClick={() => handleAssignSerial()}
+                          className="rounded-xl bg-violet-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-violet-800 disabled:opacity-40 shadow-xs"
+                        >
+                          Assign
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssigningSerial(false);
+                            setSerialInput("");
+                          }}
+                          className="rounded-xl border border-neutral-300 bg-white px-2.5 py-2 text-xs font-bold text-neutral-600 hover:bg-neutral-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setAssigningSerial(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-violet-300 bg-violet-50 px-3.5 py-2 text-xs font-bold text-violet-900 hover:bg-violet-100 transition shadow-2xs"
+                      >
+                        <PackageCheck size={14} />
+                        <span>Include Serial or IMEI</span>
+                      </button>
+                    )
+                  )}
+
+                  <button
+                    disabled={pending}
+                    onClick={() => handleFulfillment("packed")}
+                    className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40 shadow-xs"
+                  >
+                    Confirm Items Packed
+                  </button>
+                </div>
               )}
 
               {order.fulfillmentStatus === "packed" && (
@@ -862,8 +930,23 @@ export function OrderDetailView({
                   <td className="py-2.5 text-right font-mono font-bold">
                     {formatMMK(item.unitPrice * item.quantity)}
                   </td>
-                  <td className="py-2.5 font-mono text-gray-600">
-                    {item.imei || item.serial || "—"}
+                  <td className="py-2.5 font-mono text-xs">
+                    {item.imei || item.serial ? (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                        <span>{item.imei || item.serial}</span>
+                      </span>
+                    ) : order.fulfillmentStatus === "packing" && !order.isDigitalOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => setAssigningSerial(true)}
+                        className="inline-flex items-center gap-1 rounded-md border border-dashed border-violet-300 bg-violet-50/80 px-2 py-0.5 text-[10px] font-bold text-violet-700 hover:border-violet-500 hover:bg-violet-100 transition"
+                      >
+                        <Plus size={10} />
+                        <span>Include Serial / IMEI</span>
+                      </button>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

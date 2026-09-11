@@ -569,18 +569,24 @@ export async function assignDeviceByIdentifier(
         .select({
           code: orders.orderCode,
           paymentStatus: orders.paymentStatus,
+          customerPaymentStatus: orders.customerPaymentStatus,
           fulfillmentStatus: orders.fulfillmentStatus,
         })
         .from(orders)
         .where(eq(orders.id, orderId))
         .for("update");
       if (!currentOrder) throw new Error("Order not found");
-      if (currentOrder.paymentStatus !== "verified")
+      const isDepositApproved =
+        currentOrder.paymentStatus === "verified" ||
+        ["deposit_verified", "cod_collected", "fully_paid"].includes(
+          currentOrder.customerPaymentStatus || "",
+        );
+      if (!isDepositApproved)
         throw new Error("Approve the payment before assigning stock");
       if (currentOrder.fulfillmentStatus !== "packing")
         throw new Error("Stock can only be assigned while an order is packing");
 
-      const [unit] = await tx
+      let [unit] = await tx
         .select()
         .from(deviceUnits)
         .where(
@@ -595,43 +601,98 @@ export async function assignDeviceByIdentifier(
         .for("update");
 
       if (!unit) {
-        throw new Error("No available physical unit matches that identifier");
+        // Check if unit is already used in another status
+        const [existingAny] = await tx
+          .select({ id: deviceUnits.id, status: deviceUnits.status })
+          .from(deviceUnits)
+          .where(
+            or(
+              eq(deviceUnits.serialNumber, clean),
+              eq(deviceUnits.imeiNumber, clean),
+            ),
+          )
+          .limit(1);
+
+        if (existingAny) {
+          throw new Error(`Unit ${clean} is already ${existingAny.status}`);
+        }
+
+        // Auto-register unit on the fly for unassigned physical order item
+        const [unassignedItem] = await tx
+          .select({
+            id: orderItems.id,
+            variantId: orderItems.variantId,
+            category: products.category,
+          })
+          .from(orderItems)
+          .innerJoin(products, eq(products.id, orderItems.productId))
+          .where(
+            and(
+              eq(orderItems.orderId, orderId),
+              isNull(orderItems.deviceUnitId),
+            ),
+          )
+          .limit(1)
+          .for("update");
+
+        if (!unassignedItem) {
+          throw new Error("All physical items in this order already have assigned units");
+        }
+        if (unassignedItem.category === "PUBG Accounts") {
+          throw new Error("PUBG accounts do not use serial numbers");
+        }
+
+        const [createdUnit] = await tx
+          .insert(deviceUnits)
+          .values({
+            variantId: unassignedItem.variantId,
+            serialNumber: clean,
+            imeiNumber: clean.length <= 20 && /^\d+$/.test(clean) ? clean : null,
+            status: "reserved",
+          })
+          .returning();
+        unit = createdUnit;
+
+        await tx
+          .update(orderItems)
+          .set({ deviceUnitId: createdUnit.id })
+          .where(eq(orderItems.id, unassignedItem.id));
+      } else {
+        const [item] = await tx
+          .select()
+          .from(orderItems)
+          .where(
+            and(
+              eq(orderItems.orderId, orderId),
+              eq(orderItems.variantId, unit.variantId),
+              isNull(orderItems.deviceUnitId),
+            ),
+          )
+          .limit(1)
+          .for("update");
+
+        if (!item) {
+          throw new Error(
+            "This unit variant does not match an unassigned order item",
+          );
+        }
+
+        const [listing] = await tx.select({ category: products.category }).from(productVariants)
+          .innerJoin(products, eq(products.id, productVariants.productId))
+          .where(eq(productVariants.id, item.variantId));
+        if (listing?.category === "PUBG Accounts")
+          throw new Error("PUBG sales use the listed player account; no stocked unit is assigned");
+
+        await tx
+          .update(orderItems)
+          .set({ deviceUnitId: unit.id })
+          .where(eq(orderItems.id, item.id));
+
+        await tx
+          .update(deviceUnits)
+          .set({ status: "reserved" })
+          .where(eq(deviceUnits.id, unit.id));
       }
-
-      const [item] = await tx
-        .select()
-        .from(orderItems)
-        .where(
-          and(
-            eq(orderItems.orderId, orderId),
-            eq(orderItems.variantId, unit.variantId),
-            isNull(orderItems.deviceUnitId),
-          ),
-        )
-        .limit(1)
-        .for("update");
-
-      if (!item) {
-        throw new Error(
-          "This unit variant does not match an unassigned order item",
-        );
-      }
-
-      const [listing] = await tx.select({ category: products.category }).from(productVariants)
-        .innerJoin(products, eq(products.id, productVariants.productId))
-        .where(eq(productVariants.id, item.variantId));
-      if (listing?.category === "PUBG Accounts")
-        throw new Error("PUBG sales use the listed player account; no stocked unit is assigned");
-
-      await tx
-        .update(orderItems)
-        .set({ deviceUnitId: unit.id })
-        .where(eq(orderItems.id, item.id));
-
-      await tx
-        .update(deviceUnits)
-        .set({ status: "reserved" })
-        .where(eq(deviceUnits.id, unit.id));
 
       assignedCode = currentOrder.code;
     });
