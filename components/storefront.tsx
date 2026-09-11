@@ -233,7 +233,7 @@ export function Storefront({
             </a>
           </div>
         </div>
-        <div className="relative mt-8 aspect-[16/7] w-full overflow-hidden rounded-[26px] border border-[#ddd9ce] shadow-xl md:aspect-[2.6/1]">
+        <div className="relative mt-8 min-h-[220px] aspect-[16/9] sm:aspect-[16/7] w-full overflow-hidden rounded-[26px] border border-[#ddd9ce] shadow-xl md:aspect-[2.6/1]">
           <Image
             src={brandAssets.store}
             alt="MH OP Minimalist Flagship Store & Showroom"
@@ -242,20 +242,20 @@ export function Storefront({
             sizes="(max-width: 1280px) 100vw, 1280px"
             className="object-cover"
           />
-          <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/85 via-black/30 to-transparent p-5 sm:p-8 md:p-10">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff6b35] px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
+          <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/45 to-transparent p-4 sm:p-7 md:p-10">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff6b35] px-2.5 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-white">
                 Official Store Direct
               </span>
-              <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold text-white backdrop-blur-md">
+              <span className="inline-flex items-center rounded-full bg-white/20 px-2.5 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-bold text-white backdrop-blur-md">
                 100% Authentic Warranty
               </span>
             </div>
-            <h2 className="mt-2 text-lg font-bold text-white sm:text-xl md:text-2xl">
-              MH OP Mobile Gaming Experience & Hardware Boutique
+            <h2 className="mt-2 text-sm sm:text-xl md:text-2xl font-bold text-white leading-snug">
+              မြန်မာ Gamer တွေအတွက် Quality, Authenticity & Trust ကို အဓိကထားတဲ့ Gaming Boutique
             </h2>
-            <p className="mt-0.5 text-xs text-white/75 sm:text-sm">
-              Premium cooling tech, esports accessories & instant digital account transfers
+            <p className="mt-1 text-[11px] sm:text-xs md:text-sm text-white/85 leading-relaxed">
+              Premium Cooling Technology, Esports Accessories နဲ့ Gaming Hardware တွေကို သေချာရွေးချယ်ပေးထားပြီး PUBG Mobile Accounts တွေကိုလည်း လုံခြုံ၊ မြန်ဆန်၊ စိတ်ချယုံကြည်စွာ ဝယ်ယူရောင်းချနိုင်အောင် ဝန်ဆောင်မှုပေးနေပါတယ်။
             </p>
           </div>
         </div>
