@@ -33,6 +33,36 @@ export interface ReceiptSummaryInput {
   tierDiscountAmount?: number;
   tierDeliveryDiscount?: number;
   pointsEarned?: number;
+  paymentAccount?: {
+    bankName: string;
+    accountHolder: string;
+    accountNumber: string;
+    instructions?: string | null;
+  };
+}
+
+export function formatDepositRequestReceipt(
+  order: ReceiptSummaryInput,
+): string {
+  const subtotal =
+    order.subtotal ?? Math.max(0, order.totalAmount - order.shippingFee);
+  const depositDue = order.requiredDeposit ?? order.totalAmount;
+  const lines = [
+    `🧾 <b>${clientConfig.receipt.storeName} — စရန်ငွေတောင်းခံလွှာ</b>`,
+    `Order Code: <code>${order.orderCode}</code>`,
+    `အမည်: ${order.customerName}`,
+    `ဖုန်း: ${order.phone}`,
+    "",
+    `ပစ္စည်းစုစုပေါင်း: ${formatMMK(subtotal)}`,
+    `ပို့ဆောင်ခ: ${formatMMK(order.shippingFee)}`,
+    `<b>အော်ဒါစုစုပေါင်း: ${formatMMK(order.totalAmount)}</b>`,
+    "",
+    `💳 <b>ယခုပေးချေရမည့် စရန်ငွေ: ${formatMMK(depositDue)}</b>`,
+    `ငွေလွှဲပြီးပါက Payment Slip ပုံနှင့် Order Code <code>${order.orderCode}</code> ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။`,
+    "Admin အတည်ပြုပြီးပါက Royal Express COD ပါသော အဓိကပြေစာကို ပို့ပေးပါမည်။",
+  ];
+
+  return lines.join("\n");
 }
 
 /**

@@ -202,6 +202,41 @@ test("staff authentication protects and opens every operations route", async ({
   }
 });
 
+test("Bot & Messages provides a touch-sized mobile choose, edit, and preview flow", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile-chrome",
+    "Mobile Bot & Messages workflow",
+  );
+  await signIn(page, "/bot");
+
+  for (const label of ["Choose", "Edit", "Preview"]) {
+    const control = page.getByRole("button", { name: label, exact: true });
+    await expect(control).toBeVisible();
+    expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  }
+
+  await page.getByRole("button", { name: /^Customer/ }).click();
+  await page
+    .getByRole("button", { name: /welcome.*Telegram Bot Welcome/i })
+    .click();
+  await expect(page.getByLabel("Message Template Copy")).toBeVisible();
+
+  const viewportWidth = await page.evaluate(
+    () => document.documentElement.clientWidth,
+  );
+  const documentWidth = await page.evaluate(
+    () => document.documentElement.scrollWidth,
+  );
+  expect(documentWidth).toBeLessThanOrEqual(viewportWidth);
+
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Telegram Preview" }),
+  ).toBeVisible();
+});
+
 test("admin navigation preserves the shell and streams a content skeleton", async ({
   page,
 }, testInfo) => {

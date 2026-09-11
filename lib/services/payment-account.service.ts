@@ -144,6 +144,29 @@ export async function getActivePaymentAccounts(): Promise<PaymentAccount[]> {
   return active.length ? active : all;
 }
 
+export async function getPaymentAccountForMethod(
+  selectedMethod?: string,
+): Promise<PaymentAccount> {
+  const accounts = await getActivePaymentAccounts();
+  const normalizedMethod = (selectedMethod || "").toLowerCase().trim();
+
+  if (!normalizedMethod) return accounts[0];
+
+  return (
+    accounts.find((account) => {
+      const bankName = account.bankName.toLowerCase();
+      return (
+        bankName.includes(normalizedMethod) ||
+        normalizedMethod.includes(bankName) ||
+        (normalizedMethod.includes("kbzpay") && bankName.includes("kpay")) ||
+        (normalizedMethod.includes("kpay") && bankName.includes("kbzpay")) ||
+        (normalizedMethod.includes("wavepay") && bankName.includes("wave")) ||
+        (normalizedMethod.includes("bank") && bankName.includes("bank"))
+      );
+    }) || accounts[0]
+  );
+}
+
 export async function createPaymentAccount(draft: PaymentAccountDraft) {
   if (!db) return { ok: false, error: "Database not configured." };
   await ensureTableAndSeed();

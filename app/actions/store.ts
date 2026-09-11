@@ -161,6 +161,32 @@ export async function updateFulfillmentAction(
   return result;
 }
 
+export async function deleteOrderAction(
+  orderId: string,
+  input: { confirmationCode: string; reason: string },
+) {
+  const staff = await authorizeStaff(["admin"]);
+  if (!staff)
+    return {
+      ok: false as const,
+      error: "Administrator access is required to delete orders.",
+    };
+  const result = await orderService.deleteOrder(
+    orderId,
+    input.confirmationCode,
+    input.reason,
+    `${staff.name} (${staff.email})`,
+  );
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath("/reports");
+    revalidatePath("/customers");
+    revalidatePath("/erp");
+    revalidateCatalog();
+  }
+  return result;
+}
+
 export async function addShipmentAction(
   orderId: string,
   input: { trackingNumber: string; carrier: string },
@@ -322,8 +348,9 @@ export async function adminCreateOrderAction(
 }
 
 export async function getOrderByIdAction(orderId: string) {
-  await requireStaff(["admin", "staff"]);
-  return orderService.getOrderById(orderId);
+  const staff = await requireStaff(["admin", "staff"]);
+  const order = await orderService.getOrderById(orderId);
+  return order ? { ...order, canDeleteOrder: staff.role === "admin" } : null;
 }
 
 export async function preDispatchEditOrderAction(

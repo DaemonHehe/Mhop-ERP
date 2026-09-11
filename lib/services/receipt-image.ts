@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import QRCode from "qrcode";
-import JsBarcode from "jsbarcode";
 import { clientConfig } from "@/lib/client-config";
 import type { ReceiptSummaryInput } from "./receipt-summary";
+
+export const MAIN_RECEIPT_TELEGRAM_URL = "https://t.me/KG7n1svJ7bxkNWRl";
 
 // Configure Fontconfig to discover Noto Sans and Noto Sans Myanmar in assets/fonts on Linux/Vercel
 const fontsDir = path.join(process.cwd(), "assets", "fonts");
@@ -51,31 +52,15 @@ function wrap(value: string, limit = 36) {
   return lines.length ? lines : [""];
 }
 
-function generateBarcode(code: string, width = 250, height = 36) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const CODE128 = (JsBarcode as any).getModule("CODE128");
-  const encoder = new CODE128(code, {});
-  const { data } = encoder.encode();
-  const barWidth = width / data.length;
-  let rects = "";
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] === "1") {
-      rects += `<rect x="${(i * barWidth).toFixed(2)}" y="0" width="${barWidth.toFixed(2)}" height="${height}" fill="#20221d"/>`;
-    }
-  }
-  return {
-    width,
-    height: height + 16,
-    svg: `<g transform="translate(0, 0)">${rects}<text x="${width / 2}" y="${height + 12}" text-anchor="middle" font-family="'Noto Sans', monospace" font-size="9" font-weight="700" fill="#20221d">${xml(code)}</text></g>`,
-  };
-}
-
-async function generateQr(code: string, size = 80) {
+function orderLookupUrl(code: string) {
   const appUrl = (
     process.env.NEXT_PUBLIC_APP_URL || "https://mhop-erp-daemon.vercel.app"
   ).replace(/\/+$/, "");
-  const url = `${appUrl}/orders?code=${encodeURIComponent(code)}`;
-  const qrSvg = await QRCode.toString(url, {
+  return `${appUrl}/orders?code=${encodeURIComponent(code)}`;
+}
+
+async function generateQr(value: string, size = 80) {
+  const qrSvg = await QRCode.toString(value, {
     type: "svg",
     width: size,
     margin: 0,
@@ -83,6 +68,145 @@ async function generateQr(code: string, size = 80) {
   });
   const match = qrSvg.match(/<svg[^>]*>([\s\S]*?)<\/svg>/);
   return match ? match[1] : "";
+}
+
+/**
+ * Renders the narrow first-stage receipt sent immediately after checkout.
+ * At 203 DPI, 360 px is approximately 45 mm wide.
+ */
+export async function renderDepositRequestReceiptImage(
+  order: ReceiptSummaryInput,
+) {
+  const WIDTH = 360;
+  const PAD = 18;
+  const CONTENT_W = WIDTH - PAD * 2;
+  const subtotal =
+    order.subtotal ?? Math.max(0, order.totalAmount - order.shippingFee);
+  const depositDue = order.requiredDeposit ?? order.totalAmount;
+  const itemRows = [
+    ...(order.bundles || []).map((bundle) => ({
+      name: `Bundle · ${bundle.name}`,
+      quantity: 1,
+      amount: bundle.price,
+    })),
+    ...order.items.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      amount: item.unitPrice * item.quantity,
+    })),
+  ];
+  const itemHeight = Math.max(1, itemRows.length) * 38;
+  const account = order.paymentAccount || (() => {
+    const method = order.paymentMethod.toLowerCase();
+    if (method.includes("wave")) {
+      return {
+        bankName: clientConfig.payments.wavePay.label,
+        accountHolder: clientConfig.payments.wavePay.holder,
+        accountNumber: clientConfig.payments.wavePay.account,
+      };
+    }
+    if (method.includes("bank")) {
+      return {
+        bankName: clientConfig.payments.bank.label,
+        accountHolder: clientConfig.payments.bank.holder,
+        accountNumber: clientConfig.payments.bank.account,
+      };
+    }
+    return {
+      bankName: clientConfig.payments.kbzPay.label,
+      accountHolder: clientConfig.payments.kbzPay.holder,
+      accountNumber: clientConfig.payments.kbzPay.account,
+    };
+  })();
+  const itemsY = 174;
+  const totalsY = itemsY + itemHeight + 20;
+  const depositY = totalsY + 102;
+  const accountY = depositY + 92;
+  const footerY = accountY + 134;
+  const totalHeight = footerY + 118;
+  const issued = new Date().toLocaleString("en-GB", {
+    timeZone: "Asia/Yangon",
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+  const qrSvg = await generateQr(orderLookupUrl(order.orderCode), 64);
+
+  const svg = `
+  <svg width="${WIDTH}" height="${totalHeight}" viewBox="0 0 ${WIDTH} ${totalHeight}" xmlns="http://www.w3.org/2000/svg">
+    <style>
+      .txt { font-family: 'Noto Sans', 'Noto Sans Myanmar', sans-serif; }
+      .mono { font-family: 'Noto Sans', monospace; }
+    </style>
+    <rect width="${WIDTH}" height="${totalHeight}" fill="#ffffff"/>
+    <rect x="0" y="0" width="${WIDTH}" height="8" fill="#252a20"/>
+
+    <g transform="translate(${PAD}, 30)">
+      <text x="0" y="18" class="txt" font-size="18" font-weight="900" fill="#171914">${xml(clientConfig.receipt.storeName)}</text>
+      <text x="0" y="38" class="txt" font-size="9" font-weight="700" fill="#6b7066" letter-spacing="1.2">45 MM DEPOSIT REQUEST</text>
+      <text x="${CONTENT_W}" y="18" text-anchor="end" class="txt" font-size="11" font-weight="900" fill="#171914">စရန်ငွေတောင်းခံလွှာ</text>
+      <line x1="0" y1="54" x2="${CONTENT_W}" y2="54" stroke="#252a20" stroke-width="2"/>
+
+      <text x="0" y="78" class="txt" font-size="9" fill="#6b7066">ORDER</text>
+      <text x="${CONTENT_W}" y="78" text-anchor="end" class="mono" font-size="11" font-weight="800" fill="#20221d">${xml(order.orderCode)}</text>
+      <text x="0" y="98" class="txt" font-size="9" fill="#6b7066">CUSTOMER</text>
+      <text x="${CONTENT_W}" y="98" text-anchor="end" class="txt" font-size="10.5" font-weight="700" fill="#20221d">${xml(order.customerName)}</text>
+      <text x="0" y="116" class="txt" font-size="9" fill="#6b7066">PHONE</text>
+      <text x="${CONTENT_W}" y="116" text-anchor="end" class="mono" font-size="10" fill="#20221d">${xml(order.phone)}</text>
+      <text x="0" y="136" class="txt" font-size="8.5" fill="#777b70">${xml(issued)}</text>
+    </g>
+
+    <g transform="translate(${PAD}, ${itemsY})">
+      <text x="0" y="0" class="txt" font-size="9" font-weight="900" fill="#6b7066" letter-spacing="1">ORDER ITEMS</text>
+      ${itemRows.map((item, index) => {
+        const y = 18 + index * 38;
+        const name = wrap(item.name, 27)[0];
+        return `
+          <text x="0" y="${y}" class="txt" font-size="10.5" font-weight="700" fill="#20221d">${xml(name)}</text>
+          <text x="0" y="${y + 16}" class="txt" font-size="9" fill="#6b7066">Qty ${item.quantity}</text>
+          <text x="${CONTENT_W}" y="${y + 16}" text-anchor="end" class="mono" font-size="9.5" font-weight="700" fill="#20221d">${item.amount.toLocaleString()} MMK</text>
+        `;
+      }).join("")}
+      <line x1="0" y1="${itemHeight + 6}" x2="${CONTENT_W}" y2="${itemHeight + 6}" stroke="#d8dad3" stroke-width="1"/>
+    </g>
+
+    <g transform="translate(${PAD}, ${totalsY})">
+      <text x="0" y="16" class="txt" font-size="10" fill="#666a60">Products subtotal</text>
+      <text x="${CONTENT_W}" y="16" text-anchor="end" class="mono" font-size="10" fill="#20221d">${subtotal.toLocaleString()} MMK</text>
+      <text x="0" y="38" class="txt" font-size="10" fill="#666a60">Delivery fee</text>
+      <text x="${CONTENT_W}" y="38" text-anchor="end" class="mono" font-size="10" fill="#20221d">${order.shippingFee.toLocaleString()} MMK</text>
+      <line x1="0" y1="50" x2="${CONTENT_W}" y2="50" stroke="#252a20" stroke-width="1"/>
+      <text x="0" y="72" class="txt" font-size="12" font-weight="900" fill="#20221d">ORDER TOTAL</text>
+      <text x="${CONTENT_W}" y="72" text-anchor="end" class="mono" font-size="12" font-weight="900" fill="#20221d">${order.totalAmount.toLocaleString()} MMK</text>
+    </g>
+
+    <g transform="translate(${PAD}, ${depositY})">
+      <rect x="0" y="0" width="${CONTENT_W}" height="76" rx="8" fill="#252a20"/>
+      <text x="${CONTENT_W / 2}" y="25" text-anchor="middle" class="txt" font-size="10" font-weight="800" fill="#d9ddcf" letter-spacing="1">PAY DEPOSIT NOW</text>
+      <text x="${CONTENT_W / 2}" y="54" text-anchor="middle" class="mono" font-size="23" font-weight="900" fill="#ffffff">${depositDue.toLocaleString()} MMK</text>
+    </g>
+
+    <g transform="translate(${PAD}, ${accountY})">
+      <rect x="0" y="0" width="${CONTENT_W}" height="118" rx="8" fill="#f3f4ef" stroke="#d8dad3"/>
+      <text x="12" y="22" class="txt" font-size="9" font-weight="900" fill="#6b7066" letter-spacing="1">TRANSFER INFORMATION</text>
+      <text x="12" y="45" class="txt" font-size="12" font-weight="900" fill="#20221d">${xml(account.bankName)}</text>
+      <text x="12" y="65" class="txt" font-size="9.5" fill="#565a51">Account name</text>
+      <text x="${CONTENT_W - 12}" y="65" text-anchor="end" class="txt" font-size="9.5" font-weight="700" fill="#20221d">${xml(account.accountHolder)}</text>
+      <text x="12" y="86" class="txt" font-size="9.5" fill="#565a51">Account number</text>
+      <text x="${CONTENT_W - 12}" y="86" text-anchor="end" class="mono" font-size="11" font-weight="900" fill="#20221d">${xml(account.accountNumber)}</text>
+      <text x="12" y="105" class="txt" font-size="8.5" fill="#6b7066">Send the payment slip with this order code.</text>
+    </g>
+
+    <g transform="translate(${PAD}, ${footerY})">
+      <text x="0" y="18" class="txt" font-size="10" font-weight="900" fill="#20221d">စရန်ငွေလွှဲပြီး Payment Slip ပေးပို့ပါခင်ဗျာ။</text>
+      <text x="0" y="36" class="txt" font-size="8.5" fill="#6b7066">The main receipt and Royal COD amount will be</text>
+      <text x="0" y="50" class="txt" font-size="8.5" fill="#6b7066">sent after admin approval.</text>
+      <g transform="translate(${CONTENT_W - 64}, 42)">${qrSvg}</g>
+      <text x="0" y="78" class="txt" font-size="9" font-weight="700" fill="#20221d">Telegram ${xml(clientConfig.receipt.telegram)}</text>
+      <text x="0" y="96" class="mono" font-size="8.5" fill="#6b7066">${xml(order.orderCode)}</text>
+    </g>
+  </svg>`;
+
+  return sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
 }
 
 /**
@@ -114,8 +238,7 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
   const PAD = 48;
   const CONTENT_W = WIDTH - PAD * 2;
 
-  const barcode = generateBarcode(order.orderCode, 250, 36);
-  const qrSvg = await generateQr(order.orderCode, 80);
+  const qrSvg = await generateQr(MAIN_RECEIPT_TELEGRAM_URL, 80);
 
   const allRows: Array<{
     no: number;
@@ -222,6 +345,10 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
     <rect width="${WIDTH}" height="${totalHeight}" fill="#f5f4ef"/>
     <!-- Document Card -->
     <rect x="24" y="24" width="${WIDTH - 48}" height="${totalHeight - 48}" rx="8" fill="#ffffff" stroke="#e3e5de" stroke-width="1"/>
+    <!-- Low-opacity diagonal brand watermark behind receipt content -->
+    <g transform="translate(${WIDTH / 2}, ${totalHeight / 2}) rotate(-32)" opacity="0.055">
+      <text x="0" y="0" text-anchor="middle" dominant-baseline="middle" class="txt" font-size="164" font-weight="900" letter-spacing="12" fill="#252a20">MH OP</text>
+    </g>
     <!-- Top accent bar -->
     <rect x="24" y="24" width="${WIDTH - 48}" height="8" rx="4" fill="#252a20"/>
 
@@ -407,19 +534,15 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
     <g transform="translate(${PAD}, ${footerY})">
       <line x1="0" y1="0" x2="${CONTENT_W}" y2="0" stroke="#dfe1da" stroke-width="1"/>
 
-      <!-- Left: Thank you & Barcode -->
+      <!-- Left: Thank you -->
       <text x="0" y="28" class="txt" font-size="15" font-weight="900" fill="#252820">ကျေးဇူးတင်ပါတယ်ခင်ဗျာ</text>
       <text x="0" y="46" class="txt" font-size="9.5" fill="#70746a">Thank you for choosing MH OP. Keep this original voucher as your proof of purchase and warranty record.</text>
 
-      <g transform="translate(0, 58)">
-        ${barcode.svg}
-      </g>
-
-      <!-- Right: QR Code & Reference text -->
+      <!-- Right: Telegram QR Code -->
       <g transform="translate(${CONTENT_W - 190}, 45)">
-        <text x="0" y="16" text-anchor="end" class="txt" font-size="9" font-weight="800" fill="#30332c">Order reference</text>
-        <text x="0" y="30" text-anchor="end" class="txt" font-size="8" fill="#777b70">Scan to identify</text>
-        <text x="0" y="42" text-anchor="end" class="txt" font-size="8" fill="#777b70">this transaction</text>
+        <text x="0" y="16" text-anchor="end" class="txt" font-size="9" font-weight="800" fill="#30332c">MH OP Telegram</text>
+        <text x="0" y="30" text-anchor="end" class="txt" font-size="8" fill="#777b70">Scan to open</text>
+        <text x="0" y="42" text-anchor="end" class="txt" font-size="8" fill="#777b70">our Telegram link</text>
       </g>
       <g transform="translate(${CONTENT_W - 80}, 20)">
         ${qrSvg}

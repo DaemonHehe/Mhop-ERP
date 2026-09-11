@@ -14,13 +14,52 @@ import {
 } from "@/lib/shipping/royal-rates";
 import { DESTINATIONS_BY_STATE } from "@/lib/shipping/destinations-data";
 import {
+  formatDepositRequestReceipt,
   formatCustomerReceipt,
   formatManagerOrderAlert,
 } from "@/lib/services/receipt-summary";
 import { evaluateWarrantyPolicy } from "@/lib/warranty-policy";
 import { getErpSnapshot } from "@/lib/services/erp.service";
+import {
+  calculateSettlementAfterOrderDeletion,
+  shouldRestoreOrderInventory,
+} from "@/lib/services/order.service";
 
 describe("Deposit + COD Orders and Royal Express Settlement", () => {
+  describe("Permanent order deletion accounting", () => {
+    it("restores inventory only when it was not already restored by cancellation or return", () => {
+      for (const status of ["new", "packing", "packed", "dispatched", "delivered"])
+        expect(shouldRestoreOrderInventory(status)).toBe(true);
+      expect(shouldRestoreOrderInventory("cancelled")).toBe(false);
+      expect(shouldRestoreOrderInventory("returned")).toBe(false);
+    });
+
+    it("recalculates a Royal batch after its order allocation is removed", () => {
+      const result = calculateSettlementAfterOrderDeletion(
+        [
+          { allocatedCollected: 245_000, allocatedCourierFee: 4_500 },
+          { allocatedCollected: "120000", allocatedCourierFee: "4050" },
+        ],
+        356_450,
+        0,
+      );
+
+      expect(result).toEqual({
+        totalCollected: 365_000,
+        totalCourierFees: 8_550,
+        discrepancyAmount: 0,
+      });
+    });
+
+    it("keeps transferred bank money visible as a discrepancy when no allocations remain", () => {
+      expect(calculateSettlementAfterOrderDeletion([], 240_500, 0)).toEqual({
+        totalCollected: 0,
+        totalCourierFees: 0,
+        discrepancyAmount: 240_500,
+      });
+    });
+  });
+
   describe("Prompt Reference Financial Example", () => {
     it("matches the exact user specification for products, delivery, deposit, COD, courier deduction, and payout", () => {
       // Products: 250,000 MMK
@@ -240,6 +279,34 @@ describe("Deposit + COD Orders and Royal Express Settlement", () => {
   });
 
   describe("Receipts & Customer Communication Breakdown", () => {
+    it("keeps the first receipt focused on the deposit and defers COD until approval", () => {
+      const receiptText = formatDepositRequestReceipt({
+        orderCode: "MHOP-260912-DPST",
+        customerName: "Aung Aung",
+        phone: "09791112222",
+        shippingAddress: "No. 45, Strand Road",
+        shippingFee: 5000,
+        totalAmount: 255000,
+        subtotal: 250000,
+        requiredDeposit: 10000,
+        codAmount: 245000,
+        paymentMethod: "kbzpay",
+        items: [
+          {
+            name: "Black Shark Cooler",
+            quantity: 1,
+            unitPrice: 250000,
+          },
+        ],
+      });
+
+      expect(receiptText).toContain("စရန်ငွေတောင်းခံလွှာ");
+      expect(receiptText).toContain("255,000 MMK");
+      expect(receiptText).toContain("10,000 MMK");
+      expect(receiptText).not.toContain("245,000 MMK");
+      expect(receiptText).toContain("အဓိကပြေစာ");
+    });
+
     it("generates deposit confirmation receipt when deposit is pending or verified", () => {
       const receiptText = formatCustomerReceipt({
         orderCode: "MHOP-260908-EX01",

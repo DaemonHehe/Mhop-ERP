@@ -7,7 +7,11 @@ import {
   calculatePointsFromAmount,
   type CustomerTier,
 } from "@/lib/loyalty";
-import { awardCustomerPoints, generateCustomerCode } from "./customer.service";
+import {
+  awardCustomerPoints,
+  generateCustomerCode,
+  recalculateCustomerLoyalty,
+} from "./customer.service";
 import {
   bundles,
   courierSettlementAllocations,
@@ -21,6 +25,8 @@ import {
   productVariants,
   products,
   staffAlerts,
+  systemAuditLogs,
+  tickets,
 } from "@/db/schema";
 import { formatMMK, orders as demoOrders } from "@/lib/data";
 import { calculateOrderShipping, clientConfig } from "@/lib/client-config";
@@ -53,10 +59,17 @@ import {
 } from "@/lib/telegram/bot";
 import {
   formatCustomerReceipt,
+  formatDepositRequestReceipt,
   formatManagerOrderAlert,
 } from "./receipt-summary";
-import { renderCustomerReceiptImage } from "./receipt-image";
-import { formatBankAccountsTelegramMessage } from "./payment-account.service";
+import {
+  renderCustomerReceiptImage,
+  renderDepositRequestReceiptImage,
+} from "./receipt-image";
+import {
+  formatBankAccountsTelegramMessage,
+  getPaymentAccountForMethod,
+} from "./payment-account.service";
 
 export interface OperationalOrder {
   id: string;
@@ -162,6 +175,197 @@ const num = (value: string | number) => Number(value);
 
 const title = <T extends string>(value: T) =>
   `${value.charAt(0).toUpperCase()}${value.slice(1)}` as string;
+
+export function shouldRestoreOrderInventory(fulfillmentStatus: string) {
+  return !["cancelled", "returned"].includes(fulfillmentStatus);
+}
+
+export function calculateSettlementAfterOrderDeletion(
+  remaining: Array<{
+    allocatedCollected: string | number;
+    allocatedCourierFee: string | number;
+  }>,
+  bankReceivedAmount: string | number,
+  otherFees: string | number,
+) {
+  const totalCollected = remaining.reduce(
+    (sum, allocation) => sum + num(allocation.allocatedCollected),
+    0,
+  );
+  const totalCourierFees = remaining.reduce(
+    (sum, allocation) => sum + num(allocation.allocatedCourierFee),
+    0,
+  );
+  const discrepancyAmount =
+    num(bankReceivedAmount) -
+    (totalCollected - totalCourierFees - num(otherFees));
+  return { totalCollected, totalCourierFees, discrepancyAmount };
+}
+
+export async function deleteOrder(
+  orderId: string,
+  confirmationCode: string,
+  reason: string,
+  actor = "admin",
+): Promise<ActionResult> {
+  try {
+    if (!db) return { ok: false, error: "Database is not configured." };
+    if (!reason?.trim() || reason.trim().length < 3)
+      return { ok: false, error: "A deletion reason is required." };
+
+    await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+
+      if (!order) throw new Error("Order not found");
+      if (confirmationCode.trim() !== order.orderCode)
+        throw new Error(`Type ${order.orderCode} exactly to confirm deletion`);
+
+      const items = await tx
+        .select({
+          variantId: orderItems.variantId,
+          quantity: orderItems.quantity,
+          category: products.category,
+          deviceUnitId: orderItems.deviceUnitId,
+        })
+        .from(orderItems)
+        .innerJoin(products, eq(products.id, orderItems.productId))
+        .where(eq(orderItems.orderId, orderId));
+
+      const payments = await tx
+        .select({ amount: orderPayments.amount, status: orderPayments.status })
+        .from(orderPayments)
+        .where(eq(orderPayments.orderId, orderId));
+      const verifiedPaymentTotal = payments
+        .filter((payment) => payment.status === "verified")
+        .reduce((sum, payment) => sum + num(payment.amount), 0);
+
+      const allocations = await tx
+        .select({
+          settlementBatchId: courierSettlementAllocations.settlementBatchId,
+        })
+        .from(courierSettlementAllocations)
+        .where(eq(courierSettlementAllocations.orderId, orderId));
+      const affectedBatchIds = [
+        ...new Set(allocations.map((allocation) => allocation.settlementBatchId)),
+      ];
+
+      if (shouldRestoreOrderInventory(order.fulfillmentStatus)) {
+        for (const item of items) {
+          if (item.category === "PUBG Accounts") {
+            await tx
+              .update(productVariants)
+              .set({ listingStatus: "available" })
+              .where(
+                and(
+                  eq(productVariants.id, item.variantId),
+                  inArray(productVariants.listingStatus, ["reserved", "sold"]),
+                ),
+              );
+          } else {
+            await tx
+              .update(productVariants)
+              .set({
+                stockQuantity: sql`${productVariants.stockQuantity} + ${item.quantity}`,
+              })
+              .where(eq(productVariants.id, item.variantId));
+          }
+
+          if (item.deviceUnitId) {
+            await tx
+              .update(deviceUnits)
+              .set({ status: "in_stock", soldAt: null })
+              .where(
+                and(
+                  eq(deviceUnits.id, item.deviceUnitId),
+                  inArray(deviceUnits.status, ["reserved", "sold"]),
+                ),
+              );
+          }
+        }
+      }
+
+      await tx
+        .delete(courierSettlementAllocations)
+        .where(eq(courierSettlementAllocations.orderId, orderId));
+
+      for (const batchId of affectedBatchIds) {
+        const [batch] = await tx
+          .select()
+          .from(courierSettlementBatches)
+          .where(eq(courierSettlementBatches.id, batchId))
+          .for("update");
+        if (!batch) continue;
+
+        const remaining = await tx
+          .select({
+            collected: courierSettlementAllocations.allocatedCollected,
+            fee: courierSettlementAllocations.allocatedCourierFee,
+          })
+          .from(courierSettlementAllocations)
+          .where(eq(courierSettlementAllocations.settlementBatchId, batchId));
+        const { totalCollected, totalCourierFees, discrepancyAmount } =
+          calculateSettlementAfterOrderDeletion(
+            remaining.map((allocation) => ({
+              allocatedCollected: allocation.collected,
+              allocatedCourierFee: allocation.fee,
+            })),
+            batch.bankReceivedAmount,
+            batch.otherFees,
+          );
+
+        await tx
+          .update(courierSettlementBatches)
+          .set({
+            totalCollected: String(totalCollected),
+            totalCourierFees: String(totalCourierFees),
+            discrepancyAmount: String(discrepancyAmount),
+            status:
+              batch.status === "reversed"
+                ? "reversed"
+                : Math.abs(discrepancyAmount) < 0.01
+                  ? "completed"
+                  : "discrepancy",
+          })
+          .where(eq(courierSettlementBatches.id, batchId));
+
+        await tx.insert(staffAlerts).values({
+          type: "settlement.adjusted",
+          title: `Royal settlement adjusted • ${batch.batchCode}`,
+          body: `Order ${order.orderCode} was deleted. Remaining collected: ${totalCollected} MMK, fees: ${totalCourierFees} MMK, discrepancy: ${discrepancyAmount} MMK.`,
+          targetCode: batch.batchCode,
+        });
+      }
+
+      await tx.delete(tickets).where(eq(tickets.orderCode, order.orderCode));
+      await tx.delete(orderPayments).where(eq(orderPayments.orderId, orderId));
+      await tx.delete(orderBundleSets).where(eq(orderBundleSets.orderId, orderId));
+      await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+      await tx.delete(staffAlerts).where(eq(staffAlerts.targetCode, order.orderCode));
+      await tx.delete(orders).where(eq(orders.id, orderId));
+      await recalculateCustomerLoyalty(tx, order.customerId);
+
+      const restoredUnits = shouldRestoreOrderInventory(order.fulfillmentStatus)
+        ? items.reduce((sum, item) => sum + item.quantity, 0)
+        : 0;
+      await tx.insert(systemAuditLogs).values({
+        category: "orders",
+        event: "order.deleted",
+        actor: actor.slice(0, 120),
+        targetCode: order.orderCode,
+        details: `Permanently deleted order. Revenue removed: ${num(order.totalAmount)} MMK. Verified payment ledger removed: ${verifiedPaymentTotal} MMK. Inventory units restored: ${restoredUnits}. Royal allocations removed: ${allocations.length}. Reason: ${reason.trim()}`,
+      });
+
+    });
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorOf(error) };
+  }
+}
 
 export async function getOrders(): Promise<OperationalOrder[]> {
   if (!db) return demoOrders;
@@ -887,6 +1091,7 @@ export async function createOrder(
         requiredDeposit,
         codAmount,
         destinationCity: royalDelivery.destinationCity,
+        telegramUserId: effectiveTgUserId,
         selectedItems: selected.map((item) => ({
           name: item.productName || item.sku,
           quantity: quantities.get(item.sku) || 1,
@@ -931,29 +1136,33 @@ export async function createOrder(
     }
 
     // 2. Generate and dispatch receipt back to customer via Customer Bot (if linked)
-    if (parsed.data.telegramUserId) {
+    if (orderSummary.telegramUserId) {
       const bankInfoMessage = await formatBankAccountsTelegramMessage(parsed.data.paymentMethod);
 
       try {
-        const receiptImage = await renderCustomerReceiptImage(receiptData);
-        await sendTelegramPhoto(parsed.data.telegramUserId, receiptImage, {
-          filename: `${orderSummary.orderCode}-receipt.png`,
-          caption: `🧾 <b>${orderSummary.orderCode}</b> · စုစုပေါင်း ${formatMMK(orderSummary.total)}\nစရန်ငွေ (Deposit): <b>${formatMMK(orderSummary.requiredDeposit)}</b>\nပစ္စည်းရောက်မှ Royal Express သို့ ပေးချေရန် (COD): <b>${formatMMK(orderSummary.codAmount)}</b>\n\nစရန်ငွေလွှဲပြီးပါက Payment Slip ပုံနှင့် Order Code ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။`,
+        const paymentAccount = await getPaymentAccountForMethod(parsed.data.paymentMethod);
+        const receiptImage = await renderDepositRequestReceiptImage({
+          ...receiptData,
+          paymentAccount,
+        });
+        await sendTelegramPhoto(orderSummary.telegramUserId, receiptImage, {
+          filename: `${orderSummary.orderCode}-45mm-deposit-request.png`,
+          caption: `🧾 <b>${orderSummary.orderCode}</b> · 45mm စရန်ငွေတောင်းခံလွှာ\nယခုပေးချေရမည့် စရန်ငွေ: <b>${formatMMK(orderSummary.requiredDeposit)}</b>\n\nPayment Slip ပုံနှင့် Order Code ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။ Admin အတည်ပြုပြီးပါက Royal COD ပါသော အဓိကပြေစာကို ပို့ပေးပါမည်။`,
           parse_mode: "HTML",
         });
         // Also send bank transfer details
-        await sendTelegramMessage(parsed.data.telegramUserId, bankInfoMessage, {
+        await sendTelegramMessage(orderSummary.telegramUserId, bankInfoMessage, {
           parse_mode: "HTML",
         });
       } catch (custErr) {
         console.error("[Telegram Customer Receipt Image Error]", custErr);
         try {
-          const customerReceiptText = formatCustomerReceipt(receiptData);
-          await sendTelegramMessage(parsed.data.telegramUserId, customerReceiptText, {
+          const customerReceiptText = formatDepositRequestReceipt(receiptData);
+          await sendTelegramMessage(orderSummary.telegramUserId, customerReceiptText, {
             parse_mode: "HTML",
           });
           // Also send bank transfer details on fallback
-          await sendTelegramMessage(parsed.data.telegramUserId, bankInfoMessage, {
+          await sendTelegramMessage(orderSummary.telegramUserId, bankInfoMessage, {
             parse_mode: "HTML",
           });
         } catch (fallbackErr) {
@@ -1103,16 +1312,79 @@ export async function reviewPayment(
 
     await audit(`payment.${decision}`, orderId, `Payment marked ${decision}`);
 
-    // If customer has linked Telegram, notify them of verification decision
+    // If customer has linked Telegram, send the second-stage main receipt after
+    // approval. Rejections remain a text notification because no valid receipt
+    // should be issued for rejected payment evidence.
     if (reviewed?.telegramUserId) {
-      try {
-        const text =
-          decision === "verified"
-            ? `✅ <b>ငွေလွှဲပြေစာ အတည်ပြုပြီးပါပြီ</b>\nOrder Code: <code>${reviewed.code}</code> အတွက် ငွေလွှဲမှုကို အောင်မြင်စွာ စစ်ဆေးအတည်ပြုပြီးပါပြီခင်ဗျာ။\n\nပစ္စည်းများကို ထုတ်ပိုးပြင်ဆင်နေပြီး ပို့ဆောင်ချိန်တွင် tracking code ကို ထပ်မံအကြောင်းကြားပေးပါမည်။`
-            : `⚠️ <b>ငွေလွှဲပြေစာ စစ်ဆေးမှု မအောင်မြင်ပါ</b>\nOrder Code: <code>${reviewed.code}</code> အတွက် ငွေလွှဲပြေစာကို အတည်ပြု၍မရသေးပါခင်ဗျာ။ Customer Service (/support) သို့ ဆက်သွယ်မေးမြန်းပေးပါရန်။`;
-        await sendTelegramMessage(reviewed.telegramUserId, text, { parse_mode: "HTML" });
-      } catch (err) {
-        console.error("[Telegram Customer Payment Decision Error]", err);
+      if (decision === "verified") {
+        const approvedOrder = await getOrderById(orderId);
+        if (approvedOrder) {
+          const approvedReceiptData = {
+            orderCode: approvedOrder.orderCode,
+            customerName: approvedOrder.customerName,
+            phone: approvedOrder.phone,
+            shippingAddress:
+              approvedOrder.shippingAddress || "Secure digital handover",
+            destinationCity: approvedOrder.destinationCity,
+            destinationState: approvedOrder.destinationState,
+            shippingFee: approvedOrder.shippingFee,
+            totalAmount: approvedOrder.totalAmount,
+            requiredDeposit: approvedOrder.requiredDeposit,
+            customerPaidAmount: approvedOrder.customerPaidAmount,
+            customerBalance: approvedOrder.customerBalance,
+            codAmount: approvedOrder.codAmount,
+            customerPaymentStatus: approvedOrder.customerPaymentStatus,
+            paymentMethod: approvedOrder.paymentMethod || "kbzpay",
+            customerTier: approvedOrder.customerTier,
+            tierDiscountAmount: num(approvedOrder.tierDiscountAmount),
+            tierDeliveryDiscount: num(approvedOrder.tierDeliveryDiscount),
+            pointsEarned: approvedOrder.pointsEarned,
+            items: approvedOrder.items.map((item) => ({
+              name: item.name,
+              sku: item.sku,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+            })),
+          };
+
+          try {
+            const receiptImage = await renderCustomerReceiptImage(
+              approvedReceiptData,
+            );
+            const paymentCaption = approvedOrder.isDigitalOnly
+              ? `ပေးချေပြီးငွေ: <b>${formatMMK(approvedOrder.totalAmount)}</b> · ကျန်ငွေ 0 MMK`
+              : `အတည်ပြုပြီး စရန်ငွေ: <b>${formatMMK(approvedOrder.customerPaidAmount)}</b>\nRoyal Express COD (ပစ္စည်းရောက်မှ): <b>${formatMMK(approvedOrder.codAmount)}</b>`;
+            await sendTelegramPhoto(reviewed.telegramUserId, receiptImage, {
+              filename: `${reviewed.code}-main-receipt.png`,
+              caption: `✅ <b>ငွေလွှဲပြေစာ အတည်ပြုပြီးပါပြီ</b>\nOrder Code: <code>${reviewed.code}</code>\n${paymentCaption}\n\nဤအဓိကပြေစာကို သိမ်းဆည်းထားပေးပါခင်ဗျာ။ ပစ္စည်းများကို ထုတ်ပိုးပြင်ဆင်နေပါသည်။`,
+              parse_mode: "HTML",
+            });
+          } catch (err) {
+            console.error("[Telegram Approved Main Receipt Image Error]", err);
+            try {
+              await sendTelegramMessage(
+                reviewed.telegramUserId,
+                formatCustomerReceipt(approvedReceiptData),
+                { parse_mode: "HTML" },
+              );
+            } catch (fallbackErr) {
+              console.error(
+                "[Telegram Approved Main Receipt Fallback Error]",
+                fallbackErr,
+              );
+            }
+          }
+        }
+      } else {
+        try {
+          await sendTelegramMessage(
+            reviewed.telegramUserId,
+            `⚠️ <b>ငွေလွှဲပြေစာ စစ်ဆေးမှု မအောင်မြင်ပါ</b>\nOrder Code: <code>${reviewed.code}</code> အတွက် ငွေလွှဲပြေစာကို အတည်ပြု၍မရသေးပါခင်ဗျာ။ Customer Service (/support) သို့ ဆက်သွယ်မေးမြန်းပေးပါရန်။`,
+            { parse_mode: "HTML" },
+          );
+        } catch (err) {
+          console.error("[Telegram Customer Payment Decision Error]", err);
+        }
       }
     }
 
@@ -2339,5 +2611,3 @@ export async function recordFailedDelivery(
 }
 
 export const updateFulfillmentAction = updateFulfillment;
-
-

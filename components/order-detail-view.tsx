@@ -25,12 +25,15 @@ import {
   ZoomOut,
   RotateCw,
   Check,
+  Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { formatMMK } from "@/lib/data";
 import {
   addShipmentAction,
   assignDeviceByIdentifierAction,
   confirmCodCollectionAction,
+  deleteOrderAction,
   postDispatchCorrectionAction,
   preDispatchEditOrderAction,
   recordFailedDeliveryAction,
@@ -133,6 +136,7 @@ export interface OrderDetailData {
   items?: OrderDetailItem[];
   payments?: OrderDetailPayment[];
   allocations?: OrderDetailAllocation[];
+  canDeleteOrder?: boolean;
 }
 
 interface OrderDetailViewProps {
@@ -141,6 +145,7 @@ interface OrderDetailViewProps {
   onClose?: () => void;
   isModal?: boolean;
   onRefresh?: () => void;
+  onDeleted?: () => void;
 }
 
 export function OrderDetailView({
@@ -149,6 +154,7 @@ export function OrderDetailView({
   onClose,
   isModal = false,
   onRefresh,
+  onDeleted,
 }: OrderDetailViewProps) {
   const [pending, startTransition] = useTransition();
   const [notice, setNotice] = useState<{ text: string; type: "success" | "error" } | null>(null);
@@ -159,6 +165,7 @@ export function OrderDetailView({
   const [failedDeliveryOpen, setFailedDeliveryOpen] = useState(false);
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
   const [slipModalOpen, setSlipModalOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [slipZoom, setSlipZoom] = useState(1);
   const [slipRotation, setSlipRotation] = useState(0);
   const [slipViewingUrl, setSlipViewingUrl] = useState<string | null>(null);
@@ -431,6 +438,15 @@ export function OrderDetailView({
           >
             <Printer size={14} /> View / Print Receipt
           </Link>
+          {order.canDeleteOrder && (
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-800 transition hover:bg-rose-100"
+            >
+              <Trash2 size={14} /> Delete order
+            </button>
+          )}
         </div>
       </div>
 
@@ -1177,6 +1193,18 @@ export function OrderDetailView({
             setFailedDeliveryOpen(false);
             notify("Failed delivery / return recorded.");
             onRefresh?.();
+          }}
+        />
+      )}
+
+      {deleteOpen && (
+        <DeleteOrderModal
+          order={order}
+          onClose={() => setDeleteOpen(false)}
+          onDeleted={() => {
+            setDeleteOpen(false);
+            if (onDeleted) onDeleted();
+            else window.location.assign("/orders");
           }}
         />
       )}
@@ -1933,6 +1961,150 @@ function PostDispatchCorrectionModal({
                 className="rounded-xl bg-black px-5 py-2.5 font-bold text-white disabled:opacity-50 min-h-[42px] text-xs"
               >
                 {pending ? "Saving..." : "Save Correction"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+function DeleteOrderModal({
+  order,
+  onClose,
+  onDeleted,
+}: {
+  order: OrderDetailData;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [confirmationCode, setConfirmationCode] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
+  const confirmed = confirmationCode.trim() === order.orderCode;
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError("");
+    startTransition(async () => {
+      const result = await deleteOrderAction(order.id, {
+        confirmationCode: confirmationCode.trim(),
+        reason: reason.trim(),
+      });
+      if (result.ok) onDeleted();
+      else setError(result.error || "Order could not be deleted.");
+    });
+  };
+
+  return (
+    <ModalPortal onClose={pending ? undefined : onClose}>
+      <div
+        className="fixed inset-0 z-[130] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-order-title"
+        onClick={(event) => {
+          if (!pending && event.target === event.currentTarget) onClose();
+        }}
+      >
+        <div className="flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+          <div className="flex items-start justify-between gap-4 border-b border-rose-200 bg-rose-50 p-4 sm:p-5">
+            <div className="flex gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-rose-600 text-white">
+                <TriangleAlert size={20} />
+              </span>
+              <div>
+                <h2 id="delete-order-title" className="font-black text-rose-950">
+                  Permanently delete {order.orderCode}?
+                </h2>
+                <p className="mt-1 text-xs leading-5 text-rose-800">
+                  This is an administrator-only accounting reversal and cannot be undone.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onClose}
+              aria-label="Close delete confirmation"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-rose-200 bg-white text-rose-800 disabled:opacity-50"
+            >
+              <X size={17} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+              <div className="rounded-2xl border border-neutral-200 bg-[#faf9f5] p-4 text-xs leading-5 text-neutral-700">
+                <p className="font-bold text-black">The system will reverse the whole order:</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  <li>Return held gadget stock, serials, and PUBG listings to availability.</li>
+                  <li>Remove payments and subtract this order from revenue and profit reports.</li>
+                  <li>Recalculate the customer’s loyalty points and tier.</li>
+                  <li>Detach Royal allocations and recalculate affected settlement batches.</li>
+                  <li>Remove receipts, order items, alerts, and linked warranty tickets.</li>
+                </ul>
+                <p className="mt-2 font-semibold text-neutral-900">
+                  The deletion reason and reversal totals remain in Activity Logs.
+                </p>
+              </div>
+
+              {error && (
+                <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800">
+                  {error}
+                </p>
+              )}
+
+              <div>
+                <label htmlFor="delete-order-reason" className="text-xs font-bold text-black">
+                  Reason for deletion
+                </label>
+                <textarea
+                  id="delete-order-reason"
+                  required
+                  minLength={3}
+                  rows={2}
+                  value={reason}
+                  disabled={pending}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Example: Duplicate order entered by mistake"
+                  className="mt-1.5 w-full rounded-xl border border-neutral-300 p-3 text-sm outline-none focus:border-rose-500 disabled:bg-neutral-100"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="delete-order-code" className="text-xs font-bold text-black">
+                  Type <span className="font-mono text-rose-700">{order.orderCode}</span> to confirm
+                </label>
+                <input
+                  id="delete-order-code"
+                  required
+                  autoComplete="off"
+                  value={confirmationCode}
+                  disabled={pending}
+                  onChange={(event) => setConfirmationCode(event.target.value)}
+                  className="mt-1.5 h-12 w-full rounded-xl border border-neutral-300 px-3 font-mono text-sm font-bold outline-none focus:border-rose-500 disabled:bg-neutral-100"
+                />
+              </div>
+            </div>
+
+            <div className="grid shrink-0 grid-cols-2 gap-2 border-t bg-neutral-50 p-3 sm:flex sm:justify-end sm:p-4">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={onClose}
+                className="min-h-11 rounded-xl border border-neutral-300 bg-white px-4 text-xs font-bold text-neutral-700 disabled:opacity-50"
+              >
+                Keep order
+              </button>
+              <button
+                type="submit"
+                disabled={pending || !confirmed || reason.trim().length < 3}
+                className="min-h-11 rounded-xl bg-rose-700 px-4 text-xs font-bold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pending ? "Reversing…" : "Delete & reverse"}
               </button>
             </div>
           </form>

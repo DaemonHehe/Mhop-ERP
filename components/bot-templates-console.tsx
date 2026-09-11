@@ -64,7 +64,7 @@ export function BotTemplatesConsole({
 }) {
   const [templates, setTemplates] = useState<BotTemplateItem[]>(initialTemplates);
   const [qaItems, setQaItems] = useState<AiSalesQaItem[]>(initialQaItems);
-  const [channelFilter, setChannelFilter] = useState<"all" | "customer" | "staff">("all");
+  const [channelFilter, setChannelFilter] = useState<"ai" | "customer" | "staff">("ai");
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string>("ai_sales_agent");
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
@@ -266,6 +266,7 @@ export function BotTemplatesConsole({
   const normalizedQuery = query.trim().toLowerCase();
 
   const visibleTemplates = useMemo(() => {
+    if (channelFilter === "ai") return [];
     return templates.filter((t) => {
       if (channelFilter === "customer" && t.channel === "staff") return false;
       if (channelFilter === "staff" && t.channel !== "staff") return false;
@@ -414,14 +415,15 @@ export function BotTemplatesConsole({
       {/* Top Filter & Search Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Category Pill Buttons */}
-        <div className="flex max-w-full overflow-x-auto rounded-full border bg-white/60 p-1 no-scrollbar">
+        <div className="grid w-full grid-cols-3 rounded-2xl border bg-white/70 p-1 sm:flex sm:w-auto sm:max-w-full sm:overflow-x-auto sm:rounded-full no-scrollbar">
           <button
             type="button"
             onClick={() => {
-              setChannelFilter("all");
+              setChannelFilter("ai");
               setSelectedKey("ai_sales_agent");
+              setMobileTab("directory");
             }}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-2 text-xs font-bold transition ${
+            className={`flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-xs font-bold transition sm:min-h-0 sm:shrink-0 sm:justify-start sm:gap-1.5 sm:rounded-full sm:px-4 ${
               isAiAgentSelected
                 ? "bg-black text-white shadow-sm"
                 : "text-[#626258] hover:text-black"
@@ -438,8 +440,9 @@ export function BotTemplatesConsole({
             onClick={() => {
               setChannelFilter("customer");
               if (isAiAgentSelected) setSelectedKey("welcome");
+              setMobileTab("directory");
             }}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-2 text-xs font-bold transition ${
+            className={`flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-xs font-bold transition sm:min-h-0 sm:shrink-0 sm:justify-start sm:gap-1.5 sm:rounded-full sm:px-4 ${
               channelFilter === "customer" && !isAiAgentSelected
                 ? "bg-black text-white shadow-sm"
                 : "text-[#626258] hover:text-black"
@@ -456,8 +459,9 @@ export function BotTemplatesConsole({
             onClick={() => {
               setChannelFilter("staff");
               if (isAiAgentSelected) setSelectedKey("manager_morning_briefing");
+              setMobileTab("directory");
             }}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-2 text-xs font-bold transition ${
+            className={`flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-xs font-bold transition sm:min-h-0 sm:shrink-0 sm:justify-start sm:gap-1.5 sm:rounded-full sm:px-4 ${
               channelFilter === "staff" && !isAiAgentSelected
                 ? "bg-black text-white shadow-sm"
                 : "text-[#626258] hover:text-black"
@@ -472,7 +476,7 @@ export function BotTemplatesConsole({
         </div>
 
         {/* Search Box */}
-        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2 sm:gap-3">
+        <div className={`${isAiAgentSelected ? "hidden sm:flex" : "flex"} w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3`}>
           <label className="relative block w-full sm:w-auto sm:min-w-[260px]">
             <Search
               size={15}
@@ -497,23 +501,23 @@ export function BotTemplatesConsole({
       </div>
 
       {/* Mobile View Switcher (< xl screens) */}
-      <div className="grid grid-cols-3 xl:hidden rounded-2xl border border-[#dedbd0] bg-[#f2efe9] p-1 gap-1 shadow-xs">
+      <div className="sticky top-[72px] z-20 grid grid-cols-3 gap-1 rounded-2xl border border-[#d5d1c5] bg-[#f2efe9]/95 p-1.5 shadow-lg backdrop-blur xl:hidden">
         <button
           type="button"
           onClick={() => setMobileTab("directory")}
-          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition ${
+          className={`flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-sm font-bold transition ${
             mobileTab === "directory"
               ? "bg-black text-white shadow-xs"
               : "text-[#626258] hover:text-black"
           }`}
         >
           <Bot size={13} />
-          <span>Directory</span>
+          <span>Choose</span>
         </button>
         <button
           type="button"
           onClick={() => setMobileTab("editor")}
-          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition ${
+          className={`flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-sm font-bold transition ${
             mobileTab === "editor"
               ? "bg-black text-white shadow-xs"
               : "text-[#626258] hover:text-black"
@@ -524,19 +528,19 @@ export function BotTemplatesConsole({
           ) : (
             <Edit2 size={13} />
           )}
-          <span>{isAiAgentSelected ? "Q&A Feed" : "Editor"}</span>
+          <span>Edit</span>
         </button>
         <button
           type="button"
           onClick={() => setMobileTab("preview")}
-          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition ${
+          className={`flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-sm font-bold transition ${
             mobileTab === "preview"
               ? "bg-black text-white shadow-xs"
               : "text-[#626258] hover:text-black"
           }`}
         >
           <Send size={13} />
-          <span>{isAiAgentSelected ? "Live Test" : "Preview"}</span>
+          <span>Preview</span>
         </button>
       </div>
 
@@ -567,14 +571,14 @@ export function BotTemplatesConsole({
       )}
 
       {/* Master-Detail Layout */}
-      <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="block xl:grid xl:grid-cols-[380px_minmax(0,1fr)] xl:gap-4">
         {/* Left Column: Directory List */}
         <section className={`card min-w-0 overflow-hidden ${mobileTab === "directory" ? "block" : "hidden xl:block"}`}>
-          <div className="flex items-center justify-between border-b p-4">
+          <div className="flex items-center justify-between border-b p-4 sm:p-4">
             <div>
-              <p className="font-bold">Bot Control Directory</p>
-              <p className="mt-0.5 text-xs text-[#77776f]">
-                AI knowledge feed + 7 message automations
+              <p className="text-base font-bold">Choose what to manage</p>
+              <p className="mt-1 text-sm text-[#77776f] sm:text-xs">
+                Tap a message or the AI knowledge feed to edit it.
               </p>
             </div>
             <span className="pill py-0.5 text-[10px]">
@@ -582,7 +586,7 @@ export function BotTemplatesConsole({
             </span>
           </div>
 
-          <div className="divide-y divide-[#eee] max-h-[calc(100vh-280px)] overflow-y-auto">
+          <div className="divide-y divide-[#eee] sm:max-h-[calc(100vh-280px)] sm:overflow-y-auto">
             {/* Pinned Featured Card: AI Sales Knowledge Feed */}
             <div
               role="button"
@@ -594,7 +598,7 @@ export function BotTemplatesConsole({
                   selectItem("ai_sales_agent");
                 }
               }}
-              className={`group relative grid w-full cursor-pointer grid-cols-1 gap-2 p-4 text-left transition ${
+              className={`group relative grid min-h-[92px] w-full cursor-pointer grid-cols-1 gap-2 p-4 text-left transition active:bg-[#edf5df] ${
                 isAiAgentSelected
                   ? "bg-[#f4f8ec] shadow-[inset_4px_0_0_#416c17]"
                   : "hover:bg-[#fbfaf6]"
@@ -606,7 +610,7 @@ export function BotTemplatesConsole({
                     <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#416c17] text-white">
                       <Sparkles size={13} />
                     </span>
-                    <span className="font-bold text-xs text-[#171914]">
+                    <span className="text-sm font-bold text-[#171914]">
                       AI Sales Agent (Q&A Feed)
                     </span>
                   </div>
@@ -614,7 +618,7 @@ export function BotTemplatesConsole({
                     {qaItems.filter((x) => x.isActive).length} active Q&As
                   </span>
                 </div>
-                <p className="mt-2 line-clamp-2 text-xs text-[#626258] leading-relaxed">
+                <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[#626258] sm:text-xs">
                   Feed custom store Q&A knowledge to train the 24/7 Telegram AI advisor on products, compatibility, PUBG accounts, and policies.
                 </p>
                 <div className="mt-2 flex items-center justify-between text-[10px] text-[#717169] border-t border-[#dedbd0]/40 pt-1.5 font-medium">
@@ -642,7 +646,7 @@ export function BotTemplatesConsole({
                       selectItem(t.key);
                     }
                   }}
-                  className={`group relative grid w-full cursor-pointer grid-cols-1 gap-2 p-4 text-left transition ${
+                  className={`group relative grid min-h-[104px] w-full cursor-pointer grid-cols-1 gap-2 p-4 text-left transition active:bg-[#f2efe6] ${
                     isSelected
                       ? "bg-[#f8f6ef] shadow-[inset_4px_0_0_#171813]"
                       : "hover:bg-[#fbfaf6]"
@@ -650,7 +654,7 @@ export function BotTemplatesConsole({
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-xs font-bold text-[#171914]">
+                      <span className="font-mono text-sm font-bold text-[#171914] sm:text-xs">
                         {t.key}
                       </span>
                       <span
@@ -674,8 +678,8 @@ export function BotTemplatesConsole({
                       )}
                     </div>
 
-                    <p className="mt-2 text-sm font-bold text-[#171914]">{t.label}</p>
-                    <p className="mt-1 line-clamp-2 text-xs text-[#77776f] leading-relaxed">
+                    <p className="mt-2 text-base font-bold text-[#171914] sm:text-sm">{t.label}</p>
+                    <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-[#77776f] sm:text-xs">
                       {drafts[t.key] || t.content}
                     </p>
 
@@ -691,11 +695,11 @@ export function BotTemplatesConsole({
         </section>
 
         {/* Right Workspace: AI Q&A Feed OR Message Template Editor */}
-        <div className={`grid gap-4 2xl:grid-cols-2 items-start ${mobileTab !== "directory" ? "block" : "hidden xl:grid"}`}>
+        <div className={`items-start gap-4 2xl:grid-cols-2 ${mobileTab !== "directory" ? "block xl:grid" : "hidden xl:grid"}`}>
           {isAiAgentSelected ? (
-            <div className={`card p-4 sm:p-6 space-y-4 ${mobileTab === "editor" ? "block" : "hidden xl:block"}`}>
+            <div className={`card space-y-4 p-4 sm:p-6 ${mobileTab === "editor" ? "block" : "hidden xl:block"}`}>
               {/* Mobile View Switch Header */}
-              <div className="flex xl:hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5">
+              <div className="hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5 sm:flex xl:hidden">
                 <button
                   type="button"
                   onClick={() => setMobileTab("directory")}
@@ -713,21 +717,21 @@ export function BotTemplatesConsole({
               </div>
 
               {/* Header */}
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#dedbd0] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
+              <div className="flex flex-col items-stretch justify-between gap-3 border-b border-[#dedbd0] pb-4 sm:flex-row sm:flex-wrap sm:items-start">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="pill bg-[#f4f8ec] text-[#416c17] font-bold">
                       <Sparkles size={11} className="inline mr-1" />
                       AI Training & Knowledge Feed
                     </span>
-                    <span className="pill bg-emerald-50 text-emerald-700">
+                    <span className="pill hidden bg-emerald-50 text-emerald-700 sm:inline-flex">
                       Telegram 24/7 Active
                     </span>
                   </div>
-                  <h2 className="display mt-2 text-xl font-bold">
+                  <h2 className="display mt-2 break-words text-xl font-bold leading-tight sm:text-xl">
                     Store Knowledge Base (Q&A Feed)
                   </h2>
-                  <p className="mt-1 text-xs leading-5 text-[#6f7069]">
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#6f7069] sm:line-clamp-none sm:text-xs sm:leading-5">
                     Feed questions, answers, and store guidelines so your AI Sales Agent provides accurate answers for phone coolers, gaming headsets, PUBG accounts, delivery, and payment.
                   </p>
                 </div>
@@ -736,7 +740,7 @@ export function BotTemplatesConsole({
                   <button
                     type="button"
                     onClick={handleStartAddQa}
-                    className="flex h-10 items-center gap-1.5 rounded-xl bg-black px-4 text-xs font-bold text-white shadow-sm hover:bg-[#222] transition"
+                    className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#222] sm:h-10 sm:w-auto sm:text-xs"
                   >
                     <Plus size={14} /> Add Q&A Data
                   </button>
@@ -765,7 +769,7 @@ export function BotTemplatesConsole({
                   </div>
 
                   {/* Category Selector */}
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <label className="block text-xs font-bold text-[#171813] mb-1">
                       Knowledge Category
                     </label>
@@ -818,7 +822,7 @@ export function BotTemplatesConsole({
                       type="button"
                       disabled={qaSaving}
                       onClick={handleCancelQaForm}
-                      className="h-9 rounded-xl border border-[#dedbd0] bg-white px-3.5 text-xs font-bold text-[#626258] hover:border-black"
+                      className="h-11 flex-1 rounded-xl border border-[#dedbd0] bg-white px-3.5 text-sm font-bold text-[#626258] hover:border-black sm:h-9 sm:flex-none sm:text-xs"
                     >
                       Cancel
                     </button>
@@ -826,7 +830,7 @@ export function BotTemplatesConsole({
                       type="button"
                       disabled={qaSaving || !qaFormQuestion.trim() || !qaFormAnswer.trim()}
                       onClick={handleSaveQa}
-                      className="flex h-9 items-center gap-1.5 rounded-xl bg-[#c7f36b] px-4 text-xs font-bold text-[#171914] hover:bg-[#bbf055] shadow-xs disabled:opacity-40"
+                      className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#c7f36b] px-4 text-sm font-bold text-[#171914] shadow-xs hover:bg-[#bbf055] disabled:opacity-40 sm:h-9 sm:flex-none sm:text-xs"
                     >
                       {qaSaving ? (
                         <>
@@ -843,11 +847,24 @@ export function BotTemplatesConsole({
               )}
 
               {/* Category Filter Pills */}
-              <div className="flex max-w-full overflow-x-auto gap-1.5 pb-1 no-scrollbar">
+              <label className="relative block sm:hidden">
+                <Search
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#77776f]"
+                />
+                <span className="sr-only">Search Q&amp;A knowledge</span>
+                <input
+                  value={qaQuery}
+                  onChange={(event) => setQaQuery(event.target.value)}
+                  placeholder="Search Q&A knowledge..."
+                  className="h-11 w-full rounded-xl border bg-white pl-10 pr-3 text-base outline-none focus:border-black"
+                />
+              </label>
+              <div className="-mx-1 flex max-w-full gap-1.5 overflow-x-auto px-1 pb-2 no-scrollbar">
                 <button
                   type="button"
                   onClick={() => setQaCategoryFilter("all")}
-                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                  className={`min-h-10 shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition sm:min-h-0 sm:rounded-lg sm:px-2.5 sm:py-1 sm:text-[11px] ${
                     qaCategoryFilter === "all"
                       ? "bg-black text-white"
                       : "bg-[#f5f4ed] text-[#555] hover:bg-[#eee]"
@@ -862,7 +879,7 @@ export function BotTemplatesConsole({
                       key={cat.id}
                       type="button"
                       onClick={() => setQaCategoryFilter(cat.id)}
-                      className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                      className={`min-h-10 shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-bold transition sm:min-h-0 sm:rounded-lg sm:px-2.5 sm:py-1 sm:text-[11px] ${
                         qaCategoryFilter === cat.id
                           ? "bg-black text-white"
                           : "bg-[#f5f4ed] text-[#555] hover:bg-[#eee]"
@@ -875,7 +892,7 @@ export function BotTemplatesConsole({
               </div>
 
               {/* Q&A List */}
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+              <div className="space-y-3 sm:max-h-[500px] sm:overflow-y-auto sm:pr-1">
                 {filteredQaItems.length ? (
                   filteredQaItems.map((item, idx) => (
                     <article
@@ -900,12 +917,12 @@ export function BotTemplatesConsole({
                         </div>
 
                         {/* Controls */}
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => handleToggleQaActive(item)}
                             title={item.isActive ? "Deactivate" : "Activate"}
-                            className="rounded p-1 text-[#777] hover:text-black transition"
+                            className="flex min-h-10 min-w-12 items-center justify-center rounded-lg px-2 text-[#777] transition hover:bg-[#f0eee6] hover:text-black sm:min-h-0 sm:min-w-0 sm:p-1"
                           >
                             <span className={`text-[10px] font-bold ${item.isActive ? "text-emerald-700" : "text-zinc-500"}`}>
                               {item.isActive ? "Active" : "Off"}
@@ -914,7 +931,7 @@ export function BotTemplatesConsole({
                           <button
                             type="button"
                             onClick={() => handleStartEditQa(item)}
-                            className="rounded p-1.5 text-[#666] hover:bg-[#f0eee6] hover:text-black transition"
+                            className="flex h-10 w-10 items-center justify-center rounded-lg text-[#666] transition hover:bg-[#f0eee6] hover:text-black sm:h-auto sm:w-auto sm:p-1.5"
                             title="Edit Q&A"
                           >
                             <Edit2 size={13} />
@@ -922,7 +939,7 @@ export function BotTemplatesConsole({
                           <button
                             type="button"
                             onClick={() => handleDeleteQa(item)}
-                            className="rounded p-1.5 text-[#999] hover:bg-red-50 hover:text-red-700 transition"
+                            className="flex h-10 w-10 items-center justify-center rounded-lg text-[#999] transition hover:bg-red-50 hover:text-red-700 sm:h-auto sm:w-auto sm:p-1.5"
                             title="Delete Q&A"
                           >
                             <Trash2 size={13} />
@@ -935,13 +952,13 @@ export function BotTemplatesConsole({
                         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#171813] text-[10px] font-bold text-white">
                           Q
                         </span>
-                        <p className="text-xs font-bold text-[#171914] leading-relaxed">
+                        <p className="text-sm font-bold leading-relaxed text-[#171914] sm:text-xs">
                           {item.question}
                         </p>
                       </div>
 
                       {/* Answer */}
-                      <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-[#f8f7f1] p-3 text-xs text-[#333] leading-relaxed border border-[#ece9df]">
+                      <div className="mt-2.5 flex items-start gap-2 rounded-xl border border-[#ece9df] bg-[#f8f7f1] p-3 text-sm leading-relaxed text-[#333] sm:text-xs">
                         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#9fc744] text-[10px] font-bold text-[#171914]">
                           A
                         </span>
@@ -958,9 +975,9 @@ export function BotTemplatesConsole({
               </div>
             </div>
           ) : (
-            <div className={`card p-4 sm:p-6 space-y-4 ${mobileTab === "editor" ? "block" : "hidden xl:block"}`}>
+            <div className={`card space-y-4 p-4 sm:p-6 ${mobileTab === "editor" ? "block" : "hidden xl:block"}`}>
               {/* Mobile View Switch Header */}
-              <div className="flex xl:hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5">
+              <div className="hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5 sm:flex xl:hidden">
                 <button
                   type="button"
                   onClick={() => setMobileTab("directory")}
@@ -977,7 +994,7 @@ export function BotTemplatesConsole({
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#dedbd0] pb-4">
+              <div className="flex flex-col items-stretch justify-between gap-3 border-b border-[#dedbd0] pb-4 sm:flex-row sm:flex-wrap sm:items-start">
                 <div>
                   <div className="flex items-center gap-2">
                     <span
@@ -996,8 +1013,8 @@ export function BotTemplatesConsole({
                       </span>
                     )}
                   </div>
-                  <h2 className="display mt-2 text-xl font-bold">{activeTemplate.label}</h2>
-                  <p className="mt-1 text-xs leading-5 text-[#6f7069]">
+                  <h2 className="display mt-2 break-words text-xl font-bold leading-tight sm:text-xl">{activeTemplate.label}</h2>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#6f7069] sm:line-clamp-none sm:text-xs sm:leading-5">
                     {activeTemplate.description}
                   </p>
                 </div>
@@ -1009,13 +1026,13 @@ export function BotTemplatesConsole({
                   <p className="mb-2 text-xs font-bold text-[#171914]">
                     Insert dynamic placeholder tokens:
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 no-scrollbar sm:flex-wrap sm:overflow-visible sm:px-0">
                     {activeTemplate.placeholders.map((ph) => (
                       <button
                         key={ph}
                         type="button"
                         onClick={() => insertVariable(ph)}
-                        className="rounded-lg border border-[#dedbd0] bg-[#f8f7f1] px-2.5 py-1 text-xs font-mono font-bold text-[#171813] hover:border-black hover:bg-white transition"
+                        className="min-h-10 shrink-0 rounded-xl border border-[#dedbd0] bg-[#f8f7f1] px-3 py-2 font-mono text-sm font-bold text-[#171813] transition hover:border-black hover:bg-white sm:min-h-0 sm:rounded-lg sm:px-2.5 sm:py-1 sm:text-xs"
                       >
                         + {ph}
                       </button>
@@ -1054,7 +1071,7 @@ export function BotTemplatesConsole({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-2">
+              <div className="sticky bottom-2 z-10 -mx-2 flex flex-col-reverse items-stretch justify-between gap-2.5 rounded-2xl border border-[#dedbd0] bg-white/95 p-2 shadow-lg backdrop-blur sm:static sm:mx-0 sm:flex-row sm:items-center sm:border-0 sm:bg-transparent sm:p-0 sm:pt-2 sm:shadow-none">
                 <button
                   type="button"
                   disabled={pending}
@@ -1079,9 +1096,9 @@ export function BotTemplatesConsole({
           {/* ============================================================== */}
           {/* RIGHT PANE: TELEGRAM LIVE SIMULATOR / PREVIEW                  */}
           {/* ============================================================== */}
-          <div className={`card p-4 sm:p-6 space-y-4 ${mobileTab === "preview" ? "block" : "hidden xl:block"}`}>
+          <div className={`card space-y-4 p-3 sm:p-6 ${mobileTab === "preview" ? "block" : "hidden xl:block"}`}>
             {/* Mobile View Switch Header */}
-            <div className="flex xl:hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5">
+            <div className="hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5 sm:flex xl:hidden">
               <button
                 type="button"
                 onClick={() => setMobileTab("editor")}
@@ -1117,7 +1134,7 @@ export function BotTemplatesConsole({
             </div>
 
             {/* Telegram Window */}
-            <div className="rounded-2xl border border-[#dedbd0] bg-[#efeae2] p-4 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.06)]">
+            <div className="rounded-2xl border border-[#dedbd0] bg-[#efeae2] p-3 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.06)] sm:p-4">
               {/* Bot Profile Header */}
               <div className="mb-3 flex items-center justify-between border-b border-[#dedbd0]/80 pb-2.5">
                 <div className="flex items-center gap-2.5">
@@ -1163,7 +1180,7 @@ export function BotTemplatesConsole({
                     </p>
                   </div>
                 </div>
-                <span className="pill bg-white text-[#77776f] text-[10px]">
+                <span className="pill hidden bg-white text-[10px] text-[#77776f] sm:inline-flex">
                   {isAiAgentSelected
                     ? "Interactive mode"
                     : isStaffChannel
@@ -1249,7 +1266,7 @@ export function BotTemplatesConsole({
                       onChange={(e) => setTestQuestion(e.target.value)}
                       placeholder="Ask any question to test AI with your fed data..."
                       disabled={testLoading}
-                      className="h-10 flex-1 rounded-xl border border-[#dedbd0] bg-white px-3 text-base sm:text-xs text-[#171813] outline-none focus:border-black"
+                      className="h-10 min-w-0 flex-1 rounded-xl border border-[#dedbd0] bg-white px-3 text-base text-[#171813] outline-none focus:border-black sm:text-xs"
                     />
                     <button
                       type="submit"
