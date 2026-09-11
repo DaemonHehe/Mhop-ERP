@@ -92,6 +92,7 @@ export function CheckoutForm({
   const [selectedCity, setSelectedCity] = useState("Yangon");
   const [customerName, setCustomerName] = useState("");
   const [telegramUserId, setTelegramUserId] = useState("");
+  const [telegramUsername, setTelegramUsername] = useState("");
   const [completedOrder, setCompletedOrder] =
     useState<CompletedOrderData | null>(null);
   const [copied, setCopied] = useState(false);
@@ -104,6 +105,7 @@ export function CheckoutForm({
       const user = tg.initDataUnsafe?.user;
       if (user) {
         if (user.id) setTelegramUserId(String(user.id));
+        if (user.username) setTelegramUsername(user.username.replace(/^@/, ""));
         const fullName =
           [user.first_name, user.last_name].filter(Boolean).join(" ") ||
           user.username ||
@@ -145,7 +147,7 @@ export function CheckoutForm({
 
   useEffect(() => {
     const clean = phone.trim().replace(/[^\d+]/g, "");
-    if (clean.length < 8 && !telegramUserId) {
+    if (clean.length < 8 && !telegramUserId && !telegramUsername) {
       setLoyalty((prev) => (prev?.found ? null : prev));
       return;
     }
@@ -156,9 +158,13 @@ export function CheckoutForm({
         const res = await lookupCustomerLoyaltyAction({
           phone: clean.length >= 8 ? clean : null,
           telegramUserId: telegramUserId || null,
+          telegramUsername: telegramUsername || null,
         });
         if (active && res) {
           setLoyalty(res);
+          if (res.found && res.telegramUsername && !telegramUsername) {
+            setTelegramUsername(res.telegramUsername.replace(/^@/, ""));
+          }
         }
       } catch (err) {
         console.error("Loyalty lookup error", err);
@@ -169,7 +175,7 @@ export function CheckoutForm({
       active = false;
       clearTimeout(timer);
     };
-  }, [phone, telegramUserId]);
+  }, [phone, telegramUserId, telegramUsername]);
 
   const deliverySnapshot = calculateRoyalDelivery({
     destinationCity: selectedCity,
@@ -480,6 +486,27 @@ export function CheckoutForm({
               required
               maxLength={40}
               className="mt-1.5 h-12 w-full rounded-xl border border-[#dcd9cf] bg-white px-3.5 text-base sm:text-sm font-medium text-black shadow-xs transition hover:border-black focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="checkout-telegram-tag" className="flex items-center justify-between text-xs font-bold text-[#1f1f1d]">
+            <span>Telegram Tag · တယ်လီဂရမ် Username</span>
+            <span className="text-[11px] font-normal text-[#777]">Optional · Point & VIP ချိတ်ဆက်ရန်</span>
+          </label>
+          <div className="relative mt-1.5">
+            <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center font-mono text-sm font-bold text-[#999]">
+              @
+            </span>
+            <input
+              id="checkout-telegram-tag"
+              name="telegramUsername"
+              value={telegramUsername}
+              onChange={(e) => setTelegramUsername(e.target.value.replace(/^@/, "").trim())}
+              placeholder="username"
+              maxLength={80}
+              className="h-12 w-full rounded-xl border border-[#dcd9cf] bg-white pl-8 pr-3.5 text-base sm:text-sm font-medium text-black shadow-xs transition hover:border-black focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
             />
           </div>
         </div>

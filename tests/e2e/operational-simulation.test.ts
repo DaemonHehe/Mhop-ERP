@@ -209,6 +209,25 @@ describe("Tier 1: Feature Coverage (Isolated Happy Paths)", () => {
       expect(body.action).toBe("send_message");
       expect(body.text).toContain("MH OP");
     });
+
+    it("T1.F1.6: links phone with telegram user id and preserves telegramUsername tag", async () => {
+      const tgId = "88" + Math.floor(10000000 + Math.random() * 90000000);
+      const testPhone = "09" + Math.floor(10000000 + Math.random() * 90000000);
+
+      // Step 1: User starts bot, gets telegram customer profile
+      const botProfile = await getOrCreateTelegramCustomer({
+        telegramUserId: tgId,
+        telegramUsername: "SayargTest",
+        displayName: "ko San Test",
+      });
+      expect(botProfile).toBeDefined();
+      expect(botProfile.customerCode).toMatch(/^MH-CUST-/);
+
+      // Step 2: User links real phone number with username tag
+      const linkRes = await linkCustomerTelegram(testPhone, tgId, "SayargTest", "ko San Test");
+      expect(linkRes.success).toBe(true);
+      expect(linkRes.profile).toBeDefined();
+    });
   });
 
   describe("F2: Dynamic VIP Member Card Rendering", () => {

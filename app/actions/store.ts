@@ -76,6 +76,7 @@ export async function getCustomersAction() {
 export async function lookupCustomerLoyaltyAction(query: {
   phone?: string | null;
   telegramUserId?: string | null;
+  telegramUsername?: string | null;
 }) {
   return customerService.lookupCustomerLoyalty(query);
 }

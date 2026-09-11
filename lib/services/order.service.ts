@@ -5,6 +5,7 @@ import {
   getTierForPoints,
   calculateTierPerks,
   calculatePointsFromAmount,
+  type CustomerTier,
 } from "@/lib/loyalty";
 import { awardCustomerPoints, generateCustomerCode } from "./customer.service";
 import {
@@ -546,10 +547,12 @@ export async function createOrder(
       .replaceAll("-", "")}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
 
     const { paymentMethod } = parsed.data;
+    const rawTag = (parsed.data.telegramUsername || "").trim().replace(/^@/, "");
     const customer = {
       customerName: parsed.data.customerName,
       phone: parsed.data.phone,
-      telegramUserId: parsed.data.telegramUserId,
+      telegramUserId: parsed.data.telegramUserId || undefined,
+      telegramUsername: rawTag || undefined,
       shippingAddress: parsed.data.shippingAddress,
       destinationCity: parsed.data.destinationCity,
       orderSource: parsed.data.orderSource,
@@ -663,18 +666,117 @@ export async function createOrder(
       const loyaltyConditions = [];
       if (cleanCustomerPhone) loyaltyConditions.push(eq(customers.phone, cleanCustomerPhone));
       if (customer.telegramUserId) loyaltyConditions.push(eq(customers.telegramUserId, customer.telegramUserId));
+      if (customer.telegramUsername) loyaltyConditions.push(eq(customers.telegramUsername, customer.telegramUsername));
 
-      const [existingCustomer] = loyaltyConditions.length
+      const matchingCustomers = loyaltyConditions.length
         ? await tx
-            .select({ id: customers.id, points: customers.points, tier: customers.tier })
+            .select()
             .from(customers)
             .where(and(eq(customers.isActive, true), or(...loyaltyConditions)))
-            .limit(1)
+            .orderBy(desc(customers.points))
         : [];
 
-      const customerTier = existingCustomer
-        ? getTierForPoints(existingCustomer.points || 0)
-        : "member";
+      const existingByPhone = matchingCustomers.find((c) => c.phone === cleanCustomerPhone);
+      const existingByTg = matchingCustomers.find(
+        (c) =>
+          (customer.telegramUserId && c.telegramUserId === customer.telegramUserId) ||
+          (customer.telegramUsername && c.telegramUsername === customer.telegramUsername),
+      );
+
+      let customerTier: CustomerTier = "member";
+      let resolvedCustomerProfileId: string;
+      let effectiveTgUserId = customer.telegramUserId;
+      let effectiveTgUsername = customer.telegramUsername;
+
+      if (
+        existingByTg &&
+        existingByTg.phone.startsWith("TG-") &&
+        existingByPhone &&
+        existingByPhone.id !== existingByTg.id
+      ) {
+        // Merge placeholder TG account into real phone customer account
+        effectiveTgUsername = customer.telegramUsername || existingByTg.telegramUsername || existingByPhone.telegramUsername || undefined;
+        effectiveTgUserId = customer.telegramUserId || existingByTg.telegramUserId || existingByPhone.telegramUserId || undefined;
+        const totalPts = (existingByPhone.points || 0) + (existingByTg.points || 0);
+        customerTier = getTierForPoints(totalPts);
+
+        await tx
+          .update(customers)
+          .set({
+            name: customer.customerName,
+            telegramUserId: effectiveTgUserId || null,
+            telegramUsername: effectiveTgUsername || null,
+            points: totalPts,
+            tier: customerTier,
+            ...(!digitalOnly && customer.shippingAddress ? { primaryAddress: customer.shippingAddress } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(customers.id, existingByPhone.id));
+
+        await tx
+          .update(orders)
+          .set({ customerId: existingByPhone.id })
+          .where(eq(orders.customerId, existingByTg.id));
+
+        await tx
+          .update(customers)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(customers.id, existingByTg.id));
+
+        resolvedCustomerProfileId = existingByPhone.id;
+      } else if (existingByTg && existingByTg.phone.startsWith("TG-") && !existingByPhone) {
+        // Upgrade placeholder TG account with real phone
+        effectiveTgUsername = customer.telegramUsername || existingByTg.telegramUsername || undefined;
+        effectiveTgUserId = customer.telegramUserId || existingByTg.telegramUserId || undefined;
+        customerTier = getTierForPoints(existingByTg.points || 0);
+
+        await tx
+          .update(customers)
+          .set({
+            name: customer.customerName,
+            phone: cleanCustomerPhone,
+            telegramUserId: effectiveTgUserId || null,
+            telegramUsername: effectiveTgUsername || null,
+            ...(!digitalOnly && customer.shippingAddress ? { primaryAddress: customer.shippingAddress } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(customers.id, existingByTg.id));
+
+        resolvedCustomerProfileId = existingByTg.id;
+      } else {
+        const baseCustomer = existingByPhone || matchingCustomers[0];
+        customerTier = baseCustomer ? getTierForPoints(baseCustomer.points || 0) : "member";
+        effectiveTgUsername = customer.telegramUsername || baseCustomer?.telegramUsername || undefined;
+        effectiveTgUserId = customer.telegramUserId || baseCustomer?.telegramUserId || undefined;
+
+        const [customerProfile] = await tx
+          .insert(customers)
+          .values({
+            customerCode: generateCustomerCode(),
+            name: customer.customerName,
+            phone: cleanCustomerPhone,
+            telegramUserId: effectiveTgUserId || null,
+            telegramUsername: effectiveTgUsername || null,
+            primaryAddress: digitalOnly ? null : customer.shippingAddress || null,
+          })
+          .onConflictDoUpdate({
+            target: customers.phone,
+            set: {
+              name: customer.customerName,
+              ...(effectiveTgUserId ? { telegramUserId: effectiveTgUserId } : {}),
+              ...(effectiveTgUsername ? { telegramUsername: effectiveTgUsername } : {}),
+              ...(!digitalOnly && customer.shippingAddress
+                ? { primaryAddress: customer.shippingAddress }
+                : {}),
+              isActive: true,
+              updatedAt: new Date(),
+            },
+          })
+          .returning({ id: customers.id });
+
+        if (!customerProfile) throw new Error("Customer profile could not be saved");
+        resolvedCustomerProfileId = customerProfile.id;
+      }
 
       const standardShipping = digitalOnly ? 0 : royalDelivery.customerDeliveryFee;
       const tierPerks = calculateTierPerks(customerTier, subtotal, standardShipping);
@@ -687,30 +789,6 @@ export async function createOrder(
       const requiredDeposit = calculateRequiredDeposit(total, digitalOnly);
       const codAmount = Math.max(0, total - requiredDeposit);
 
-      const [customerProfile] = await tx
-        .insert(customers)
-        .values({
-          customerCode: generateCustomerCode(),
-          name: customer.customerName,
-          phone: customer.phone,
-          telegramUserId: customer.telegramUserId || null,
-          primaryAddress: digitalOnly ? null : customer.shippingAddress || null,
-        })
-        .onConflictDoUpdate({
-          target: customers.phone,
-          set: {
-            name: customer.customerName,
-            ...(customer.telegramUserId ? { telegramUserId: customer.telegramUserId } : {}),
-            ...(!digitalOnly && customer.shippingAddress
-              ? { primaryAddress: customer.shippingAddress }
-              : {}),
-            isActive: true,
-            updatedAt: new Date(),
-          },
-        })
-        .returning({ id: customers.id });
-      if (!customerProfile)
-        throw new Error("Customer profile could not be saved");
       const [created] = await tx
         .insert(orders)
         .values({
@@ -720,8 +798,8 @@ export async function createOrder(
           destinationState: royalDelivery.destinationState,
           streetAddress: customer.shippingAddress || null,
           shippingAddress: customer.shippingAddress || null,
-          telegramUserId: customer.telegramUserId || null,
-          customerId: customerProfile.id,
+          telegramUserId: effectiveTgUserId || null,
+          customerId: resolvedCustomerProfileId,
           totalAmount: String(total),
           shippingZone: royalDelivery.zone,
           shippingFee: String(shippingFee),
@@ -1547,6 +1625,7 @@ export async function adminCreateOrder(
           : calculateRequiredDeposit(total, isDigitalOnly);
       const codAmount = Math.max(0, total - requiredDeposit);
 
+      const rawAdminTag = (parsed.data.telegramUsername || "").trim().replace(/^@/, "");
       const [customerProfile] = await tx
         .insert(customers)
         .values({
@@ -1554,6 +1633,7 @@ export async function adminCreateOrder(
           name: parsed.data.customerName,
           phone: parsed.data.phone,
           telegramUserId: parsed.data.telegramUserId || null,
+          telegramUsername: rawAdminTag || null,
           primaryAddress: isDigitalOnly ? null : parsed.data.shippingAddress || null,
         })
         .onConflictDoUpdate({
@@ -1561,6 +1641,7 @@ export async function adminCreateOrder(
           set: {
             name: parsed.data.customerName,
             ...(parsed.data.telegramUserId ? { telegramUserId: parsed.data.telegramUserId } : {}),
+            ...(rawAdminTag ? { telegramUsername: rawAdminTag } : {}),
             ...(!isDigitalOnly && parsed.data.shippingAddress
               ? { primaryAddress: parsed.data.shippingAddress }
               : {}),

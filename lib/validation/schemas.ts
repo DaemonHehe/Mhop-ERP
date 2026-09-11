@@ -15,6 +15,7 @@ export const orderSchema = z.object({
   customerName: text(120),
   phone: text(40),
   telegramUserId: z.string().trim().max(80).optional(),
+  telegramUsername: z.string().trim().max(80).optional().or(z.literal("")),
   shippingAddress: z.string().trim().max(500).default(""),
   destinationCity: z.string().trim().max(120).default("Yangon"),
   shippingZone: z.string().trim().max(40).default("yangonInner"),
@@ -275,6 +276,7 @@ export const adminCreateOrderSchema = z.object({
   customerName: text(120),
   phone: text(40),
   telegramUserId: z.string().trim().max(80).optional().or(z.literal("")),
+  telegramUsername: z.string().trim().max(80).optional().or(z.literal("")),
   orderSource: z.enum([
     "web",
     "telegram",

@@ -98,6 +98,7 @@ export async function getCustomers(): Promise<CustomerSummary[]> {
   }
 
   try {
+    await reconcileDuplicateCustomers();
     const rows = await db
       .select({
         id: customers.id,
@@ -325,8 +326,67 @@ export async function recalculateCustomerLoyalty(
 }
 
 /**
- * Link a customer's phone number with their Telegram user ID.
+ * Reconciles and merges any temporary TG- placeholder accounts with their corresponding
+ * real-phone customer accounts when they share a Telegram user ID or Telegram tag.
  */
+export async function reconcileDuplicateCustomers() {
+  if (!db) return;
+  try {
+    const tgPlaceholders = await db
+      .select()
+      .from(customers)
+      .where(and(eq(customers.isActive, true), sql`${customers.phone} LIKE 'TG-%'`));
+
+    for (const tgCust of tgPlaceholders) {
+      const orConds = [];
+      if (tgCust.telegramUserId) orConds.push(eq(customers.telegramUserId, tgCust.telegramUserId));
+      if (tgCust.telegramUsername) orConds.push(eq(customers.telegramUsername, tgCust.telegramUsername));
+      if (!orConds.length) continue;
+
+      const realMatches = await db
+        .select()
+        .from(customers)
+        .where(
+          and(
+            eq(customers.isActive, true),
+            sql`${customers.phone} NOT LIKE 'TG-%'`,
+            or(...orConds),
+          ),
+        );
+
+      if (realMatches.length > 0) {
+        const realCust = realMatches[0];
+        const mergedTag = realCust.telegramUsername || tgCust.telegramUsername || null;
+        const mergedTgId = realCust.telegramUserId || tgCust.telegramUserId || null;
+        const totalPts = Math.max(realCust.points || 0, (realCust.points || 0) + (tgCust.points || 0));
+
+        await db
+          .update(customers)
+          .set({
+            telegramUserId: mergedTgId,
+            telegramUsername: mergedTag,
+            points: totalPts,
+            tier: getTierForPoints(totalPts),
+            updatedAt: new Date(),
+          })
+          .where(eq(customers.id, realCust.id));
+
+        await db
+          .update(orders)
+          .set({ customerId: realCust.id })
+          .where(eq(orders.customerId, tgCust.id));
+
+        await db
+          .update(customers)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(customers.id, tgCust.id));
+      }
+    }
+  } catch (err) {
+    console.error("[reconcileDuplicateCustomers error]", err);
+  }
+}
+
 /**
  * Link a customer's phone number with their Telegram user ID and username tag.
  */
@@ -356,6 +416,45 @@ export async function linkCustomerTelegram(
       .where(and(eq(customers.phone, cleanPhone), eq(customers.isActive, true)))
       .limit(1);
 
+    // Check if already exists by telegramUserId
+    const [existingByTelegram] = await db
+      .select()
+      .from(customers)
+      .where(and(eq(customers.telegramUserId, cleanTelegram), eq(customers.isActive, true)))
+      .limit(1);
+
+    // If both exist and are distinct records, merge them into the real-phone customer
+    if (existingByPhone && existingByTelegram && existingByPhone.id !== existingByTelegram.id) {
+      const mergedTag = cleanTag || existingByTelegram.telegramUsername || existingByPhone.telegramUsername || null;
+      const combinedPoints = (existingByPhone.points || 0) + (existingByTelegram.points || 0);
+
+      await db
+        .update(customers)
+        .set({
+          telegramUserId: cleanTelegram,
+          telegramUsername: mergedTag,
+          points: combinedPoints,
+          tier: getTierForPoints(combinedPoints),
+          ...(!existingByPhone.customerCode ? { customerCode: existingByTelegram.customerCode || generateCustomerCode() } : {}),
+          ...(name && (!existingByPhone.name || existingByPhone.name === "Customer") ? { name } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, existingByPhone.id));
+
+      await db
+        .update(orders)
+        .set({ customerId: existingByPhone.id })
+        .where(eq(orders.customerId, existingByTelegram.id));
+
+      await db
+        .update(customers)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(customers.id, existingByTelegram.id));
+
+      const updatedProfile = await lookupCustomerLoyalty({ telegramUserId: cleanTelegram });
+      return { success: true, profile: updatedProfile, isNew: false };
+    }
+
     if (existingByPhone) {
       await db
         .update(customers)
@@ -371,13 +470,6 @@ export async function linkCustomerTelegram(
       const updatedProfile = await lookupCustomerLoyalty({ telegramUserId: cleanTelegram });
       return { success: true, profile: updatedProfile, isNew: false };
     }
-
-    // Check if already exists by telegramUserId
-    const [existingByTelegram] = await db
-      .select()
-      .from(customers)
-      .where(and(eq(customers.telegramUserId, cleanTelegram), eq(customers.isActive, true)))
-      .limit(1);
 
     if (existingByTelegram) {
       await db

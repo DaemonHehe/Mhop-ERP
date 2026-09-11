@@ -258,14 +258,21 @@ export function CustomerDirectory({
                   <dt className="text-[#77776f]">Telegram</dt>
                   <dd className="break-all text-right font-mono text-[10px]">
                     {customer.telegramUsername ? (
-                      <a
-                        href={`https://t.me/${customer.telegramUsername.replace(/^@/, "")}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-bold text-[#0088cc] hover:underline"
-                      >
-                        @{customer.telegramUsername.replace(/^@/, "")}
-                      </a>
+                      <div className="flex flex-col items-end">
+                        <a
+                          href={`https://t.me/${customer.telegramUsername.replace(/^@/, "")}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold text-[#0088cc] hover:underline"
+                        >
+                          @{customer.telegramUsername.replace(/^@/, "")}
+                        </a>
+                        {customer.telegramUserId && (
+                          <span className="text-[9px] text-[#888b80]">
+                            ID: {customer.telegramUserId}
+                          </span>
+                        )}
+                      </div>
                     ) : customer.telegramUserId ? (
                       `ID: ${customer.telegramUserId}`
                     ) : (

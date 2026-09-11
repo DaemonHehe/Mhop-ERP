@@ -50,6 +50,7 @@ export function CreateOrderDialog({
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [telegramUserId, setTelegramUserId] = useState("");
+  const [telegramUsername, setTelegramUsername] = useState("");
   const [selectedCity, setSelectedCity] = useState("Yangon");
   const [citySearch, setCitySearch] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
@@ -161,6 +162,7 @@ export function CreateOrderDialog({
         customerName: customerName.trim(),
         phone: phone.trim(),
         telegramUserId: telegramUserId.trim() || undefined,
+        telegramUsername: telegramUsername.trim().replace(/^@/, "") || undefined,
         destinationCity: isDigitalOnly ? "Digital" : selectedCity,
         shippingAddress: isDigitalOnly ? "Digital Delivery" : shippingAddress.trim(),
         packedWeightKg,
@@ -289,15 +291,28 @@ export function CreateOrderDialog({
               />
             </div>
 
-            <div className="sm:col-span-2">
+            <div>
               <label className="text-xs font-bold text-[#333]">Telegram User ID (Optional)</label>
               <input
                 type="text"
                 value={telegramUserId}
                 onChange={(e) => setTelegramUserId(e.target.value)}
-                placeholder="Telegram ID for receipt delivery"
-                className="mt-1.5 h-10 w-full rounded-xl border px-3 text-xs"
+                placeholder="e.g. 1670134164"
+                className="mt-1.5 h-10 w-full rounded-xl border px-3 text-xs font-mono"
               />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[#333]">Telegram Tag (Optional)</label>
+              <div className="relative mt-1.5">
+                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-xs text-[#999]">@</span>
+                <input
+                  type="text"
+                  value={telegramUsername}
+                  onChange={(e) => setTelegramUsername(e.target.value.replace(/^@/, ""))}
+                  placeholder="username"
+                  className="h-10 w-full rounded-xl border pl-7 pr-3 text-xs"
+                />
+              </div>
             </div>
           </div>
 
