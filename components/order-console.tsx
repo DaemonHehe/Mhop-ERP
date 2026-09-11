@@ -149,8 +149,15 @@ export function OrderConsole({
   const currentStep = workflow.findIndex((step) => step.name === stage);
   const canReview = ["Pending", "Rejected"].includes(active.payment);
   const canReject = active.payment === "Pending";
-  const canPack = active.payment === "Verified" && stage === "Packing";
-  const canDispatch = active.payment === "Verified" && stage === "Packed";
+  const isPaymentApproved =
+    active.payment === "Verified" ||
+    active.payment.toLowerCase().includes("verified") ||
+    ["Deposit Verified", "Cod Collected", "Fully Paid"].includes(active.payment) ||
+    ["verified", "deposit_verified", "cod_collected", "fully_paid"].includes(
+      active.customerPaymentStatus || "",
+    );
+  const canPack = isPaymentApproved && stage === "Packing";
+  const canDispatch = isPaymentApproved && stage === "Packed";
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_410px]">

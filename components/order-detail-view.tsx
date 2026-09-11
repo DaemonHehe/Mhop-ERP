@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { formatMMK } from "@/lib/data";
 import {
+  addShipmentAction,
   confirmCodCollectionAction,
   postDispatchCorrectionAction,
   preDispatchEditOrderAction,
@@ -159,6 +160,12 @@ export function OrderDetailView({
   const [slipZoom, setSlipZoom] = useState(1);
   const [slipRotation, setSlipRotation] = useState(0);
   const [slipViewingUrl, setSlipViewingUrl] = useState<string | null>(null);
+  const [trackingInput, setTrackingInput] = useState(order.trackingNumber || "");
+  const [isEditingTracking, setIsEditingTracking] = useState(false);
+
+  useEffect(() => {
+    setTrackingInput(order.trackingNumber || "");
+  }, [order.trackingNumber]);
 
   // Close slip modal on ESC key
   useEffect(() => {
@@ -187,6 +194,27 @@ export function OrderDetailView({
         onRefresh?.();
       } else {
         notify(res.error || "Fulfillment update failed", "error");
+      }
+    });
+  };
+
+  const handleDispatchWithTracking = (customTracking?: string) => {
+    const code = (customTracking ?? trackingInput).trim();
+    if (!code) {
+      notify("Please enter a tracking number", "error");
+      return;
+    }
+    startTransition(async () => {
+      const res = await addShipmentAction(order.id, {
+        trackingNumber: code,
+        carrier: order.shippingCarrier || "Royal Express",
+      });
+      if (res.ok) {
+        notify("Order dispatched with Royal Express tracking!");
+        setIsEditingTracking(false);
+        onRefresh?.();
+      } else {
+        notify(res.error || "Failed to dispatch order", "error");
       }
     });
   };
@@ -477,13 +505,42 @@ export function OrderDetailView({
               )}
 
               {order.fulfillmentStatus === "packed" && (
-                <button
-                  disabled={pending || (!order.isDigitalOnly && !order.trackingNumber)}
-                  onClick={() => handleFulfillment("dispatched")}
-                  className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40"
-                >
-                  Mark Dispatched to Royal Express
-                </button>
+                order.isDigitalOnly ? (
+                  <button
+                    disabled={pending}
+                    onClick={() => handleFulfillment("dispatched")}
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40"
+                  >
+                    Complete Secure Handover
+                  </button>
+                ) : order.trackingNumber ? (
+                  <button
+                    disabled={pending}
+                    onClick={() => handleFulfillment("dispatched")}
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40"
+                  >
+                    Mark Dispatched to Royal Express ({order.trackingNumber})
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={trackingInput}
+                      onChange={(e) => setTrackingInput(e.target.value)}
+                      placeholder="Royal Tracking (e.g. REX-000000)"
+                      disabled={pending}
+                      className="h-9 w-52 sm:w-64 rounded-xl border border-sky-300 bg-white px-3 font-mono text-xs font-bold text-black outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 disabled:bg-neutral-100"
+                    />
+                    <button
+                      disabled={pending || !trackingInput.trim()}
+                      onClick={() => handleDispatchWithTracking()}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40 shadow-xs"
+                    >
+                      <Truck size={14} />
+                      <span>Save Tracking & Mark Dispatched</span>
+                    </button>
+                  </div>
+                )
               )}
 
               {order.fulfillmentStatus === "dispatched" && (
@@ -627,11 +684,54 @@ export function OrderDetailView({
               <span className="text-gray-500">Carrier:</span>
               <span className="font-bold text-black">{order.shippingCarrier || "Royal Express"}</span>
             </div>
-            <div className="flex justify-between py-1 border-b">
-              <span className="text-gray-500">Tracking Number:</span>
-              <span className="font-mono font-bold text-black">
-                {order.trackingNumber || <span className="text-rose-600">Not assigned yet</span>}
-              </span>
+            <div className="py-1 border-b space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">Tracking Number:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-black">
+                    {order.trackingNumber || <span className="text-rose-600">Not assigned yet</span>}
+                  </span>
+                  {!order.isDigitalOnly && !["delivered", "cancelled"].includes(order.fulfillmentStatus) && !isEditingTracking && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrackingInput(order.trackingNumber || "");
+                        setIsEditingTracking(true);
+                      }}
+                      className="rounded-md border border-neutral-300 bg-neutral-50 px-2 py-0.5 text-[10px] font-bold text-neutral-700 hover:bg-neutral-100 hover:text-black"
+                    >
+                      {order.trackingNumber ? "Edit" : "+ Assign"}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {isEditingTracking && (
+                <div className="flex items-center gap-1.5 pt-1">
+                  <input
+                    type="text"
+                    value={trackingInput}
+                    onChange={(e) => setTrackingInput(e.target.value)}
+                    placeholder="REX-000000"
+                    disabled={pending}
+                    className="h-8 flex-1 rounded-lg border border-neutral-300 bg-white px-2 font-mono text-xs font-bold text-black outline-none focus:border-black"
+                  />
+                  <button
+                    type="button"
+                    disabled={pending || !trackingInput.trim()}
+                    onClick={() => handleDispatchWithTracking()}
+                    className="rounded-lg bg-sky-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-sky-700 disabled:opacity-40"
+                  >
+                    Save & Dispatch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingTracking(false)}
+                    className="rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-[11px] font-bold text-neutral-600 hover:bg-neutral-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
