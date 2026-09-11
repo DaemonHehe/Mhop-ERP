@@ -28,24 +28,6 @@ export const DEFAULT_BOT_TEMPLATES: Record<string, Omit<BotTemplateItem, "id" | 
     content: clientConfig.telegram.welcome,
     placeholders: [],
   },
-  cart_recovery_unpaid: {
-    key: "cart_recovery_unpaid",
-    label: "Cart Recovery: Unpaid Order Reminder (15 Min)",
-    description: "Sent automatically to customers who generated an order code but have not submitted a transfer slip after 15 minutes.",
-    triggerSource: "n8n_cart_recovery",
-    channel: "customer",
-    content: "မင်္ဂလာပါခင်ဗျာ။ MH OP မှ {order_code} အတွက် ဝယ်ယူမှု မပြီးဆုံးသေးပါ။ ဝယ်ယူမှုဆက်လက်လုပ်ဆောင်ရန် သို့မဟုတ် အကူအညီလိုပါက ဒီ bot ကို စာပြန်ပေးနိုင်ပါတယ်။ ငွေလွှဲပြီးပါက payment slip ပေးပို့ပေးပါခင်ဗျာ။",
-    placeholders: ["{customer}", "{order_code}"],
-  },
-  cart_recovery_browsing: {
-    key: "cart_recovery_browsing",
-    label: "Lead Recovery: Catalog Inquirer (15 Min)",
-    description: "Sent to customers who browsed the catalog or sales options in Telegram without placing an order.",
-    triggerSource: "n8n_cart_recovery",
-    channel: "customer",
-    content: "မင်္ဂလာပါခင်ဗျာ။ MH OP မှာ ကြည့်ရှုထားတဲ့ ပစ္စည်းများကို စိတ်ဝင်စားသေးပါသလား။ /catalog ဖြင့် ပြန်ကြည့်နိုင်ပြီး ဝယ်ယူရန် အကူအညီလိုပါက ဒီ bot ကို စာပြန်ပေးနိုင်ပါတယ်ခင်ဗျာ။",
-    placeholders: ["{customer}"],
-  },
   slip_acknowledgment: {
     key: "slip_acknowledgment",
     label: "Payment Slip Review Acknowledgment",
@@ -234,22 +216,6 @@ export async function resetBotMessageTemplate(
 /**
  * High-level helpers for formatting automated customer messages.
  */
-
-export async function formatRecoveryReminder(params: {
-  stage: "unpaid" | "browsing";
-  orderCode?: string;
-  customer?: string;
-}): Promise<string> {
-  const key =
-    params.stage === "unpaid"
-      ? "cart_recovery_unpaid"
-      : "cart_recovery_browsing";
-  const raw = await getBotMessageTemplate(key);
-  return interpolateVariables(raw, {
-    customer: params.customer || "အကို/အမ",
-    order_code: params.orderCode || "",
-  });
-}
 
 export async function formatWelcomeMessage(): Promise<string> {
   return getBotMessageTemplate("welcome");

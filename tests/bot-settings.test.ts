@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   interpolateVariables,
   getBotMessageTemplates,
-  formatRecoveryReminder,
   formatWelcomeMessage,
   formatSlipAcknowledgment,
   formatManagerMorningBriefing,
@@ -36,16 +35,14 @@ describe("bot-settings.service", () => {
   });
 
   describe("getBotMessageTemplates defaults", () => {
-    it("returns all 7 active automation message templates with proper metadata", async () => {
+    it("returns all 5 active automation message templates with proper metadata", async () => {
       const templates = await getBotMessageTemplates();
-      expect(templates.length).toBe(7);
+      expect(templates.length).toBe(5);
 
       const keys = templates.map((t) => t.key);
       expect(keys).not.toContain("ai_sales_agent");
       expect(keys).toContain("welcome");
       expect(keys).not.toContain("accessory_follow_up");
-      expect(keys).toContain("cart_recovery_unpaid");
-      expect(keys).toContain("cart_recovery_browsing");
       expect(keys).toContain("slip_acknowledgment");
       expect(keys).toContain("manager_morning_briefing");
       expect(keys).toContain("manager_financial_digest");
@@ -68,26 +65,6 @@ describe("bot-settings.service", () => {
       expect(instructions).toContain("Mh Op");
       expect(instructions).toContain("PUBG");
       expect(instructions).toContain("STORE KNOWLEDGE BASE");
-    });
-  });
-
-  describe("formatRecoveryReminder", () => {
-    it("formats unpaid order recovery with the order code", async () => {
-      const text = await formatRecoveryReminder({
-        stage: "unpaid",
-        orderCode: "Order MHOP-TEST",
-        customer: "Aung Aung",
-      });
-      expect(text).toContain("Order MHOP-TEST");
-      expect(text).toContain("payment slip");
-    });
-
-    it("formats browsing lead inquiry reminder", async () => {
-      const text = await formatRecoveryReminder({
-        stage: "browsing",
-        customer: "Customer",
-      });
-      expect(text).toContain("/catalog");
     });
   });
 

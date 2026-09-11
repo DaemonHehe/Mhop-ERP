@@ -1,4 +1,4 @@
-﻿import nextEnv from "@next/env";
+import nextEnv from "@next/env";
 import { neon } from "@neondatabase/serverless";
 import bcrypt from "bcryptjs";
 import { readdir, unlink } from "node:fs/promises";
@@ -31,8 +31,7 @@ async function wipeEntireDatabase() {
   await sql`DELETE FROM customers`;
 
   // 2. Operational logs, alerts & sessions
-  console.log("2. Deleting logs, alerts, leads, bot sessions, expenses...");
-  await sql`DELETE FROM leads`;
+  console.log("2. Deleting logs, alerts, bot sessions, expenses...");
   await sql`DELETE FROM staff_alerts`;
   await sql`DELETE FROM bot_sessions`;
   await sql`DELETE FROM expenses`;
@@ -106,7 +105,6 @@ async function wipeEntireDatabase() {
     ['courier_settlement_allocations', 'Courier Allocations'],
     ['customers', 'Customer Profiles'],
     ['tickets', 'Support / Warranty Tickets'],
-    ['leads', 'Leads'],
     ['staff_alerts', 'Staff Alerts'],
     ['system_audit_logs', 'System Audit Trail'],
     ['shipping_destinations', 'Shipping Destinations'],

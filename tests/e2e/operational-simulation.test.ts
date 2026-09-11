@@ -20,8 +20,6 @@ import { POST as handleTelegramWebhook } from "@/app/api/telegram/webhook/route"
 import { GET as handleMemberCard } from "@/app/api/member-card/route";
 import { GET as handleSlipProxy } from "@/app/api/orders/[orderId]/slip/route";
 import { POST as handleN8nWebhook, GET as handleN8nHealth } from "@/app/api/n8n/webhook/route";
-import { GET as handleRecoverableLeads } from "@/app/api/internal/leads/recoverable/route";
-import { POST as handleRemindLead } from "@/app/api/internal/leads/remind/route";
 import { GET as handleDailyStats } from "@/app/api/internal/stats/daily/route";
 
 import {
@@ -58,15 +56,8 @@ import {
 } from "@/lib/services/ticket.service";
 import { evaluateWarrantyPolicy } from "@/lib/warranty-policy";
 import {
-  getRecoveryLeads,
-  isAutomationRecoveryLead,
-  sendRecoveryReminder,
-  type RecoveryLead,
-} from "@/lib/services/lead-recovery.service";
-import {
   formatManagerFinancialDigest,
   formatManagerMorningBriefing,
-  formatRecoveryReminder,
 } from "@/lib/services/bot-settings.service";
 import {
   calculateRequiredDeposit,
@@ -782,53 +773,6 @@ describe("Tier 1: Feature Coverage (Isolated Happy Paths)", () => {
     });
   });
 
-  describe("F12: Abandoned Cart Recovery Pipeline", () => {
-    it("T1.F12.1: getRecoveryLeads returns array of recoverable candidate leads", async () => {
-      const leads = await getRecoveryLeads();
-      expect(Array.isArray(leads)).toBe(true);
-    });
-
-    it("T1.F12.2: isAutomationRecoveryLead qualifies leads inactive for >= 15 minutes with numeric TG ID", () => {
-      const fifteenMinsAgo = new Date(Date.now() - 16 * 60_000);
-      const lead: RecoveryLead = {
-        id: "order:10000000-0000-4000-8000-000000000001",
-        customerName: "Ko Myo",
-        phone: "0912345678",
-        telegramUserId: "99887766",
-        stage: "unpaid",
-        detail: "Order MHOP-260910-TEST · Payment not completed",
-        activityAt: fifteenMinsAgo,
-      };
-      expect(isAutomationRecoveryLead(lead)).toBe(true);
-    });
-
-    it("T1.F12.3: formatRecoveryReminder formats personalized Burmese reminder message", async () => {
-      const text = await formatRecoveryReminder({
-        stage: "unpaid",
-        orderCode: "MHOP-260910-TEST",
-        customer: "Ko Myo",
-      });
-      expect(text).toContain("MHOP-260910-TEST");
-      expect(text).toContain("payment slip");
-    });
-
-    it("T1.F12.4: sendRecoveryReminder safely skips nonexistent lead with ok: true and skipped: true", async () => {
-      const res = await sendRecoveryReminder("order:00000000-0000-0000-0000-000000000000", "2000-01-01T00:00:00.000Z");
-      expect(res.ok).toBe(true);
-      expect(res.skipped).toBe(true);
-    });
-
-    it("T1.F12.5: GET /api/internal/leads/recoverable returns 200 with JSON array under Bearer auth", async () => {
-      const req = new NextRequest("http://localhost:3000/api/internal/leads/recoverable", {
-        headers: { Authorization: `Bearer ${ADMIN_API_TOKEN}` },
-      });
-      const res = await handleRecoverableLeads(req);
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(Array.isArray(data)).toBe(true);
-    });
-  });
-
   describe("F13: Daily Statistics & Scheduled Briefings", () => {
     it("T1.F13.1: GET /api/internal/stats/daily returns HTTP 200 with Bearer auth", async () => {
       const req = new NextRequest("http://localhost:3000/api/internal/stats/daily", {
@@ -1530,59 +1474,6 @@ describe("Tier 2: Boundary & Corner Cases", () => {
     });
   });
 
-  describe("F12: Abandoned Cart Recovery Boundaries", () => {
-    it("T2.F12.1: lead inactive for LESS than 15 minutes (e.g. 14 mins) is excluded by isAutomationRecoveryLead", () => {
-      const fourteenMinsAgo = new Date(Date.now() - 14 * 60_000);
-      const lead: RecoveryLead = {
-        id: "order:10000000-0000-4000-8000-000000000002",
-        customerName: "Recent Customer",
-        phone: "0912345678",
-        telegramUserId: "99887766",
-        stage: "unpaid",
-        detail: "Order MHOP-260910-RECENT · Payment not completed",
-        activityAt: fourteenMinsAgo,
-      };
-      expect(isAutomationRecoveryLead(lead)).toBe(false);
-    });
-
-    it("T2.F12.2: order that already has paymentSlipUrl submitted is excluded from recovery queue", () => {
-      const order = {
-        paymentStatus: "pending",
-        paymentSlipUrl: "telegram-file:file_123",
-        fulfillmentStatus: "new",
-      };
-      const isCandidate = (order.paymentStatus === "pending") && !order.paymentSlipUrl;
-      expect(isCandidate).toBe(false);
-    });
-
-    it("T2.F12.3: order in cancelled or delivered status is excluded from recovery queue", () => {
-      const allowedStages = ["new", "confirmed"];
-      expect(allowedStages.includes("cancelled")).toBe(false);
-      expect(allowedStages.includes("delivered")).toBe(false);
-    });
-
-    it("T2.F12.4: non-numeric or negative Telegram user ID is rejected by isAutomationRecoveryLead", () => {
-      const badLead1: RecoveryLead = {
-        id: "order:1", customerName: "Bad", phone: null, telegramUserId: "-12345",
-        stage: "unpaid", detail: "...", activityAt: new Date(Date.now() - 20 * 60_000),
-      };
-      const badLead2: RecoveryLead = {
-        id: "order:2", customerName: "Bad", phone: null, telegramUserId: "not_a_number",
-        stage: "unpaid", detail: "...", activityAt: new Date(Date.now() - 20 * 60_000),
-      };
-      expect(isAutomationRecoveryLead(badLead1)).toBe(false);
-      expect(isAutomationRecoveryLead(badLead2)).toBe(false);
-    });
-
-    it("T2.F12.5: rate limit enforces cooldown on reminder dispatch to same chat ID", async () => {
-      const chatId = 99887766;
-      let sentCount = 0;
-      const canSend = (timeSinceLastMs: number) => timeSinceLastMs >= 60_000;
-      expect(canSend(30_000)).toBe(false);
-      expect(canSend(60_001)).toBe(true);
-    });
-  });
-
   describe("F13: Daily Stats Briefing Boundaries", () => {
     it("T2.F13.1: request to /api/internal/stats/daily without Authorization header returns HTTP 401", async () => {
       const req = new NextRequest("http://localhost:3000/api/internal/stats/daily");
@@ -1794,34 +1685,6 @@ describe("Tier 3: Cross-Feature Combinations (Pairwise Interaction Testing)", ()
     // 5. Low stock condition is cleared
     const isLowStockAfterCancel = stockQuantity <= lowStockThreshold;
     expect(isLowStockAfterCancel).toBe(false);
-  });
-
-  it("T3.P4: Pair 4 - Unpaid Lead -> Inactivity Qualification -> Slip Upload -> Exclusion from Recovery", async () => {
-    // 1. Order created 20 minutes ago with no slip uploaded
-    const lead: RecoveryLead = {
-      id: "order:10000000-0000-4000-8000-000000000003",
-      customerName: "Abandoned Lead Customer",
-      phone: "0912345678",
-      telegramUserId: "99887766",
-      stage: "unpaid",
-      detail: "Order MHOP-260910-UNPAID · Payment not completed",
-      activityAt: new Date(Date.now() - 20 * 60_000),
-    };
-
-    // 2. Automation qualifies lead for 15-minute recovery
-    expect(isAutomationRecoveryLead(lead)).toBe(true);
-
-    // 3. Customer uploads payment slip
-    const orderRecord = {
-      id: lead.id,
-      paymentStatus: "pending",
-      paymentSlipUrl: "telegram-file:PHOTO_FILE_ID_123",
-      fulfillmentStatus: "new",
-    };
-
-    // 4. Candidate re-evaluation: lead with paymentSlipUrl is excluded
-    const isCandidateAfterUpload = (orderRecord.paymentStatus === "pending") && !orderRecord.paymentSlipUrl;
-    expect(isCandidateAfterUpload).toBe(false);
   });
 
   it("T3.P5: Pair 5 - Checkout -> System Event Emitter -> HMAC SHA-256 Sign -> n8n Webhook Ingestion", async () => {
@@ -2039,46 +1902,6 @@ describe("Tier 4: Real-World Application Scenarios (Multi-Step Operational Journ
     const customerBRetry = accountStatus === "in_stock";
     expect(customerBRetry).toBe(false);
     expect(accountStatus).toBe("sold");
-  });
-
-  it("T4.S3: Scenario 3 - 15-Minute Abandoned Cart Recovery & Re-engagement Journey", async () => {
-    // Step 1: Customer initiates checkout for Sony WH-1000XM5 (1,250,000 MMK)
-    const sixteenMinsAgo = new Date(Date.now() - 16 * 60_000);
-    const abandonedLead: RecoveryLead = {
-      id: "order:10000000-0000-4000-8000-000000000004",
-      customerName: "Sony Audiophile",
-      phone: "09771122334",
-      telegramUserId: "99887711",
-      stage: "unpaid",
-      detail: "Order MHOP-260910-XM5 · Payment not completed",
-      activityAt: sixteenMinsAgo,
-    };
-
-    // Step 2: Internal automation queries recoverable leads
-    expect(isAutomationRecoveryLead(abandonedLead)).toBe(true);
-
-    // Step 3: Dispatch reminder via /api/internal/leads/remind
-    const remindReq = new NextRequest("http://localhost:3000/api/internal/leads/remind", {
-      method: "POST",
-      headers: { "content-type": "application/json", Authorization: `Bearer ${ADMIN_API_TOKEN}` },
-      body: JSON.stringify({ id: abandonedLead.id, activityAt: abandonedLead.activityAt.toISOString() }),
-    });
-    const remindRes = await handleRemindLead(remindReq);
-    expect(remindRes.status).toBe(200);
-
-    // Step 4: Rapid duplicate reminder skipped
-    const dupReq = new NextRequest("http://localhost:3000/api/internal/leads/remind", {
-      method: "POST",
-      headers: { "content-type": "application/json", Authorization: `Bearer ${ADMIN_API_TOKEN}` },
-      body: JSON.stringify({ id: abandonedLead.id, activityAt: abandonedLead.activityAt.toISOString() }),
-    });
-    const dupRes = await handleRemindLead(dupReq);
-    expect(dupRes.status).toBe(200);
-
-    // Step 5: Customer uploads payment slip -> excluded from candidate queue
-    const orderState = { paymentStatus: "pending", paymentSlipUrl: "telegram-file:slip_xm5_uploaded" };
-    const stillRecoverable = (orderState.paymentStatus === "pending") && !orderState.paymentSlipUrl;
-    expect(stillRecoverable).toBe(false);
   });
 
   it("T4.S4: Scenario 4 - Post-Delivery Warranty Claim & RMA Replacement Journey", async () => {

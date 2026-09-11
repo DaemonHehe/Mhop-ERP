@@ -20,7 +20,7 @@ export function auditCategory(event: string): AuditCategory {
     return "inventory";
   if (["supplier", "purchase", "expense"].includes(prefix)) return "finance";
   if (["ticket", "warranty"].includes(prefix)) return "warranty";
-  if (["lead", "customer"].includes(prefix)) return "crm";
+  if (prefix === "customer") return "crm";
   if (["staff", "auth", "security"].includes(prefix)) return "access";
   if (["bot", "telegram", "n8n"].includes(prefix)) return "automation";
   return "system";

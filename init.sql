@@ -13,7 +13,6 @@ CREATE TABLE order_items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), order_i
 CREATE TABLE bundles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(180) NOT NULL, description text, bundle_price numeric(14,2) NOT NULL, savings_amount numeric(14,2) NOT NULL, items_json jsonb NOT NULL, is_active boolean NOT NULL DEFAULT true);
 CREATE TABLE order_bundle_sets (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), order_id uuid NOT NULL REFERENCES orders(id), bundle_id uuid REFERENCES bundles(id), bundle_name varchar(180) NOT NULL, bundle_price numeric(14,2) NOT NULL, items_json jsonb NOT NULL);
 CREATE TABLE tickets (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), ticket_code varchar(40) UNIQUE NOT NULL, order_code varchar(40) NOT NULL, order_item_id uuid REFERENCES order_items(id), serial_number varchar(120), customer_name varchar(120) NOT NULL, phone varchar(40) NOT NULL, category varchar(80) NOT NULL, priority varchar(30) NOT NULL DEFAULT 'normal', status varchar(40) NOT NULL DEFAULT 'claim_received', message_text text, warranty_start_at timestamptz, warranty_expires_at timestamptz, resolution varchar(40), resolution_cost numeric(14,2) NOT NULL DEFAULT 0 CHECK(resolution_cost>=0), refund_amount numeric(14,2) NOT NULL DEFAULT 0 CHECK(refund_amount>=0), replacement_variant_id uuid REFERENCES product_variants(id), resolved_at timestamptz);
-CREATE TABLE leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), customer_name varchar(120) NOT NULL, phone varchar(40), telegram_user_id varchar(80), cart_items_json jsonb NOT NULL, stage varchar(40) NOT NULL DEFAULT 'new', reserve_expires_at timestamptz);
 CREATE TABLE staff_alerts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type varchar(60) NOT NULL, title varchar(180) NOT NULL, body text NOT NULL, target_code varchar(80), is_read boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE receipt_settings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), shop_name varchar(180) NOT NULL, address text, phone varchar(40), header_message text, footer_message text, paper_size integer NOT NULL DEFAULT 80 CHECK(paper_size IN(58,80)), show_barcode boolean NOT NULL DEFAULT true, show_qr boolean NOT NULL DEFAULT true);
 CREATE TABLE system_audit_logs (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), category varchar(40) NOT NULL DEFAULT 'system', event varchar(80) NOT NULL, actor varchar(120) NOT NULL DEFAULT 'system', target_code varchar(100), details text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
@@ -48,7 +47,6 @@ CREATE INDEX tickets_serial_idx ON tickets(serial_number);
 CREATE INDEX tickets_order_code_idx ON tickets(order_code);
 CREATE INDEX tickets_status_idx ON tickets(status);
 CREATE INDEX tickets_order_item_idx ON tickets(order_item_id);
-CREATE INDEX leads_recovery_idx ON leads(stage,reserve_expires_at);
 CREATE INDEX system_audit_logs_created_idx ON system_audit_logs(created_at DESC);
 CREATE INDEX audit_logs_event_idx ON system_audit_logs(event);
 CREATE INDEX audit_logs_category_created_idx ON system_audit_logs(category,created_at DESC);

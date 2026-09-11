@@ -22,6 +22,7 @@ import {
   type BroadcastAudience,
   type BroadcastResult,
 } from "@/app/actions/broadcast";
+import { ModalPortal } from "@/components/modal-portal";
 
 const TEMPLATES = [
   {
@@ -176,42 +177,46 @@ export function TelegramBroadcastModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="broadcast-modal-title"
-    >
-      <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-3xl bg-[#f7f6f2] p-5 shadow-2xl sm:p-7">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-black/5 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#0088cc] text-white">
-              <Megaphone size={20} />
+    <ModalPortal isOpen={isOpen} onClose={onClose}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="broadcast-modal-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !isPending) onClose();
+        }}
+      >
+        <div className="relative flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl sm:rounded-3xl bg-[#f7f6f2] shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-black/5 bg-[#f7f6f2] p-4 sm:p-6 pb-3 sm:pb-4">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="grid h-9 w-9 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl sm:rounded-2xl bg-[#0088cc] text-white shadow-xs">
+                <Megaphone size={18} />
+              </div>
+              <div>
+                <h2 id="broadcast-modal-title" className="text-base sm:text-lg md:text-xl font-bold tracking-tight text-[#171914]">
+                  Broadcast to Telegram Customers
+                </h2>
+                <p className="text-[11px] sm:text-xs text-[#77776f]">
+                  Targeted notifications via the customer sales bot
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 id="broadcast-modal-title" className="text-xl font-bold tracking-tight">
-                Broadcast to Telegram Customers
-              </h2>
-              <p className="text-xs text-[#77776f]">
-                Targeted notifications via the customer sales bot
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#777] hover:bg-black/5 active:bg-black/10 disabled:opacity-50"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="rounded-full p-2 text-[#777] hover:bg-black/5 disabled:opacity-50"
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
-        </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 space-y-4 overflow-y-auto py-4">
-          {/* Target Audience Segment Selection */}
+          {/* Scrollable Content */}
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-6 py-3 sm:py-4">
+            {/* Target Audience Segment Selection */}
           <div className="rounded-2xl border border-black/5 bg-white p-4">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#77776f]">
@@ -565,12 +570,12 @@ export function TelegramBroadcastModal({
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between border-t border-black/5 pt-4">
+        <div className="flex shrink-0 flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 border-t border-black/5 bg-[#f3f2ec] p-3.5 sm:p-5">
           <button
             type="button"
             onClick={onClose}
             disabled={isPending}
-            className="rounded-xl px-4 py-2.5 text-xs font-semibold text-[#666] hover:bg-black/5 disabled:opacity-50"
+            className="h-10 sm:h-9 w-full sm:w-auto rounded-xl px-4 text-xs font-semibold text-[#666] hover:bg-black/5 active:bg-black/10 disabled:opacity-50 transition"
           >
             Cancel
           </button>
@@ -578,7 +583,7 @@ export function TelegramBroadcastModal({
             type="button"
             onClick={handleSend}
             disabled={isSendDisabled}
-            className="flex items-center gap-2 rounded-xl bg-[#0088cc] px-5 py-2.5 text-xs font-bold text-white shadow-md transition-all hover:bg-[#0077b5] disabled:opacity-40"
+            className="flex h-11 sm:h-10 w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#0088cc] px-5 text-xs font-bold text-white shadow-md transition-all hover:bg-[#0077b5] active:scale-[0.99] disabled:opacity-40"
           >
             {isPending ? (
               <>
@@ -595,5 +600,6 @@ export function TelegramBroadcastModal({
         </div>
       </div>
     </div>
-  );
+  </ModalPortal>
+);
 }

@@ -145,7 +145,6 @@ const [summary] = await sql(
     (select count(*)::int from device_units where serial_number like 'TEST-%') as account_and_serial_units,
     (select count(*)::int from bundles where name like 'Test %') as bundles,
     (select count(*)::int from tickets where ticket_code like 'RMA-TEST-%') as tickets,
-    (select count(*)::int from leads where id::text like 'a9%') as leads,
     (select count(*)::int from staff_alerts where target_code like 'TEST-%' or target_code like 'MHOP-260830-T%') as alerts,
     (select count(*)::int from system_audit_logs where target_code='TEST-DATA' or target_code like 'TEST-%' or target_code like 'MHOP-260830-T%') as audit_logs,
     (select count(*)::int from admin_users where email in ('admin@gmail.com','staff@mhop.test','inactive@mhop.test')) as staff_accounts,

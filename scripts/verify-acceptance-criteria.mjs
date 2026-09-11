@@ -583,50 +583,7 @@ async function run() {
     // ------------------------------------------------------------------
     console.log('\n--- SECTION 3: Automation & Delivery Verification ---');
 
-    // 3.1 Abandoned cart recovery pipeline (/api/internal/leads/recoverable & /api/internal/leads/remind) with Bearer auth
-    // 3.1.1 Unauthenticated access rejected with 401
-    const unauthRecov = await fetch(`${APP_URL}/api/internal/leads/recoverable`);
-    assertStep(
-      'Automation & Delivery',
-      '3.1.1 GET /api/internal/leads/recoverable rejects unauthenticated request with 401',
-      unauthRecov.status === 401,
-      { httpStatus: unauthRecov.status }
-    );
-
-    // 3.1.2 Authenticated leads retrieval
-    const authRecov = await fetch(`${APP_URL}/api/internal/leads/recoverable`, {
-      headers: { Authorization: `Bearer ${ADMIN_API_TOKEN}` },
-    });
-    const leadsList = await authRecov.json();
-    assertStep(
-      'Automation & Delivery',
-      '3.1.2 GET /api/internal/leads/recoverable authenticates with Bearer token and returns leads queue',
-      authRecov.status === 200 && Array.isArray(leadsList),
-      { httpStatus: authRecov.status, queueLength: leadsList.length }
-    );
-
-    // 3.1.3 Remind endpoint anti-spam and validation
-    const remindRes = await fetch(`${APP_URL}/api/internal/leads/remind`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${ADMIN_API_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        id: `order:${order1.id}`,
-        activityAt: new Date().toISOString(),
-      }),
-    });
-    const remindData = await remindRes.json();
-    // Since order1 is already verified/delivered, anti-spam pre-send check correctly identifies that customer state changed and safely skips
-    assertStep(
-      'Automation & Delivery',
-      '3.1.3 POST /api/internal/leads/remind verifies lead qualification and skips non-abandoned orders safely without duplicate spam',
-      remindRes.status === 200 && remindData.ok === true && remindData.skipped === true,
-      { httpStatus: remindRes.status, skipped: remindData.skipped, reason: remindData.reason }
-    );
-
-    // 3.2 09:00 morning briefing and 22:00 financial digest endpoints (/api/internal/stats/daily with Bearer token)
+    // 3.1 09:00 morning briefing and 22:00 financial digest endpoints (/api/internal/stats/daily with Bearer token)
     const statsRes = await fetch(`${APP_URL}/api/internal/stats/daily`, {
       headers: { Authorization: `Bearer ${ADMIN_API_TOKEN}` },
     });

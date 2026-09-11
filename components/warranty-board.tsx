@@ -17,6 +17,7 @@ import {
   type InventoryItem,
 } from "@/app/actions/store";
 import { formatMMK } from "@/lib/data";
+import { ModalPortal } from "@/components/modal-portal";
 
 interface Ticket {
   id: string;
@@ -425,30 +426,37 @@ function Modal({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/45 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-    >
-      <div className="card my-8 w-full max-w-2xl p-5 sm:p-6">
-        <div className="mb-5 flex justify-between gap-3">
-          <div>
-            <p className="eyebrow">Warranty policy</p>
-            <h2 className="display mt-1 text-2xl font-bold">{title}</h2>
+    <ModalPortal onClose={onClose}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div className="card flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-[#e5e4dc] bg-white p-4 sm:p-6">
+            <div>
+              <p className="eyebrow">Warranty policy</p>
+              <h2 className="display mt-0.5 text-xl sm:text-2xl font-bold">{title}</h2>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[#d6d4c8] bg-white text-[#555] hover:bg-[#f0eee4] transition"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
+            {children}
+          </div>
         </div>
-        {children}
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 

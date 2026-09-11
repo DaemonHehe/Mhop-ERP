@@ -23,6 +23,7 @@ import {
   createSettlementBatchAction,
   reverseSettlementBatchAction,
 } from "@/app/actions/store";
+import { ModalPortal } from "@/components/modal-portal";
 
 interface CourierSettlementViewProps {
   unsettledOrders: UnsettledOrderItem[];
@@ -661,29 +662,37 @@ export function CourierSettlementView({
 
       {/* Modal: Record Royal Settlement Batch */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[#dedbd0] bg-white text-black shadow-2xl">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b bg-[#171813] px-6 py-4 text-white">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">
-                  Royal Express Payout Settlement
-                </p>
-                <h3 className="display text-lg font-bold">
-                  Record Courier Payout Batch ({allocationRows.length} orders)
-                </h3>
+        <ModalPortal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)}>
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsCreateModalOpen(false);
+            }}
+          >
+            <div className="relative flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[#dedbd0] bg-white text-black shadow-2xl">
+              {/* Modal Header */}
+              <div className="flex shrink-0 items-center justify-between border-b bg-[#171813] p-4 sm:px-6 sm:py-4 text-white">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">
+                    Royal Express Payout Settlement
+                  </p>
+                  <h3 className="display text-lg font-bold">
+                    Record Courier Payout Batch ({allocationRows.length} orders)
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Modal Body */}
-            <div className="flex-1 space-y-5 overflow-y-auto p-6 text-xs">
+              {/* Modal Body */}
+              <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6 text-xs">
               {/* Bank and Payment Info */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
@@ -768,8 +777,8 @@ export function CourierSettlementView({
               {/* Order Allocations Breakdown Table */}
               <div>
                 <p className="eyebrow text-[#77776f]">Allocations Breakdown</p>
-                <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-[#dedbd0]">
-                  <table className="w-full text-left text-[11px]">
+                <div className="mt-2 max-h-48 overflow-y-auto overflow-x-auto rounded-xl border border-[#dedbd0]">
+                  <table className="w-full min-w-[540px] text-left text-[11px]">
                     <thead className="sticky top-0 bg-[#f5f4ee] font-extrabold uppercase text-[#77776f]">
                       <tr>
                         <th className="px-3 py-2">Order</th>
@@ -899,12 +908,12 @@ export function CourierSettlementView({
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-3 border-t bg-[#f7f5ee] px-6 py-3.5">
+            <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 border-t bg-[#f7f5ee] p-3.5 sm:px-6 sm:py-3.5">
               <button
                 type="button"
                 disabled={pending}
                 onClick={() => setIsCreateModalOpen(false)}
-                className="rounded-xl border border-[#dedbd0] bg-white px-4 py-2 text-xs font-bold transition hover:bg-[#eee]"
+                className="rounded-xl border border-[#dedbd0] bg-white px-4 py-2.5 text-xs font-bold transition hover:bg-[#eee] min-h-[42px]"
               >
                 Cancel
               </button>
@@ -912,64 +921,85 @@ export function CourierSettlementView({
                 type="button"
                 disabled={pending || allocationRows.length === 0}
                 onClick={handleSubmitBatch}
-                className="rounded-xl bg-black px-5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-neutral-800 disabled:opacity-40"
+                className="rounded-xl bg-black px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-neutral-800 disabled:opacity-40 min-h-[42px]"
               >
                 {pending ? "Recording..." : "Confirm & Record Settlement"}
               </button>
             </div>
           </div>
         </div>
+      </ModalPortal>
       )}
 
       {/* Modal: Reverse Settlement Batch */}
       {isReverseModalOpen && batchToReverse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="relative w-full max-w-md rounded-2xl border border-[#dedbd0] bg-white p-6 shadow-2xl">
-            <h3 className="display text-lg font-bold text-rose-950">
-              Reverse Settlement Batch {batchToReverse.batchCode}?
-            </h3>
-            <p className="mt-2 text-xs text-[#666]">
-              Reversing this batch will return all associated orders to unsettled status and
-              adjust shop revenue and courier-held balances accordingly. This action cannot be
-              undone.
-            </p>
+        <ModalPortal
+          isOpen={Boolean(isReverseModalOpen && batchToReverse)}
+          onClose={() => {
+            setIsReverseModalOpen(false);
+            setBatchToReverse(null);
+          }}
+        >
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setIsReverseModalOpen(false);
+                setBatchToReverse(null);
+              }
+            }}
+          >
+            <div className="relative flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#dedbd0] bg-white p-5 sm:p-6 shadow-2xl">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                <h3 className="display text-lg font-bold text-rose-950">
+                  Reverse Settlement Batch {batchToReverse.batchCode}?
+                </h3>
+                <p className="mt-2 text-xs text-[#666]">
+                  Reversing this batch will return all associated orders to unsettled status and
+                  adjust shop revenue and courier-held balances accordingly. This action cannot be
+                  undone.
+                </p>
 
-            <div className="mt-4">
-              <label className="block text-xs font-bold text-[#444]">
-                Reason for reversal (Audit Log)
-              </label>
-              <textarea
-                value={reverseReason}
-                onChange={(e) => setReverseReason(e.target.value)}
-                placeholder="e.g. Entered incorrect bank received amount / Wrong order included..."
-                rows={3}
-                className="mt-1 w-full rounded-xl border border-[#dedbd0] p-2.5 text-xs outline-none focus:border-black"
-              />
-            </div>
+                <div className="mt-4">
+                  <label className="block text-xs font-bold text-[#444]">
+                    Reason for reversal (Audit Log)
+                  </label>
+                  <textarea
+                    value={reverseReason}
+                    onChange={(e) => setReverseReason(e.target.value)}
+                    placeholder="e.g. Entered incorrect bank received amount / Wrong order included..."
+                    rows={3}
+                    className="mt-1 w-full rounded-xl border border-[#dedbd0] p-2.5 text-xs outline-none focus:border-black"
+                  />
+                </div>
+              </div>
 
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => {
-                  setIsReverseModalOpen(false);
-                  setBatchToReverse(null);
-                }}
-                className="rounded-xl border border-[#dedbd0] bg-white px-4 py-2 text-xs font-bold transition hover:bg-[#eee]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={pending || !reverseReason.trim()}
-                onClick={handleConfirmReverse}
-                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-40"
-              >
-                {pending ? "Reversing..." : "Confirm Reversal"}
-              </button>
+              <div className="mt-5 flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t border-[#eee] pt-4">
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    setIsReverseModalOpen(false);
+                    setBatchToReverse(null);
+                  }}
+                  className="rounded-xl border border-[#dedbd0] bg-white px-4 py-2.5 text-xs font-bold transition hover:bg-[#eee] min-h-[42px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !reverseReason.trim()}
+                  onClick={handleConfirmReverse}
+                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-40 min-h-[42px]"
+                >
+                  {pending ? "Reversing..." : "Confirm Reversal"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );

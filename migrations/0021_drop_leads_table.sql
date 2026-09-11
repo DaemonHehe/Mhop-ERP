@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS leads CASCADE;
+DROP INDEX IF EXISTS leads_recovery_idx;

@@ -13,11 +13,14 @@ import {
   ArrowRight,
   Check,
   Plus,
+  Minus,
+  Trash2,
   X,
   Camera,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { ModalPortal } from "@/components/modal-portal";
 import { clientConfig } from "@/lib/client-config";
 
 const departments = ["All", "PUBG Accounts", "Gaming Gadgets"] as const;
@@ -50,13 +53,75 @@ export function Storefront({
   const [accountType, setAccountType] =
     useState<(typeof accountTypes)[number]>("All accounts");
   const [query, setQuery] = useState("");
-  const [cart, setCart] = useState<string[]>([]);
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [compare, setCompare] = useState<string[]>([]);
   const [galleryModal, setGalleryModal] = useState<{
     title: string;
     images: string[];
     activeIndex: number;
   } | null>(null);
+
+  const totalCartCount = useMemo(
+    () => Object.values(cart).reduce((sum, qty) => sum + qty, 0),
+    [cart],
+  );
+
+  const cartSubtotal = useMemo(() => {
+    return Object.entries(cart).reduce((sum, [sku, qty]) => {
+      const p = products.find((prod) => prod.sku === sku);
+      return sum + (p ? p.price * qty : 0);
+    }, 0);
+  }, [cart, products]);
+
+  const checkoutQuery = useMemo(() => {
+    return Object.entries(cart)
+      .map(([sku, qty]) => `${sku}:${qty}`)
+      .join(",");
+  }, [cart]);
+
+  const getProductQty = (sku: string) => cart[sku] || 0;
+
+  const updateCartQty = (sku: string, delta: number, maxQty: number = 20) => {
+    setCart((prev) => {
+      const current = prev[sku] || 0;
+      const nextQty = current + delta;
+      if (nextQty <= 0) {
+        const next = { ...prev };
+        delete next[sku];
+        return next;
+      }
+      return {
+        ...prev,
+        [sku]: Math.min(nextQty, maxQty),
+      };
+    });
+  };
+
+  const removeFromCart = (sku: string) => {
+    setCart((prev) => {
+      const next = { ...prev };
+      delete next[sku];
+      return next;
+    });
+  };
+
+  const cartProducts = useMemo(() => {
+    return Object.entries(cart)
+      .map(([sku, qty]) => {
+        const p = products.find((prod) => prod.sku === sku);
+        return p ? { product: p, quantity: qty } : null;
+      })
+      .filter(Boolean) as { product: PublicCatalogItem; quantity: number }[];
+  }, [cart, products]);
+
+  const hasDigitalInCart = cartProducts.some(
+    (i) => i.product.category === "PUBG Accounts",
+  );
+  const hasPhysicalInCart = cartProducts.some(
+    (i) => i.product.category !== "PUBG Accounts",
+  );
+  const isCartMixed = hasDigitalInCart && hasPhysicalInCart;
 
   const filtered = useMemo(
     () =>
@@ -81,14 +146,26 @@ export function Storefront({
 
   return (
     <div className="min-h-screen bg-[#f4f2ec]">
-      {cart.length > 0 && (
-        <Link
-          href={`/shop/checkout?skus=${cart.join(",")}`}
-          className="fixed bottom-5 right-5 z-50 rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-bold shadow-2xl"
-        >
-          Checkout {cart.length} item{cart.length > 1 ? "s" : ""}{" "}
-          <ArrowRight size={14} className="ml-1 inline" />
-        </Link>
+      {totalCartCount > 0 && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCartDrawerOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white/95 backdrop-blur-md px-4 py-3 text-xs font-bold text-black shadow-2xl hover:bg-white transition active:scale-95"
+          >
+            <ShoppingBag size={14} />
+            <span>Bag ({totalCartCount})</span>
+          </button>
+          <Link
+            href={`/shop/checkout?skus=${checkoutQuery}`}
+            className="flex items-center gap-2 rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-black text-black shadow-2xl hover:bg-[#b8e858] transition active:scale-95"
+          >
+            <span>
+              Checkout {totalCartCount} item{totalCartCount > 1 ? "s" : ""} · {formatMMK(cartSubtotal)}
+            </span>
+            <ArrowRight size={14} />
+          </Link>
+        </div>
       )}
       <header className="sticky top-0 z-40 border-b border-[#dcd9cf] bg-[#f4f2ec]/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
@@ -106,25 +183,19 @@ export function Storefront({
             >
               Warranty
             </Link>
-            {cart.length > 0 ? (
-              <Link
-                aria-label="Open checkout"
-                href={`/shop/checkout?skus=${cart.join(",")}`}
-                className="relative grid h-10 w-10 place-items-center rounded-full bg-black text-white"
-              >
-                <ShoppingBag size={17} />
-                <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-[#ff6b35] text-[10px]">
-                  {cart.length}
+            <button
+              type="button"
+              aria-label="Open shopping bag"
+              onClick={() => setCartDrawerOpen(true)}
+              className="relative grid h-10 w-10 place-items-center rounded-full bg-black text-white hover:bg-neutral-800 transition active:scale-95"
+            >
+              <ShoppingBag size={17} />
+              {totalCartCount > 0 && (
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#ff6b35] px-1 text-[10px] font-black text-white shadow-xs">
+                  {totalCartCount}
                 </span>
-              </Link>
-            ) : (
-              <span
-                aria-hidden="true"
-                className="grid h-10 w-10 place-items-center rounded-full bg-black text-white"
-              >
-                <ShoppingBag size={17} />
-              </span>
-            )}
+              )}
+            </button>
           </div>
         </div>
       </header>
@@ -352,28 +423,79 @@ export function Storefront({
                   ))}
                 </div>
               )}
-              <div className="mt-5 flex items-end justify-between">
+              <div className="mt-5 flex items-end justify-between gap-2">
                 <div>
-                  <p className="text-[10px] text-[#888]">From</p>
+                  <p className="text-[10px] text-[#888]">
+                    {getProductQty(p.sku) > 1
+                      ? `${getProductQty(p.sku)} × ${formatMMK(p.price)}`
+                      : "From"}
+                  </p>
                   <p className="display text-xl font-bold">
-                    {formatMMK(p.price)}
+                    {formatMMK(
+                      getProductQty(p.sku) > 1
+                        ? p.price * getProductQty(p.sku)
+                        : p.price,
+                    )}
                   </p>
                 </div>
-                <button
-                  disabled={
-                    p.availability === "sold_out" || cart.includes(p.sku)
-                  }
-                  onClick={() =>
-                    setCart((x) => (x.includes(p.sku) ? x : [...x, p.sku]))
-                  }
-                  className="rounded-full bg-black px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"
-                >
-                  {p.availability === "sold_out"
-                    ? "Sold out"
-                    : cart.includes(p.sku)
-                      ? "In bag"
-                      : "Add to bag"}
-                </button>
+
+                {p.availability === "sold_out" ? (
+                  <span className="rounded-full bg-[#f1f0eb] px-4 py-2.5 text-xs font-bold text-[#888]">
+                    Sold out
+                  </span>
+                ) : p.category === "PUBG Accounts" ? (
+                  getProductQty(p.sku) > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => removeFromCart(p.sku)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[#376911] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2b520d] transition active:scale-95"
+                    >
+                      <Check size={13} />
+                      <span>In bag</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => updateCartQty(p.sku, 1, 1)}
+                      className="rounded-full bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition active:scale-95"
+                    >
+                      Add to bag
+                    </button>
+                  )
+                ) : (
+                  getProductQty(p.sku) > 0 ? (
+                    <div className="flex items-center gap-1 rounded-full border border-[#dcd9cf] bg-white p-1 shadow-xs">
+                      <button
+                        type="button"
+                        aria-label={`Decrease quantity of ${p.name}`}
+                        onClick={() => updateCartQty(p.sku, -1)}
+                        className="grid h-7 w-7 place-items-center rounded-full bg-[#f1efe8] text-black hover:bg-[#e4e1d7] active:scale-95 transition"
+                      >
+                        <Minus size={13} />
+                      </button>
+                      <span className="min-w-6 text-center text-xs font-black">
+                        {getProductQty(p.sku)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Increase quantity of ${p.name}`}
+                        disabled={getProductQty(p.sku) >= 20}
+                        onClick={() => updateCartQty(p.sku, 1, 20)}
+                        className="grid h-7 w-7 place-items-center rounded-full bg-black text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition"
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => updateCartQty(p.sku, 1, 20)}
+                      className="rounded-full bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition active:scale-95"
+                    >
+                      Add to bag
+                    </button>
+                  )
+                )}
               </div>
             </div>
           </article>
@@ -514,112 +636,274 @@ export function Storefront({
       )}
 
       {galleryModal && (
-        <div
-          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 p-4 backdrop-blur-md animate-in fade-in duration-200"
-          role="dialog"
-          aria-modal="true"
+        <ModalPortal
+          isOpen={Boolean(galleryModal)}
+          onClose={() => setGalleryModal(null)}
         >
-          <div className="relative flex w-full max-w-4xl flex-col items-center">
-            <div className="mb-3 flex w-full items-center justify-between text-white">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#c7f36b]">
-                  Verified Account Screenshots
-                </p>
-                <h3 className="text-base font-bold text-white sm:text-lg">
-                  {galleryModal.title}
-                </h3>
+          <div
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 p-2 sm:p-4 backdrop-blur-md transition-opacity"
+            role="dialog"
+            aria-modal="true"
+            aria-label={galleryModal.title}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setGalleryModal(null);
+            }}
+          >
+            <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col items-center">
+              <div className="mb-2.5 sm:mb-3 flex w-full items-center justify-between text-white px-1">
+                <div>
+                  <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#c7f36b]">
+                    Verified Account Screenshots
+                  </p>
+                  <h3 className="text-sm font-bold text-white sm:text-lg line-clamp-1">
+                    {galleryModal.title}
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="rounded-full bg-white/20 px-2.5 py-1 text-xs font-bold text-white backdrop-blur-xs">
+                    {galleryModal.activeIndex + 1} / {galleryModal.images.length}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Close modal"
+                    onClick={() => setGalleryModal(null)}
+                    className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 transition"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold text-white backdrop-blur-xs">
-                  {galleryModal.activeIndex + 1} / {galleryModal.images.length}
-                </span>
+
+              <div className="relative flex aspect-[16/10] w-full max-h-[58dvh] sm:max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl bg-black">
+                <img
+                  src={galleryModal.images[galleryModal.activeIndex]}
+                  alt={`${galleryModal.title} screenshot ${galleryModal.activeIndex + 1}`}
+                  className="max-h-full max-w-full object-contain"
+                />
+
+                {galleryModal.images.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Previous image"
+                      onClick={() =>
+                        setGalleryModal((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                activeIndex:
+                                  (prev.activeIndex - 1 + prev.images.length) %
+                                  prev.images.length,
+                              }
+                            : null,
+                        )
+                      }
+                      className="absolute left-2 sm:left-3 top-1/2 grid h-9 w-9 sm:h-10 sm:w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+
+                    <button
+                      type="button"
+                      aria-label="Next image"
+                      onClick={() =>
+                        setGalleryModal((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                activeIndex:
+                                  (prev.activeIndex + 1) % prev.images.length,
+                              }
+                            : null,
+                        )
+                      }
+                      className="absolute right-2 sm:right-3 top-1/2 grid h-9 w-9 sm:h-10 sm:w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {galleryModal.images.length > 1 && (
+                <div className="mt-2.5 sm:mt-3 flex max-w-full gap-2 overflow-x-auto overscroll-contain p-1">
+                  {galleryModal.images.map((img, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      aria-label={`View screenshot ${idx + 1}`}
+                      onClick={() =>
+                        setGalleryModal((prev) =>
+                          prev ? { ...prev, activeIndex: idx } : null,
+                        )
+                      }
+                      className={`relative h-12 w-16 sm:h-14 sm:w-20 shrink-0 overflow-hidden rounded-lg border-2 transition ${
+                        galleryModal.activeIndex === idx
+                          ? "border-[#c7f36b] scale-105"
+                          : "border-transparent opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      <img
+                        src={img}
+                        alt={`Thumbnail ${idx + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {cartDrawerOpen && (
+        <ModalPortal
+          isOpen={cartDrawerOpen}
+          onClose={() => setCartDrawerOpen(false)}
+        >
+          <div
+            className="fixed inset-0 z-[100] flex justify-end bg-black/60 backdrop-blur-xs transition-opacity duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setCartDrawerOpen(false);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Shopping bag"
+              onClick={(e) => e.stopPropagation()}
+              className="relative flex h-full w-full max-w-md flex-col bg-[#fbfaf6] shadow-2xl animate-in slide-in-from-right duration-200"
+            >
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between border-b border-[#dedbd1] px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <ShoppingBag size={18} />
+                  <h2 className="text-base font-bold">Shopping Bag</h2>
+                  <span className="rounded-full bg-[#eeece4] px-2 py-0.5 text-xs font-black text-[#666]">
+                    {totalCartCount}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setGalleryModal(null)}
-                  className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+                  aria-label="Close shopping bag"
+                  onClick={() => setCartDrawerOpen(false)}
+                  className="grid h-9 w-9 place-items-center rounded-xl text-[#666] hover:bg-[#eeece4] transition active:scale-95"
                 >
                   <X size={18} />
                 </button>
               </div>
-            </div>
 
-            <div className="relative flex aspect-[16/10] w-full max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl bg-black">
-              <img
-                src={galleryModal.images[galleryModal.activeIndex]}
-                alt={`${galleryModal.title} screenshot ${galleryModal.activeIndex + 1}`}
-                className="max-h-full max-w-full object-contain"
-              />
+              {/* Drawer Body */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 space-y-4">
+                {isCartMixed && (
+                  <div className="rounded-2xl border border-[#ffcdbe] bg-[#fff2ee] p-3.5 text-xs text-[#b83814]">
+                    <p className="font-bold">⚠️ Mixed Cart Detected</p>
+                    <p className="mt-1 leading-5">
+                      PUBG Accounts (prepaid) and Physical Gadgets (COD) must be ordered separately.
+                    </p>
+                  </div>
+                )}
 
-              {galleryModal.images.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setGalleryModal((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              activeIndex:
-                                (prev.activeIndex - 1 + prev.images.length) %
-                                prev.images.length,
-                            }
-                          : null,
-                      )
-                    }
-                    className="absolute left-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
+                {cartProducts.length === 0 ? (
+                  <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
+                    <div className="grid h-16 w-16 place-items-center rounded-2xl bg-[#eeece4] text-[#888]">
+                      <ShoppingBag size={28} />
+                    </div>
+                    <p className="mt-4 text-sm font-bold">Your bag is empty</p>
+                    <p className="mt-1 text-xs text-[#777]">
+                      Add gaming gadgets or accounts from the store.
+                    </p>
+                  </div>
+                ) : (
+                  cartProducts.map(({ product: p, quantity }) => (
+                    <div
+                      key={p.sku}
+                      className="flex items-center gap-3 rounded-2xl border border-[#e5e2d8] bg-white p-3 shadow-xs"
+                    >
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#eee]">
+                        <Image
+                          src={p.image}
+                          alt={p.name}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                          unoptimized={
+                            typeof p.image === "string" &&
+                            p.image.startsWith("/api/media")
+                          }
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-xs font-bold text-black">{p.name}</p>
+                        <p className="text-[11px] text-[#777]">
+                          {p.storage || p.color || p.subcategory}
+                        </p>
+                        <p className="mt-1 text-xs font-black text-black">
+                          {formatMMK(p.price * quantity)}
+                        </p>
+                      </div>
+
+                      {p.category === "PUBG Accounts" ? (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${p.name}`}
+                          onClick={() => removeFromCart(p.sku)}
+                          className="grid h-8 w-8 place-items-center rounded-lg text-[#888] hover:bg-rose-50 hover:text-rose-600 transition active:scale-95"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1 rounded-full border border-[#dcd9cf] bg-[#f7f6f1] p-0.5">
+                          <button
+                            type="button"
+                            aria-label={`Decrease quantity of ${p.name}`}
+                            onClick={() => updateCartQty(p.sku, -1)}
+                            className="grid h-6 w-6 place-items-center rounded-full bg-white text-black hover:bg-neutral-100 shadow-xs active:scale-95 transition"
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <span className="min-w-5 text-center text-xs font-black">
+                            {quantity}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Increase quantity of ${p.name}`}
+                            disabled={quantity >= 20}
+                            onClick={() => updateCartQty(p.sku, 1, 20)}
+                            className="grid h-6 w-6 place-items-center rounded-full bg-black text-white hover:bg-neutral-800 disabled:opacity-30 active:scale-95 transition"
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Drawer Footer */}
+              {cartProducts.length > 0 && (
+                <div className="border-t border-[#dedbd1] bg-[#f6f5ef] p-5 space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-[#666]">Subtotal</span>
+                    <span className="font-mono text-lg font-black text-black">
+                      {formatMMK(cartSubtotal)}
+                    </span>
+                  </div>
+                  <Link
+                    href={`/shop/checkout?skus=${checkoutQuery}`}
+                    onClick={() => setCartDrawerOpen(false)}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#c7f36b] py-3.5 text-xs font-black text-black shadow-lg hover:bg-[#b8e858] transition active:scale-95"
                   >
-                    <ChevronLeft size={20} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setGalleryModal((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              activeIndex:
-                                (prev.activeIndex + 1) % prev.images.length,
-                            }
-                          : null,
-                      )
-                    }
-                    className="absolute right-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
-                  >
-                    <ChevronRight size={20} />
-                  </button>
-                </>
+                    <span>Checkout ({totalCartCount} item{totalCartCount > 1 ? "s" : ""})</span>
+                    <ArrowRight size={14} />
+                  </Link>
+                </div>
               )}
             </div>
-
-            {galleryModal.images.length > 1 && (
-              <div className="mt-3 flex max-w-full gap-2 overflow-x-auto p-1">
-                {galleryModal.images.map((img, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() =>
-                      setGalleryModal((prev) =>
-                        prev ? { ...prev, activeIndex: idx } : null,
-                      )
-                    }
-                    className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 transition ${
-                      galleryModal.activeIndex === idx
-                        ? "border-[#c7f36b] scale-105"
-                        : "border-transparent opacity-60 hover:opacity-100"
-                    }`}
-                  >
-                    <img
-                      src={img}
-                      alt={`Thumbnail ${idx + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );

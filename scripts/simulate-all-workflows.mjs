@@ -423,43 +423,7 @@ async function runSimulation() {
     }
 
     // -------------------------------------------------------------
-    // PHASE 8: Leads & Cart Recovery Pipeline
-    // -------------------------------------------------------------
-    console.log('\nPhase 8: Recoverable Leads Queue & Anti-Spam Protections');
-    {
-      // 1. Recoverable leads API requires Bearer auth
-      const unauthLeads = await fetch(`${APP_URL}/api/internal/leads/recoverable`);
-      record('Leads Recovery', 'Protected recoverable leads API rejects unauthorized request', unauthLeads.status === 401);
-
-      const authLeads = await fetch(`${APP_URL}/api/internal/leads/recoverable`, {
-        headers: { Authorization: `Bearer ${ADMIN_API_TOKEN}` }
-      });
-      const leadsQueue = await authLeads.json();
-      record('Leads Recovery', 'Fetched recoverable leads queue with internal credentials',
-        authLeads.status === 200 && Array.isArray(leadsQueue),
-        `Queue size: ${leadsQueue.length}`
-      );
-
-      // 2. Safe Reminder send: stale/nil UUID safely skips
-      const skipSend = await fetch(`${APP_URL}/api/internal/leads/remind`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${ADMIN_API_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          id: 'order:00000000-0000-0000-0000-000000000000',
-          activityAt: '2000-01-01T00:00:00.000Z'
-        })
-      });
-      const skipResult = await skipSend.json();
-      record('Leads Recovery', 'Stale/nonexistent lead safely skipped without error or Telegram dispatch',
-        skipSend.status === 200 && skipResult.ok === true && skipResult.skipped === true
-      );
-    }
-
-    // -------------------------------------------------------------
-    // PHASE 9: Telegram Webhook & Inbound Customer Commands
+    // PHASE 8: Telegram Webhook & Inbound Customer Commands
     // -------------------------------------------------------------
     console.log('\nPhase 9: Inbound Telegram Sales Bot Ingress');
     {

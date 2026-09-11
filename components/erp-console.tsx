@@ -35,6 +35,7 @@ import {
   updateExpenseAction,
   updateSupplierAction,
 } from "@/app/actions/erp";
+import { ModalPortal } from "@/components/modal-portal";
 
 const field = "h-11 w-full rounded-xl border px-3 text-sm";
 function Modal({
@@ -47,28 +48,36 @@ function Modal({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/45 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="card my-8 w-full max-w-xl p-6">
-        <div className="mb-5 flex justify-between">
-          <div>
-            <p className="eyebrow">ERP workspace</p>
-            <h2 className="display mt-1 text-2xl font-bold">{title}</h2>
+    <ModalPortal onClose={close}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) close();
+        }}
+      >
+        <div className="card flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-xl flex-col overflow-hidden shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-[#e5e4dc] bg-white p-4 sm:p-6">
+            <div>
+              <p className="eyebrow">ERP workspace</p>
+              <h2 className="display mt-0.5 text-xl sm:text-2xl font-bold">{title}</h2>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={close}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[#d6d4c8] bg-white text-[#555] hover:bg-[#f0eee4] transition"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <button
-            aria-label="Close"
-            onClick={close}
-            className="grid h-9 w-9 place-items-center rounded-full border"
-          >
-            <X size={15} />
-          </button>
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
+            {children}
+          </div>
         </div>
-        {children}
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 function Label({
@@ -859,9 +868,9 @@ export function ErpConsole({
             </Label>
             <button
               disabled={pending}
-              className="w-full rounded-xl bg-black py-3 text-xs font-bold text-white"
+              className="min-h-11 w-full rounded-xl bg-black py-3 text-xs font-bold text-white transition hover:bg-neutral-800 disabled:opacity-40 shadow-sm"
             >
-              Save supplier
+              {pending ? "Saving…" : "Save supplier"}
             </button>
           </form>
         </Modal>
@@ -949,9 +958,9 @@ export function ErpConsole({
             </p>
             <button
               disabled={pending}
-              className="w-full rounded-xl bg-black py-3 text-xs font-bold text-white"
+              className="min-h-11 w-full rounded-xl bg-black py-3 text-xs font-bold text-white transition hover:bg-neutral-800 disabled:opacity-40 shadow-sm"
             >
-              Create purchase order
+              {pending ? "Creating…" : "Create purchase order"}
             </button>
           </form>
         </Modal>
@@ -1057,9 +1066,9 @@ export function ErpConsole({
             </div>
             <button
               disabled={pending}
-              className="w-full rounded-xl bg-black py-3 text-xs font-bold text-white"
+              className="min-h-11 w-full rounded-xl bg-black py-3 text-xs font-bold text-white transition hover:bg-neutral-800 disabled:opacity-40 shadow-sm"
             >
-              Save expense
+              {pending ? "Saving…" : "Save expense"}
             </button>
           </form>
         </Modal>

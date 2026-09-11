@@ -140,18 +140,6 @@ ON CONFLICT (id) DO UPDATE SET
   resolution_cost = EXCLUDED.resolution_cost, refund_amount = EXCLUDED.refund_amount,
   replacement_variant_id = EXCLUDED.replacement_variant_id, resolved_at = EXCLUDED.resolved_at;
 
--- Lead stages for CRM testing.
-INSERT INTO leads (id, customer_name, phone, telegram_user_id, cart_items_json, stage, reserve_expires_at) VALUES
-('a9000000-0000-4000-8000-000000000001', 'New Lead Test', '09771110001', 'tg-lead-001', '[{"name":"HyperX Cloud Earbuds II","sku":"TEST-HYPERX-EB2"}]', 'new', now() + interval '15 minutes'),
-('a9000000-0000-4000-8000-000000000002', 'Contacted Lead Test', '09771110002', 'tg-lead-002', '[{"name":"MEMO DL05 Phone Cooler","sku":"TEST-MEMO-DL05"}]', 'contacted', now() + interval '1 day'),
-('a9000000-0000-4000-8000-000000000003', 'Reserved Lead Test', '09771110003', 'tg-lead-003', '[{"name":"PUBG Mobile Starter Account","sku":"TEST-PUBG-STARTER"}]', 'reserved', now() + interval '2 hours'),
-('a9000000-0000-4000-8000-000000000004', 'Converted Lead Test', '09771110004', NULL, '[]', 'converted', NULL),
-('a9000000-0000-4000-8000-000000000005', 'Lost Lead Test', '09771110005', NULL, '[]', 'lost', NULL)
-ON CONFLICT (id) DO UPDATE SET
-  customer_name = EXCLUDED.customer_name, phone = EXCLUDED.phone,
-  telegram_user_id = EXCLUDED.telegram_user_id, cart_items_json = EXCLUDED.cart_items_json,
-  stage = EXCLUDED.stage, reserve_expires_at = EXCLUDED.reserve_expires_at;
-
 -- Alerts, audit log and bot sessions.
 INSERT INTO staff_alerts (id, type, title, body, target_code, is_read, created_at) VALUES
 ('aa000000-0000-4000-8000-000000000001', 'payment.slip_uploaded', 'Test payment slip received', 'Review the pending test payment.', 'MHOP-260830-T001', false, now() - interval '30 minutes'),
@@ -172,7 +160,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 INSERT INTO bot_sessions (id, telegram_user_id, language, state_json, updated_at) VALUES
 ('ac000000-0000-4000-8000-000000000001', 'tg-test-001', 'my', '{"step":"awaiting_payment_review","orderCode":"MHOP-260830-T001"}', now()),
-('ac000000-0000-4000-8000-000000000002', 'tg-lead-003', 'my', '{"step":"reserved_cart","sku":"TEST-PUBG-STARTER"}', now() - interval '1 hour')
+('ac000000-0000-4000-8000-000000000002', 'tg-session-003', 'my', '{"step":"reserved_cart","sku":"TEST-PUBG-STARTER"}', now() - interval '1 hour')
 ON CONFLICT (telegram_user_id) DO UPDATE SET
   language = EXCLUDED.language, state_json = EXCLUDED.state_json,
   updated_at = EXCLUDED.updated_at;
@@ -227,6 +215,5 @@ SELECT 'products' AS dataset, count(*) AS rows FROM products WHERE id::text LIKE
 UNION ALL SELECT 'customers', count(*) FROM customers WHERE phone LIKE '097700000%'
 UNION ALL SELECT 'orders', count(*) FROM orders WHERE order_code LIKE 'MHOP-260830-T%'
 UNION ALL SELECT 'tickets', count(*) FROM tickets WHERE ticket_code LIKE 'RMA-TEST-%'
-UNION ALL SELECT 'leads', count(*) FROM leads WHERE id::text LIKE 'a9%'
 UNION ALL SELECT 'purchase_orders', count(*) FROM purchase_orders WHERE po_code LIKE 'PO-TEST-%'
 UNION ALL SELECT 'expenses', count(*) FROM expenses WHERE expense_code LIKE 'EXP-TEST-%';

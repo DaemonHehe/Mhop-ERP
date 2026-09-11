@@ -510,25 +510,35 @@ export async function createOrder(
       };
     }
 
-    const skus = String(form.get("skus") || "")
+    const rawSkus = String(form.get("skus") || "")
       .split(",")
       .map((v) => v.trim())
       .filter(Boolean)
-      .slice(0, 25);
+      .slice(0, 50);
     const bundleIds = String(form.get("bundleIds") || "")
       .split(",")
       .map((v) => v.trim())
       .filter(Boolean)
       .slice(0, 10);
-    if (!skus.length && !bundleIds.length) {
+    if (!rawSkus.length && !bundleIds.length) {
       return {
         ok: false,
         error: "Your order does not contain any products or bundles",
       };
     }
     const individualQuantities = new Map<string, number>();
-    for (const sku of skus) {
-      individualQuantities.set(sku, (individualQuantities.get(sku) || 0) + 1);
+    for (const raw of rawSkus) {
+      const [sku, qtyStr] = raw.split(":");
+      const cleanSku = (sku || "").trim();
+      if (!cleanSku) continue;
+      const count = qtyStr ? Math.max(1, parseInt(qtyStr, 10) || 1) : 1;
+      individualQuantities.set(cleanSku, (individualQuantities.get(cleanSku) || 0) + count);
+    }
+    if (!individualQuantities.size && !bundleIds.length) {
+      return {
+        ok: false,
+        error: "Your order does not contain any products or bundles",
+      };
     }
     const orderCode = `MHOP-${new Date()
       .toISOString()

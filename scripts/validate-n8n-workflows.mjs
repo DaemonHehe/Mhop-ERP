@@ -29,7 +29,7 @@ for (const file of files) {
     if (node.type === "n8n-nodes-base.httpRequest") {
       if (node.parameters?.authentication !== "genericCredentialType")
         failures.push(`${file}: ${node.name} must use credential-based authentication`);
-      if (node.id !== "cart-send" && (!node.retryOnFail || Number(node.maxTries) < 2))
+      if (!node.retryOnFail || Number(node.maxTries) < 2)
         failures.push(`${file}: ${node.name} must retry transient failures`);
       if (!Number(node.parameters?.options?.timeout))
         failures.push(`${file}: ${node.name} must have an explicit timeout`);
@@ -59,10 +59,6 @@ for (const file of files) {
 const primary = JSON.parse(readFileSync(files[0], "utf8"));
 if (primary.nodes.some((node) => node.type === "n8n-nodes-base.telegramTrigger"))
   failures.push("Primary workflow must not register a second customer Telegram webhook");
-const recoverySend = primary.nodes.find((node) => node.id === "cart-send");
-if (recoverySend?.type !== "n8n-nodes-base.httpRequest" || recoverySend.retryOnFail !== false ||
-    !recoverySend.parameters?.url?.endsWith("/api/internal/leads/remind"))
-  failures.push("Lead reminders must use the app recheck endpoint without automatic send retries");
 const eventWebhook = primary.nodes.find((node) => node.type === "n8n-nodes-base.webhook");
 if (eventWebhook?.parameters?.authentication !== "headerAuth")
   failures.push("Operational event webhook must use Header Auth");

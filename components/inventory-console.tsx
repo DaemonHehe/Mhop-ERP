@@ -1,7 +1,7 @@
 "use client";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
+import { FormEvent, useMemo, useState, useTransition } from "react";
 import { AlertTriangle, Image as ImageIcon, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ModalPortal } from "@/components/modal-portal";
 import { formatMMK } from "@/lib/data";
 import { ImageUpload } from "@/components/image-upload";
 import type {
@@ -61,52 +61,42 @@ function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  if (!mounted || typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 sm:p-6 backdrop-blur-sm transition-opacity duration-200"
-      onClick={onClose}
-    >
+  return (
+    <ModalPortal onClose={onClose}>
       <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity duration-200"
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-        className="relative flex max-h-[92vh] w-full max-w-3xl flex-col rounded-3xl border border-[#dedbd1] bg-[#fffef9] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
       >
-        <div className="flex items-center justify-between border-b border-[#eee] bg-white px-6 py-4 shrink-0">
-          <div>
-            <p className="eyebrow text-xs">Products & Stock</p>
-            <h2 className="display mt-0.5 text-xl font-bold text-[#1f1f1d]">{title}</h2>
-            {subtitle && <p className="text-xs text-[#777] mt-0.5">{subtitle}</p>}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-3xl flex-col rounded-3xl border border-[#dedbd1] bg-[#fffef9] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-[#eee] bg-white p-4 sm:px-6 sm:py-4">
+            <div>
+              <p className="eyebrow text-xs">Products & Stock</p>
+              <h2 className="display mt-0.5 text-lg sm:text-xl font-bold text-[#1f1f1d]">{title}</h2>
+              {subtitle && <p className="text-xs text-[#777] mt-0.5">{subtitle}</p>}
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[#dedbd1] text-[#777] hover:bg-[#f1efe8] hover:text-black transition"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full border border-[#dedbd1] text-[#777] hover:bg-[#f1efe8] hover:text-black transition"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto min-h-0 p-6">
-          {children}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
+            {children}
+          </div>
         </div>
       </div>
-    </div>,
-    document.body,
+    </ModalPortal>
   );
 }
 function Field({
@@ -743,18 +733,18 @@ export function InventoryConsole({
                 </Field>
               </div>
             </div>
-            <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#eee] pt-4">
+            <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 border-t border-[#eee] pt-4">
               <button
                 type="button"
                 onClick={() => setCatalogEditor(null)}
-                className="rounded-xl border border-[#dedbd1] px-5 py-2.5 text-xs font-bold text-[#555] hover:bg-[#f1efe8] transition"
+                className="rounded-xl border border-[#dedbd1] px-5 py-2.5 text-xs font-bold text-[#555] hover:bg-[#f1efe8] transition min-h-[42px]"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={pending}
-                className="rounded-xl bg-black px-6 py-2.5 text-xs font-bold text-white hover:bg-black/80 disabled:opacity-40 shadow-sm transition"
+                className="rounded-xl bg-black px-6 py-2.5 text-xs font-bold text-white hover:bg-black/80 disabled:opacity-40 shadow-sm transition min-h-[42px]"
               >
                 {pending
                   ? "Saving…"

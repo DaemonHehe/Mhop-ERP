@@ -16,15 +16,10 @@ const live=await api('GET','/workflows/'+encodeURIComponent(workflowId));
 const source=name=>structuredClone(live.nodes.find(n=>n.name===name));
 const slug='mhop-isolated-test-'+randomUUID();
 const nodes=[{id:'trigger',name:'Isolated Test',type:'n8n-nodes-base.webhook',typeVersion:2,position:[0,0],webhookId:slug,parameters:{httpMethod:'POST',path:slug,authentication:'none',responseMode:'lastNode',options:{}}}];
-for (const [index,name] of ['Fetch Daily Briefing','Find 21–30 Day Buyers','Fetch Recoverable Leads'].entries()) {
+for (const [index,name] of ['Fetch Daily Briefing', 'Fetch Financial Digest'].entries()) {
  const node=source(name);node.id='read-'+index;node.position=[(index+1)*220,0];node.alwaysOutputData=true;nodes.push(node);
 }
-const send=source('Send Cart Recovery DM');
-send.id='skip-reminder';send.name='Skip Nonexistent Reminder';send.position=[900,0];
-// The nil UUID cannot identify a real random-UUID order created by this application.
-send.parameters.jsonBody=JSON.stringify({id:'order:00000000-0000-0000-0000-000000000000',activityAt:'2000-01-01T00:00:00.000Z'});
-send.retryOnFail=false;nodes.push(send);
-nodes.push({id:'result',name:'Verify Results',type:'n8n-nodes-base.code',typeVersion:2,position:[1120,0],parameters:{mode:'runOnceForAllItems',jsCode:"const result=$input.first().json; if(result.ok!==true || result.skipped!==true) throw new Error('Nonexistent reminder was not safely skipped'); const stats=$('Fetch Daily Briefing').first().json; if(!('revenue' in stats)) throw new Error('Daily stats response is invalid'); return [{json:{ok:true,statsFetched:true,crossSellFetched:true,recoveryFetched:true,staleReminderSkipped:true,telegramMessagesSent:0}}];"}});
+nodes.push({id:'result',name:'Verify Results',type:'n8n-nodes-base.code',typeVersion:2,position:[660,0],parameters:{mode:'runOnceForAllItems',jsCode:"const stats=$('Fetch Daily Briefing').first().json; if(!('revenue' in stats)) throw new Error('Daily stats response is invalid'); return [{json:{ok:true,statsFetched:true,telegramMessagesSent:0}}];"}});
 const connections={};for(let i=0;i<nodes.length-1;i++) connections[nodes[i].name]={main:[[{node:nodes[i+1].name,type:'main',index:0}]]};
 let created;
 try {

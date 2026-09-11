@@ -1,11 +1,8 @@
 import { desc, eq } from "drizzle-orm";
 import { and, or, sql } from "drizzle-orm";
-import { z } from "zod";
 import { db } from "@/db";
 import {
-  customers,
   deviceUnits,
-  leads,
   orderItems,
   orders,
   products,
@@ -17,14 +14,11 @@ import {
 import { clientConfig } from "@/lib/client-config";
 import { evaluateWarrantyPolicy } from "@/lib/warranty-policy";
 import {
-  leadSchema,
   ticketSchema,
   warrantyResolutionSchema,
 } from "@/lib/validation/schemas";
 import { audit } from "./audit.service";
 import type { ActionResult } from "./stock.service";
-
-export type LeadInput = z.input<typeof leadSchema>;
 
 const errorOf = (error: unknown) =>
   error instanceof Error ? error.message : "Unexpected operation failure";
@@ -424,185 +418,6 @@ export async function resolveWarrantyTicket(
       "ticket.resolved",
       ticketCode,
       `${value.resolution}; warranty cost ${bookedCost}; refund ${value.refundAmount}`,
-    );
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: errorOf(error) };
-  }
-}
-
-export async function getLeads() {
-  if (!db) {
-    return [
-      {
-        id: "demo-1",
-        customerName: "May Thazin",
-        phone: null,
-        telegramUserId: "100001",
-        cartItemsJson: [{ name: "PUBG Competitive Account" }],
-        stage: "new",
-        reserveExpiresAt: new Date(Date.now() + 43 * 60000),
-      },
-      {
-        id: "demo-2",
-        customerName: "Zaw Lin",
-        phone: "09 000 001 002",
-        telegramUserId: null,
-        cartItemsJson: [{ name: "Razer BlackShark V2 X" }],
-        stage: "contacted",
-        reserveExpiresAt: new Date(Date.now() + 2 * 3600000),
-      },
-    ];
-  }
-  return db.select().from(leads).orderBy(desc(leads.reserveExpiresAt));
-}
-
-export async function updateLeadStage(
-  leadId: string,
-  stage: "new" | "contacted" | "reserved" | "converted" | "lost",
-): Promise<ActionResult> {
-  try {
-    if (!db) return { ok: false, error: "Database is not configured." };
-    if (!["new", "contacted", "reserved", "converted", "lost"].includes(stage))
-      return { ok: false, error: "Invalid lead stage" };
-
-    const [updated] = await db
-      .update(leads)
-      .set({ stage })
-      .where(eq(leads.id, leadId))
-      .returning({ id: leads.id });
-    if (!updated) return { ok: false, error: "Lead not found" };
-    await audit("lead.updated", updated.id, `Stage changed to ${stage}`);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: errorOf(error) };
-  }
-}
-
-const leadItems = (value: string) =>
-  value
-    .split(/[\n,]/)
-    .map((name) => name.trim())
-    .filter(Boolean)
-    .slice(0, 12)
-    .map((name) => ({ name }));
-
-export async function createLead(input: LeadInput): Promise<ActionResult> {
-  try {
-    if (!db) return { ok: false, error: "Database is not configured." };
-    const parsed = leadSchema.safeParse(input);
-    if (!parsed.success)
-      return {
-        ok: false,
-        error: parsed.error.issues[0]?.message || "Invalid lead",
-      };
-    const value = parsed.data;
-    const [created] = await db
-      .insert(leads)
-      .values({
-        customerName: value.customerName,
-        phone: value.phone || null,
-        telegramUserId: value.telegramUserId || null,
-        cartItemsJson: leadItems(value.interestedIn),
-        stage: value.stage,
-        reserveExpiresAt:
-          value.reserveExpiresAt instanceof Date
-            ? value.reserveExpiresAt
-            : null,
-      })
-      .returning({ id: leads.id });
-    await audit(
-      "lead.created",
-      created.id,
-      `Lead created for ${value.customerName}`,
-    );
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: errorOf(error) };
-  }
-}
-
-export async function updateLead(
-  leadId: string,
-  input: LeadInput,
-): Promise<ActionResult> {
-  try {
-    if (!db) return { ok: false, error: "Database is not configured." };
-    const parsed = leadSchema.safeParse(input);
-    if (!parsed.success)
-      return {
-        ok: false,
-        error: parsed.error.issues[0]?.message || "Invalid lead",
-      };
-    const value = parsed.data;
-    const [updated] = await db
-      .update(leads)
-      .set({
-        customerName: value.customerName,
-        phone: value.phone || null,
-        telegramUserId: value.telegramUserId || null,
-        cartItemsJson: leadItems(value.interestedIn),
-        stage: value.stage,
-        reserveExpiresAt:
-          value.reserveExpiresAt instanceof Date
-            ? value.reserveExpiresAt
-            : null,
-      })
-      .where(eq(leads.id, leadId))
-      .returning({ id: leads.id });
-    if (!updated) return { ok: false, error: "Lead not found" };
-    await audit(
-      "lead.updated",
-      updated.id,
-      `Lead details updated for ${value.customerName}`,
-    );
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: errorOf(error) };
-  }
-}
-
-export async function convertLeadToCustomer(
-  leadId: string,
-): Promise<ActionResult> {
-  try {
-    if (!db) return { ok: false, error: "Database is not configured." };
-    let name = "";
-    await db.transaction(async (tx) => {
-      const [lead] = await tx
-        .select()
-        .from(leads)
-        .where(eq(leads.id, leadId))
-        .for("update");
-      if (!lead) throw new Error("Lead not found");
-      if (!lead.phone)
-        throw new Error("Add a phone number before converting this lead");
-      name = lead.customerName;
-      await tx
-        .insert(customers)
-        .values({
-          name: lead.customerName,
-          phone: lead.phone,
-          telegramUserId: lead.telegramUserId,
-        })
-        .onConflictDoUpdate({
-          target: customers.phone,
-          set: {
-            name: lead.customerName,
-            telegramUserId:
-              lead.telegramUserId || sql`${customers.telegramUserId}`,
-            updatedAt: new Date(),
-          },
-        });
-      await tx
-        .update(leads)
-        .set({ stage: "converted" })
-        .where(eq(leads.id, leadId));
-    });
-    await audit(
-      "lead.converted",
-      leadId,
-      `${name} added to the customer master`,
     );
     return { ok: true };
   } catch (error) {

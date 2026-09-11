@@ -17,7 +17,6 @@ const routeTopics: Record<string, string[]> = {
   "/receipts": ["order.", "payment.", "fulfillment."],
   "/tickets": ["ticket.", "order."],
   "/customers": ["customer.", "order.", "payment.", "ticket."],
-  "/leads": ["lead.", "cart.", "order.", "payment.", "fulfillment."],
   "/ai-studio": ["catalog.", "inventory."],
   "/alerts": [
     "alert.",

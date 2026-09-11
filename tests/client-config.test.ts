@@ -4,7 +4,6 @@ import {
   bundleSchema,
   catalogItemSchema,
   expenseSchema,
-  leadSchema,
   orderSchema,
   purchaseSchema,
   supplierSchema,
@@ -117,21 +116,6 @@ describe("MH OP commerce rules", () => {
         expenseDate: "2026-08-29",
       }).success,
     ).toBe(true);
-  });
-
-  it("requires a reachable contact for manually managed leads", () => {
-    const lead = {
-      customerName: "Ko Min",
-      phone: "09700000000",
-      telegramUserId: "",
-      interestedIn: "Gaming earbuds under 100,000 MMK",
-      stage: "new",
-      reserveExpiresAt: "",
-    };
-    expect(leadSchema.safeParse(lead).success).toBe(true);
-    expect(
-      leadSchema.safeParse({ ...lead, phone: "", telegramUserId: "" }).success,
-    ).toBe(false);
   });
 
   it("validates unique multi-product bundle sets", () => {

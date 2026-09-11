@@ -11,7 +11,6 @@ import * as stockService from "@/lib/services/stock.service";
 import * as ticketService from "@/lib/services/ticket.service";
 import { authorizeStaff, requireStaff } from "@/lib/auth/authorize";
 import { allowRequest } from "@/lib/security/rate-limit";
-import { getRecoveryLeads, sendRecoveryReminder } from "@/lib/services/lead-recovery.service";
 
 // Re-export types
 export type {
@@ -19,7 +18,6 @@ export type {
   InventoryItem,
   CatalogItemInput,
 } from "@/lib/services/stock.service";
-export type { LeadInput } from "@/lib/services/ticket.service";
 export type { OperationalOrder } from "@/lib/services/order.service";
 export type { RevenuePoint, ReceiptOrder } from "@/lib/services/order.service";
 export type { CustomerSummary, CustomerLoyaltyProfile } from "@/lib/services/customer.service";
@@ -56,18 +54,6 @@ export async function getTicketsAction() {
   return ticketService.getTickets();
 }
 
-export async function getLeadsAction() {
-  await requireStaff(["admin", "staff"]);
-  return getRecoveryLeads();
-}
-
-export async function sendLeadReminderAction(id: string) {
-  if (!(await authorizeStaff(["admin", "staff"])))
-    return { ok: false, error: "Unauthorized" };
-  const result = await sendRecoveryReminder(id);
-  revalidatePath("/leads");
-  return result;
-}
 export async function getAuditLogsAction(before?: {
   createdAt: string;
   id: string;
@@ -137,7 +123,6 @@ export async function createOrder(form: FormData) {
   const result = await orderService.createOrder(form);
   if (result.ok) {
     revalidatePath("/orders");
-    revalidatePath("/leads");
     revalidateCatalog();
   }
   return result;
@@ -151,7 +136,6 @@ export async function reviewPayment(
   const result = await orderService.reviewPayment(orderId, decision);
   if (result.ok) {
     revalidatePath("/orders");
-    revalidatePath("/leads");
     revalidateCatalog();
   }
   return result;
@@ -171,7 +155,6 @@ export async function updateFulfillmentAction(
   const result = await orderService.updateFulfillment(orderId, status);
   if (result.ok) {
     revalidatePath("/orders");
-    revalidatePath("/leads");
     revalidateCatalog();
   }
   return result;
@@ -318,49 +301,6 @@ export async function resolveWarrantyTicketAction(
     revalidatePath("/dashboard");
     revalidatePath("/inventory");
     revalidatePath("/shop");
-  }
-  return result;
-}
-
-export async function updateLeadStageAction(
-  leadId: string,
-  stage: "new" | "contacted" | "reserved" | "converted" | "lost",
-) {
-  if (!(await authorizeStaff(["admin", "staff"])))
-    return { ok: false as const, error: "Unauthorized" };
-  const result = await ticketService.updateLeadStage(leadId, stage);
-  if (result.ok) {
-    revalidatePath("/leads");
-  }
-  return result;
-}
-
-export async function createLeadAction(input: ticketService.LeadInput) {
-  if (!(await authorizeStaff(["admin", "staff"])))
-    return { ok: false as const, error: "Unauthorized" };
-  const result = await ticketService.createLead(input);
-  if (result.ok) revalidatePath("/leads");
-  return result;
-}
-
-export async function updateLeadAction(
-  leadId: string,
-  input: ticketService.LeadInput,
-) {
-  if (!(await authorizeStaff(["admin", "staff"])))
-    return { ok: false as const, error: "Unauthorized" };
-  const result = await ticketService.updateLead(leadId, input);
-  if (result.ok) revalidatePath("/leads");
-  return result;
-}
-
-export async function convertLeadToCustomerAction(leadId: string) {
-  if (!(await authorizeStaff(["admin", "staff"])))
-    return { ok: false as const, error: "Unauthorized" };
-  const result = await ticketService.convertLeadToCustomer(leadId);
-  if (result.ok) {
-    revalidatePath("/leads");
-    revalidatePath("/customers");
   }
   return result;
 }

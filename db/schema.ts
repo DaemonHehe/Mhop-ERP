@@ -329,16 +329,6 @@ export const tickets = pgTable(
   ],
 );
 
-// --- Leads ---
-export const leads = pgTable("leads", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  customerName: varchar("customer_name", { length: 120 }).notNull(),
-  phone: varchar("phone", { length: 40 }),
-  telegramUserId: varchar("telegram_user_id", { length: 80 }),
-  cartItemsJson: jsonb("cart_items_json").notNull(),
-  stage: varchar("stage", { length: 40 }).notNull().default("new"),
-  reserveExpiresAt: timestamp("reserve_expires_at", { withTimezone: true }),
-});
 
 // --- Staff Alerts ---
 export const staffAlerts = pgTable("staff_alerts", {

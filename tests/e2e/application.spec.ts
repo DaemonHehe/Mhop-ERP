@@ -180,7 +180,6 @@ test("staff authentication protects and opens every operations route", async ({
     ["/inventory", /Products & Stock/i],
     ["/bundles", /Bundle Sets/i],
     ["/customers", /Customer directory/i],
-    ["/leads", /Leads & recovery/i],
     ["/tickets", /RMA ticket board/i],
     ["/receipts", /Sales voucher studio/i],
     ["/erp", /ERP & Finance/i],
@@ -310,10 +309,6 @@ test("staff control surfaces open, switch, reset, and close", async ({
 
   await page.goto("/tickets");
   await page.getByRole("button", { name: "New warranty claim" }).click();
-  await closeDialog();
-
-  await page.goto("/leads");
-  await page.getByRole("button", { name: "Add lead" }).click();
   await closeDialog();
 
   await page.goto("/staff");
@@ -539,14 +534,4 @@ test("staff completes the guarded payment, packing, and dispatch workflow", asyn
   } finally {
     await cleanupOrderFixture(phone);
   }
-});
-
-test("staff views recoverable leads console and delivery guidance", async ({
-  page,
-}) => {
-  await signIn(page, "/leads");
-  await expect(page.getByRole("heading", { name: "Leads & recovery" })).toBeVisible();
-  await expect(
-    page.getByText(/Reminders are sent individually from your Telegram customer sales bot/i),
-  ).toBeVisible();
 });

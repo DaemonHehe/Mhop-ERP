@@ -10,6 +10,8 @@ describe("Member Card Image Generator", () => {
     expect(formatCardNumber(null)).toBe("MH • 7720 • 9104 • 8821");
     expect(formatCardNumber("cust-1234-abcd-5678")).toMatch(/^MH • /);
     expect(formatCardNumber("09971234567")).toContain("•");
+    expect(formatCardNumber("MH-CUST-6365")).toBe("MH • CUST • 6365 • 2025");
+    expect(formatCardNumber("MH-CUST-6365")).not.toContain("MH • MH");
   });
 
   it("correctly maps tiers and points to CardTier", () => {
@@ -89,6 +91,19 @@ describe("Member Card Image Generator", () => {
     expect(res.headers.get("Content-Type")).toBe("image/png");
     const bytes = await res.arrayBuffer();
     expect(bytes.byteLength).toBeGreaterThan(5000);
+  });
+
+  it("checks corner pixel transparency and QRCode rendering", async () => {
+    const sharp = (await import("sharp")).default;
+    const QRCode = (await import("qrcode")).default;
+    const dataUrl = await QRCode.toDataURL("https://mhop-erp-daemon.vercel.app/shop", { width: 140, margin: 1 });
+    const svg = `
+    <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+      <rect width="200" height="200" fill="#111827"/>
+      <image href="${dataUrl}" x="50" y="50" width="100" height="100"/>
+    </svg>`;
+    const png = await sharp(Buffer.from(svg)).png().toBuffer();
+    expect(png.length).toBeGreaterThan(1000);
   });
 });
 

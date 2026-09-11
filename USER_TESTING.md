@@ -13,7 +13,7 @@ Use a dedicated staging database and test Telegram bots. Record the date, tester
 
 - [ ] `npm run check` passes lint, types, unit tests, and exported n8n workflow validation.
 - [ ] `npm run build` passes.
-- [ ] `npm run test:e2e` passes on staging. Some existing browser tests still cover removed manual lead controls; update those tests before treating the suite as a release gate.
+- [ ] `npm run test:e2e` passes on staging.
 - [ ] `scripts/api-smoke.ps1` is reviewed and run against staging. Bot command smoke tests can send Telegram replies; use a test bot/chat.
 
 ## Catalog and stock
@@ -38,25 +38,10 @@ Use a dedicated staging database and test Telegram bots. Record the date, tester
 - [ ] Warranty lookup/claim checks reject mismatched order and phone details.
 - [ ] 58mm/80mm receipts print without clipping on the client printer; barcodes scan and totals match.
 
-## Leads and reminders
-
-- [ ] A private Telegram `/catalog`, `/shop`, or sales inquiry appears in Leads.
-- [ ] Unpaid orders appear; verified, cancelled, and payment-review orders are excluded.
-- [ ] Anonymous visitors and unlinked checkout customers cannot be messaged through Telegram.
-- [ ] Manual reminders reach only the chosen test customer through the customer sales bot.
-- [ ] The app reports missing bot configuration, blocked chats, and uncertain delivery accurately.
-- [ ] n8n fetches the same recovery queue, excluding activity newer than 15 minutes and customers without a valid Telegram ID.
-- [ ] Duplicate lead attempts are suppressed by retained n8n history; only one lead per chat is selected per scan.
-- [ ] Pay an order or submit its slip after fetching the queue but before sending: the app skips the stale reminder.
-- [ ] New customer activity after the scan causes a skip.
-- [ ] Unauthorized fetch/send calls fail; malformed send requests fail without sending.
-- [ ] Failed or ambiguous sends are reviewed without blindly retrying. Verify manual-versus-scheduled reminder behavior; persistent shared deduplication is not implemented.
-
 ## n8n and Telegram deployment
 
 - [ ] Import both JSON workflows, reconnect credentials, and configure the error handler.
 - [ ] The app alone owns the inbound customer Telegram webhook.
-- [ ] Recovery sends use the app's `/api/internal/leads/remind` endpoint and customer token; no automatic HTTP send retries are enabled.
 - [ ] Critical alerts go to the operations destination; unrelated events do not trigger them.
 - [ ] 09:00 and 22:00 digests use Asia/Yangon; verify accessory follow-up timing in the imported schedule.
 - [ ] Event Header Auth rejects incorrect secrets. n8n checks that header; it does not additionally verify the HMAC field.

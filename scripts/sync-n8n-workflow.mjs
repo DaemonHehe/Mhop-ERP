@@ -63,19 +63,10 @@ const nodes = template.nodes.map((node) => {
     if (node.type === "n8n-nodes-base.telegram" && previous.parameters.chatId)
       updated.parameters.chatId = previous.parameters.chatId;
   }
-  if (node.name === "Send Accessory Follow Up" && !updated.credentials) {
-    const customerCredential = byName.get("Send Cart Recovery DM")?.credentials;
-    if (customerCredential) updated.credentials = customerCredential;
-  }
-  if (node.id === "cart-send") {
-    const internalCredentials = byName.get("Fetch Recoverable Leads")?.credentials;
-    if (internalCredentials?.httpHeaderAuth) updated.credentials = internalCredentials;
-    updated.typeVersion = byName.get("Fetch Recoverable Leads")?.typeVersion || node.typeVersion;
-  }
   return updated;
 });
 const setup = nodes.find((node) => node.id === "setup-note");
-if (setup) setup.parameters.content += "\n\nLive update by Daemon: workflow name, existing webhook path, matching credentials and configured error handler are preserved. Recovery sends use the app internal API. Verify app deployment and test chats before activation.";
+if (setup) setup.parameters.content += "\n\nLive update by Daemon: workflow name, existing webhook path, matching credentials and configured error handler are preserved. Verify app deployment and test chats before activation.";
 const desired = {
   name: current.name,
   nodes,

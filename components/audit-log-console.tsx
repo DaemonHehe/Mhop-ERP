@@ -33,7 +33,7 @@ const categories = {
     style: "text-rose-300",
   },
   crm: {
-    label: "Customers & Leads",
+    label: "Customers & CRM",
     style: "text-emerald-300",
   },
   access: {

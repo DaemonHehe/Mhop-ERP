@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { createPortal } from "react-dom";
 import { X, CircleAlert } from "lucide-react";
+import { ModalPortal } from "@/components/modal-portal";
 import {
   getOrderByIdAction,
   type InventoryItem,
@@ -28,25 +28,10 @@ export function OrderDetailModal({
   initialOrder,
   inventory = [],
 }: OrderDetailModalProps) {
-  const [mounted, setMounted] = useState(false);
   const [fullOrder, setFullOrder] = useState<OrderDetailData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cacheRef = useRef<Map<string, OrderDetailData>>(new Map());
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Lock background body scroll while modal is active
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
-  }, [isOpen]);
 
   const loadOrder = useCallback(
     async (id: string, force = false) => {
@@ -93,36 +78,27 @@ export function OrderDetailModal({
     }
   }, [isOpen, orderId, loadOrder]);
 
-  // Handle ESC key to dismiss
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  if (!isOpen || !orderId) return null;
 
-  if (!isOpen || !orderId || !mounted) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 sm:p-6 backdrop-blur-sm transition-opacity duration-200"
-      onClick={onClose}
-    >
+  return (
+    <ModalPortal isOpen={isOpen} onClose={onClose}>
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Details for order ${initialOrder?.orderCode || orderId}`}
-        onClick={(e) => e.stopPropagation()}
-        className="relative flex h-full max-h-[92vh] w-full max-w-5xl flex-col rounded-3xl border border-neutral-200 bg-[#fbfaf6] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity duration-200"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
       >
-        {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6">
-          {fullOrder ? (
-            <div className="animate-in fade-in duration-150">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Details for order ${initialOrder?.orderCode || orderId}`}
+          onClick={(e) => e.stopPropagation()}
+          className="relative flex h-full max-h-[94dvh] sm:max-h-[92vh] w-full max-w-5xl flex-col rounded-3xl border border-neutral-200 bg-[#fbfaf6] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        >
+          {/* Scrollable Body */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6">
+            {fullOrder ? (
+              <div className="animate-in fade-in duration-150">
               <OrderDetailView
                 order={fullOrder}
                 inventory={inventory}
@@ -197,7 +173,7 @@ export function OrderDetailModal({
           ) : null}
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
+  </ModalPortal>
   );
 }

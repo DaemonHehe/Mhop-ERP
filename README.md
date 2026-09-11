@@ -64,13 +64,13 @@ Or generate/manage migrations from `db/schema.ts` with Drizzle Kit. Before runni
 - `/bundles` bundle-set catalog, pricing, and availability management
 - `/erp` suppliers, purchasing, stock receiving, expenses, and profitability
 - `/ai-studio` no-API commercial image prompt composer
-- `/customers`, `/leads`, `/logs` customer records, purchase recovery, and audit views
+- `/customers`, `/logs` customer records and audit views
 - `/staff`, `/alerts` role-based staff administration and operational alert inbox
 - `/login` secure staff authentication
 - `/api/n8n/webhook` signed automation ingress
 - `/api/telegram/webhook` Telegram command/media ingress
 - `/api/events` live Server-Sent Event stream
-- `/api/internal/*` authenticated n8n adapters for briefings, recovery, cross-sell, and AI replies
+- `/api/internal/*` authenticated n8n adapters for briefings and daily stats
 
 ## Automation
 
@@ -78,12 +78,12 @@ Import `gadgetos-error-handler.json` and `gadgetos-master-suite.json` into n8n. 
 
 - `MH OP Internal API`: HTTP Header Auth with name `Authorization` and value `Bearer <ADMIN_API_TOKEN>`.
 - `MH OP Event Webhook`: HTTP Header Auth with name `x-mhop-automation-key` and value matching `N8N_WEBHOOK_SECRET`.
-- `MH OP Customer Telegram`: the customer bot credential, used for accessory follow-up messages. Lead recovery is sent by the application customer bot token.
+- `MH OP Customer Telegram`: the customer bot credential.
 - `MH OP Ops Telegram`: the operations bot credential for staff alerts, briefings, digests, and failure alerts.
 
 Set `GADGETOS_URL` and `TELEGRAM_STAFF_CHAT_ID` in the n8n environment. Activate the error handler first, then select it under **MH OP Operations Automation → Workflow Settings → Error Workflow**. Attach the matching credential to every imported node, test each trigger branch, publish the primary workflow, and set `N8N_WEBHOOK_URL` in the application to the primary workflow's production `/webhook/mhop-operations-events` URL. Production webhook URLs must use HTTPS.
 
-The application is the sole inbound Telegram webhook owner for the customer bot. Do not add a Telegram Trigger using the same bot token in n8n. Application events use pre-execution Header Auth and also include `x-gadgetos-signature`, an HMAC-SHA256 digest of the raw body. Event delivery has a ten-second timeout and three attempts. n8n read calls use credential-based authentication, 15-second timeouts, and transient retries. The reminder-send call has a 25-second timeout and no automatic retries. Lead reminders, business events, and accessory follow-ups deduplicate processing attempts within retained workflow history. This is not guaranteed delivery. Lead reminder sends use the app endpoint without automatic retries; the app rechecks eligibility immediately before sending. No redeemable voucher feature is implemented.
+The application is the sole inbound Telegram webhook owner for the customer bot. Do not add a Telegram Trigger using the same bot token in n8n. Application events use pre-execution Header Auth and also include `x-gadgetos-signature`, an HMAC-SHA256 digest of the raw body. Event delivery has a ten-second timeout and three attempts. n8n read calls use credential-based authentication, 15-second timeouts, and transient retries. Business events deduplicate processing attempts within retained workflow history. This is not guaranteed delivery. No redeemable voucher feature is implemented.
 
 Free-form customer Telegram messages are routed to the shared sales agent. It uses the OpenAI Responses API with live customer-safe catalog and policy tools, a bounded conversation history in `bot_sessions`, per-customer rate limiting, a 15-second provider timeout, and staff handoff alerts for payment disputes, refunds, complaints, warranty decisions, or explicit human requests. Exact quantities, costs, margins, internal IDs, and PUBG credentials are not supplied to the model. Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` (defaults to `gpt-5.4-mini`) to enable AI replies. Without a configured key or when the provider is unavailable, deterministic catalog search and human handoff remain operational.
 
@@ -119,20 +119,10 @@ The owner buys accounts and resells them using normal catalog details, cost pric
 
 Run `node scripts/migrate-pubg.mjs` when upgrading an existing database to add sale status while preserving historical order records.
 
-## Leads and recovery automation
-
-Leads now come from private Telegram catalog/sales activity and unfinished payments, not the legacy manual lead table. The page has individual Telegram reminder buttons; no Add lead or Convert controls remain. Anonymous shop visitors are not identifiable, and web checkout is not automatically associated with Telegram Mini App identity.
-
-`GET /api/internal/leads/recoverable` requires the internal bearer credential and returns only `id`, `stage`, `telegramUserId`, and `activityAt` from the current recovery queue. Only valid Telegram recipients with activity at least 15 minutes old qualify. Paid, cancelled, and payment-review orders are excluded.
-
-The n8n recovery branch runs every 15 minutes, filters duplicate recipients in a scan, and deduplicates attempts by lead ID with a 10,000-key retained history. It calls `POST /api/internal/leads/remind` with `{ id, activityAt }` using the same internal credential. The app rechecks current eligibility and activity, then sends through `TELEGRAM_CUSTOMER_BOT_TOKEN`. Checkout confirmation uses the same bot to send a generated branded PNG receipt instead of a long text receipt. Changed records return a successful skipped result; malformed or unauthorized calls fail. Send failures are not automatically retried because a timeout can occur after Telegram accepted the message.
-
-The manual button and scheduled branch share an in-process one-minute recipient throttle, not durable global contact history. Opt-out preferences and cross-server deduplication are not implemented. Review these limits with the client before enabling scheduled customer messaging.
-
 ## Updating an existing local n8n workflow
 
-The checked-in JSON exports are importable templates and remain inactive. For the known local `MH OP Master Suite` instance, `node scripts/sync-n8n-workflow.mjs` creates a private backup and reports the current version and missing credentials without changing the workflow. Apply a reviewed inactive-workflow update using `--apply --expected-version <versionId>`. The helper preserves matching credentials and the webhook path, refuses active/concurrently changed workflows, and verifies its write. Recovery HTTP sending uses the internal API credential, not a Telegram credential. This helper targets only the configured local instance; it does not deploy the app or activate schedules.
+The checked-in JSON exports are importable templates and remain inactive. For the known local `MH OP Master Suite` instance, `node scripts/sync-n8n-workflow.mjs` creates a private backup and reports the current version and missing credentials without changing the workflow. Apply a reviewed inactive-workflow update using `--apply --expected-version <versionId>`. The helper preserves matching credentials and the webhook path, refuses active/concurrently changed workflows, and verifies its write. This helper targets only the configured local instance; it does not deploy the app or activate schedules.
 
 ## Handover status
 
-Use USER_MANUAL.md for current operation and USER_TESTING.md for acceptance evidence. Browser tests still include obsolete manual-lead flows and need updating before the complete suite can be claimed passing. Real Telegram delivery, deployment, printing, backup restore, and client acceptance are separate from code/build validation. Do not label the project production-ready solely because unit tests and the build pass.
+Use USER_MANUAL.md for current operation and USER_TESTING.md for acceptance evidence. Real Telegram delivery, deployment, printing, backup restore, and client acceptance are separate from code/build validation. Do not label the project production-ready solely because unit tests and the build pass.

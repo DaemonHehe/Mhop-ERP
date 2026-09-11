@@ -14,6 +14,7 @@ import {
   globalSearchAction,
   type GlobalSearchResult,
 } from "@/app/actions/store";
+import { ModalPortal } from "@/components/modal-portal";
 
 const resultIcons = {
   Product: Package,
@@ -68,15 +69,6 @@ export function GlobalSearch() {
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
   }, []);
-
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
-  }, [mobileOpen]);
 
   useEffect(() => {
     const cleanQuery = query.trim();
@@ -237,12 +229,12 @@ export function GlobalSearch() {
         )}
       </div>
 
-      {mobileOpen && (
+      <ModalPortal isOpen={mobileOpen} onClose={closeMobileSearch}>
         <div
           role="dialog"
           aria-modal="true"
           aria-label="Search workspace"
-          className="fixed inset-0 z-[80] flex flex-col bg-[#ecebe4]/95 p-4 backdrop-blur-2xl md:hidden"
+          className="fixed inset-0 z-[100] flex flex-col bg-[#ecebe4]/95 p-4 backdrop-blur-2xl md:hidden"
         >
           <div className="flex items-center justify-between">
             <div>
@@ -293,7 +285,7 @@ export function GlobalSearch() {
             <div
               id="mobile-global-search-results"
               role="listbox"
-              className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-white/80 bg-white/45 p-2 shadow-[inset_0_1px_white]"
+              className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-white/80 bg-white/45 p-2 shadow-[inset_0_1px_white]"
             >
               {error ? (
                 <p
@@ -344,7 +336,7 @@ export function GlobalSearch() {
             </p>
           )}
         </div>
-      )}
+      </ModalPortal>
     </>
   );
 }

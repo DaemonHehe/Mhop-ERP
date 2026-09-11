@@ -159,25 +159,6 @@ export const purchaseSchema = z.object({
   unitCost: money,
   notes: optionalText(1000),
 });
-export const leadSchema = z
-  .object({
-    customerName: text(120),
-    phone: optionalText(40),
-    telegramUserId: optionalText(80),
-    interestedIn: text(500),
-    stage: z
-      .enum(["new", "contacted", "reserved", "converted", "lost"])
-      .default("new"),
-    reserveExpiresAt: z.union([z.literal(""), z.coerce.date()]).default(""),
-  })
-  .superRefine((value, ctx) => {
-    if (!value.phone && !value.telegramUserId)
-      ctx.addIssue({
-        code: "custom",
-        path: ["phone"],
-        message: "Enter a phone number or Telegram user ID",
-      });
-  });
 export const expenseSchema = z.object({
   category: z.enum([
     "Rent",

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { createPortal } from "react-dom";
 import { Plus, Trash2, X, Calculator, AlertCircle } from "lucide-react";
+import { ModalPortal } from "@/components/modal-portal";
 import { formatMMK } from "@/lib/data";
 import { DESTINATIONS_BY_STATE } from "@/lib/shipping/destinations-data";
 import {
@@ -185,29 +185,38 @@ export function CreateOrderDialog({
     });
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-[#1f1f1d]">
-              Create Admin Order · အော်ဒါအသစ်ဖွင့်ရန်
-            </h2>
-            <p className="text-xs text-[#777]">
-              Multi-channel order creation with Royal Express delivery rates and COD
-            </p>
+  return (
+    <ModalPortal isOpen={open} onClose={onClose}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div className="relative flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="flex shrink-0 items-center justify-between border-b p-4 sm:px-6 sm:py-4">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-[#1f1f1d]">
+                Create Admin Order · အော်ဒါအသစ်ဖွင့်ရန်
+              </h2>
+              <p className="text-xs text-[#777]">
+                Multi-channel order creation with Royal Express delivery rates and COD
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl p-1.5 text-gray-400 hover:bg-gray-100 hover:text-black transition"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-xl p-1.5 text-gray-400 hover:bg-gray-100 hover:text-black"
-          >
-            <X size={18} />
-          </button>
-        </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0 p-6 space-y-6">
+          {/* Scrollable Form Body */}
+          <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-6">
           {error && (
             <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
               <AlertCircle size={16} />
@@ -547,25 +556,25 @@ export function CreateOrderDialog({
           </div>
 
           {/* Footer Submit */}
-          <div className="flex items-center justify-end gap-3 border-t pt-4">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 border-t pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
+              className="rounded-xl border px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 min-h-[42px]"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={pending || productsSubtotal <= 0}
-              className="rounded-xl bg-black px-6 py-2.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50 shadow-md"
+              className="rounded-xl bg-black px-6 py-2.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50 shadow-md min-h-[42px]"
             >
               {pending ? "Creating Order..." : "Create Order"}
             </button>
           </div>
         </form>
       </div>
-    </div>,
-    document.body,
-  );
+    </div>
+  </ModalPortal>
+);
 }

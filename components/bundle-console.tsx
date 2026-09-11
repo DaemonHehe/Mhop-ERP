@@ -9,6 +9,7 @@ import {
   deleteBundleAction,
   updateBundleAction,
 } from "@/app/actions/bundles";
+import { ModalPortal } from "@/components/modal-portal";
 type Draft = {
   name: string;
   description: string;
@@ -197,196 +198,217 @@ export function BundleConsole({
         </div>
       )}
       {editor && (
-        <div
-          className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/45 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-        >
-          <form onSubmit={save} className="card my-8 w-full max-w-2xl p-6">
-            <div className="flex justify-between">
-              <div>
-                <p className="eyebrow">Bundle Sets</p>
-                <h2 className="display mt-1 text-2xl font-bold">
-                  {editor.id ? "Edit bundle" : "Create bundle"}
-                </h2>
-              </div>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setEditor(null)}
-                className="grid h-9 w-9 place-items-center rounded-full border"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label className="text-xs font-bold">
-                Name
-                <input
-                  required
-                  className={`${field} mt-1.5`}
-                  value={editor.draft.name}
-                  onChange={(e) =>
-                    setEditor({
-                      ...editor,
-                      draft: { ...editor.draft, name: e.target.value },
-                    })
-                  }
-                />
-              </label>
-              <label className="text-xs font-bold">
-                Bundle price (MMK)
-                <input
-                  required
-                  type="number"
-                  min="1"
-                  max={draftRetail || undefined}
-                  className={`${field} mt-1.5`}
-                  value={editor.draft.bundlePrice}
-                  onChange={(e) =>
-                    setEditor({
-                      ...editor,
-                      draft: { ...editor.draft, bundlePrice: e.target.value },
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <label className="mt-4 block text-xs font-bold">
-              Description
-              <textarea
-                required
-                maxLength={1000}
-                className="mt-1.5 min-h-20 w-full rounded-xl border p-3 text-sm"
-                value={editor.draft.description}
-                onChange={(e) =>
-                  setEditor({
-                    ...editor,
-                    draft: { ...editor.draft, description: e.target.value },
-                  })
-                }
-              />
-            </label>
-            <div className="mt-5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold">Bundle items</p>
-                <p className="text-[10px] text-[#777]">
-                  Combined retail: {formatMMK(draftRetail)}
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={editor.draft.items.length >= 12}
-                onClick={() =>
-                  setEditor({
-                    ...editor,
-                    draft: {
-                      ...editor.draft,
-                      items: [
-                        ...editor.draft.items,
-                        { sku: products[0]?.sku || "", quantity: "1" },
-                      ],
-                    },
-                  })
-                }
-                className="pill"
-              >
-                <Plus size={13} />
-                Add line
-              </button>
-            </div>
-            <div className="mt-3 space-y-2">
-              {editor.draft.items.map((line, index) => (
-                <div
-                  className="grid grid-cols-[1fr_90px_36px] gap-2"
-                  key={index}
+        <ModalPortal isOpen={Boolean(editor)} onClose={() => setEditor(null)}>
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setEditor(null);
+            }}
+          >
+            <form
+              onSubmit={save}
+              className="card flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden shadow-2xl"
+            >
+              <div className="flex shrink-0 items-center justify-between border-b border-[#e5e4dc] bg-white p-4 sm:p-6">
+                <div>
+                  <p className="eyebrow">Bundle Sets</p>
+                  <h2 className="display mt-0.5 text-xl sm:text-2xl font-bold">
+                    {editor.id ? "Edit bundle" : "Create bundle"}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setEditor(null)}
+                  className="grid h-9 w-9 place-items-center rounded-full border border-[#d6d4c8] bg-white text-[#555] hover:bg-[#f0eee4] transition"
                 >
-                  <select
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-xs font-bold">
+                    Name
+                    <input
+                      required
+                      className={`${field} mt-1.5`}
+                      value={editor.draft.name}
+                      onChange={(e) =>
+                        setEditor({
+                          ...editor,
+                          draft: { ...editor.draft, name: e.target.value },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-xs font-bold">
+                    Bundle price (MMK)
+                    <input
+                      required
+                      type="number"
+                      min="1"
+                      max={draftRetail || undefined}
+                      className={`${field} mt-1.5`}
+                      value={editor.draft.bundlePrice}
+                      onChange={(e) =>
+                        setEditor({
+                          ...editor,
+                          draft: { ...editor.draft, bundlePrice: e.target.value },
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <label className="mt-4 block text-xs font-bold">
+                  Description
+                  <textarea
                     required
-                    className={field}
-                    value={line.sku}
+                    maxLength={1000}
+                    className="mt-1.5 min-h-20 w-full rounded-xl border p-3 text-sm"
+                    value={editor.draft.description}
                     onChange={(e) =>
                       setEditor({
                         ...editor,
-                        draft: {
-                          ...editor.draft,
-                          items: editor.draft.items.map((x, i) =>
-                            i === index ? { ...x, sku: e.target.value } : x,
-                          ),
-                        },
-                      })
-                    }
-                  >
-                    {products.map((p) => (
-                      <option key={p.sku} value={p.sku}>
-                        {p.name} · {p.sku} · {p.stock} stock
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    aria-label="Quantity"
-                    required
-                    type="number"
-                    min="1"
-                    max="100"
-                    className={field}
-                    value={line.quantity}
-                    onChange={(e) =>
-                      setEditor({
-                        ...editor,
-                        draft: {
-                          ...editor.draft,
-                          items: editor.draft.items.map((x, i) =>
-                            i === index
-                              ? { ...x, quantity: e.target.value }
-                              : x,
-                          ),
-                        },
+                        draft: { ...editor.draft, description: e.target.value },
                       })
                     }
                   />
+                </label>
+                <div className="mt-5 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold">Bundle items</p>
+                    <p className="text-[10px] text-[#777]">
+                      Combined retail: {formatMMK(draftRetail)}
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    aria-label="Remove line"
-                    disabled={editor.draft.items.length <= 2}
+                    disabled={editor.draft.items.length >= 12}
                     onClick={() =>
                       setEditor({
                         ...editor,
                         draft: {
                           ...editor.draft,
-                          items: editor.draft.items.filter(
-                            (_, i) => i !== index,
-                          ),
+                          items: [
+                            ...editor.draft.items,
+                            { sku: products[0]?.sku || "", quantity: "1" },
+                          ],
                         },
                       })
                     }
-                    className="grid h-11 place-items-center rounded-xl border text-[#b5421c] disabled:opacity-30"
+                    className="pill"
                   >
-                    <Trash2 size={14} />
+                    <Plus size={13} />
+                    Add line
                   </button>
                 </div>
-              ))}
-            </div>
-            {draftRetail > 0 && Number(editor.draft.bundlePrice) > 0 && (
-              <p className="mt-4 rounded-xl bg-[#effbdd] p-3 text-xs font-bold text-[#416b17]">
-                Customer savings:{" "}
-                {formatMMK(
-                  Math.max(0, draftRetail - Number(editor.draft.bundlePrice)),
+                <div className="mt-3 space-y-2">
+                  {editor.draft.items.map((line, index) => (
+                    <div
+                      className="grid grid-cols-[1fr_75px_38px] sm:grid-cols-[1fr_90px_40px] gap-2"
+                      key={index}
+                    >
+                      <select
+                        required
+                        className={field}
+                        value={line.sku}
+                        onChange={(e) =>
+                          setEditor({
+                            ...editor,
+                            draft: {
+                              ...editor.draft,
+                              items: editor.draft.items.map((x, i) =>
+                                i === index ? { ...x, sku: e.target.value } : x,
+                              ),
+                            },
+                          })
+                        }
+                      >
+                        {products.map((p) => (
+                          <option key={p.sku} value={p.sku}>
+                            {p.name} · {p.sku} · {p.stock} stock
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label="Quantity"
+                        required
+                        type="number"
+                        min="1"
+                        max="100"
+                        className={field}
+                        value={line.quantity}
+                        onChange={(e) =>
+                          setEditor({
+                            ...editor,
+                            draft: {
+                              ...editor.draft,
+                              items: editor.draft.items.map((x, i) =>
+                                i === index
+                                  ? { ...x, quantity: e.target.value }
+                                  : x,
+                              ),
+                            },
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        aria-label="Remove line"
+                        disabled={editor.draft.items.length <= 2}
+                        onClick={() =>
+                          setEditor({
+                            ...editor,
+                            draft: {
+                              ...editor.draft,
+                              items: editor.draft.items.filter(
+                                (_, i) => i !== index,
+                              ),
+                            },
+                          })
+                        }
+                        className="grid h-11 place-items-center rounded-xl border text-[#b5421c] disabled:opacity-30 hover:bg-[#fff0eb] transition"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {draftRetail > 0 && Number(editor.draft.bundlePrice) > 0 && (
+                  <p className="mt-4 rounded-xl bg-[#effbdd] p-3 text-xs font-bold text-[#416b17]">
+                    Customer savings:{" "}
+                    {formatMMK(
+                      Math.max(0, draftRetail - Number(editor.draft.bundlePrice)),
+                    )}
+                  </p>
                 )}
-              </p>
-            )}
-            <button
-              disabled={pending}
-              className="mt-5 w-full rounded-xl bg-black py-3 text-xs font-bold text-white disabled:opacity-40"
-            >
-              {pending
-                ? "Saving…"
-                : editor.id
-                  ? "Save bundle"
-                  : "Publish bundle"}
-            </button>
-          </form>
-        </div>
+              </div>
+
+              <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 border-t border-[#e5e4dc] bg-[#f8f7f2] p-3.5 sm:p-5">
+                <button
+                  type="button"
+                  onClick={() => setEditor(null)}
+                  className="rounded-xl border border-[#d6d4c8] bg-white px-4 py-2.5 text-xs font-bold text-[#555] hover:bg-[#f0eee4] transition min-h-[42px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={pending}
+                  className="rounded-xl bg-black px-6 py-2.5 text-xs font-bold text-white disabled:opacity-40 shadow-sm transition min-h-[42px]"
+                >
+                  {pending
+                    ? "Saving…"
+                    : editor.id
+                      ? "Save bundle"
+                      : "Publish bundle"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </ModalPortal>
       )}
     </>
   );

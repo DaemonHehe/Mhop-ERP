@@ -20,6 +20,7 @@ import {
   type PaymentAccount,
   type PaymentAccountDraft,
 } from "@/app/actions/payment-accounts";
+import { ModalPortal } from "@/components/modal-portal";
 
 const inputClass =
   "mt-1.5 h-11 w-full rounded-xl border border-[#dedbd0] bg-white px-3 text-sm font-medium outline-none focus:border-black transition";
@@ -290,157 +291,169 @@ export function PaymentAccountsManager({
 
       {/* Editor Modal */}
       {editor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-[#dedbd0] bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-[#f0ede6]">
-              <div className="flex items-center gap-2">
-                <CreditCard size={18} />
-                <h3 className="display text-lg font-bold">
-                  {editor.id ? "Edit Payment Account" : "New Payment Account"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditor(null)}
-                className="rounded-lg p-1.5 text-[#777] hover:bg-[#f1efe8]"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={submit} className="mt-4 space-y-3.5">
-              <div>
-                <label className="block text-xs font-bold text-[#1f211d]">
-                  Bank / Provider Name *
-                </label>
-                <input
-                  required
-                  placeholder="e.g. KBZPay (KPay), WavePay, KBZ Bank, CB Bank"
-                  value={editor.draft.bankName}
-                  onChange={(e) =>
-                    setEditor({
-                      ...editor,
-                      draft: { ...editor.draft, bankName: e.target.value },
-                    })
-                  }
-                  className={inputClass}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#1f211d]">
-                  Account Holder Name *
-                </label>
-                <input
-                  required
-                  placeholder="e.g. Ko Ko Kyaw"
-                  value={editor.draft.accountHolder}
-                  onChange={(e) =>
-                    setEditor({
-                      ...editor,
-                      draft: { ...editor.draft, accountHolder: e.target.value },
-                    })
-                  }
-                  className={inputClass}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#1f211d]">
-                  Account Number *
-                </label>
-                <input
-                  required
-                  placeholder="e.g. 09798888123 or 0123456789012"
-                  value={editor.draft.accountNumber}
-                  onChange={(e) =>
-                    setEditor({
-                      ...editor,
-                      draft: { ...editor.draft, accountNumber: e.target.value },
-                    })
-                  }
-                  className={inputClass}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#1f211d]">
-                  Transfer Note / Instructions (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. ငွေလွှဲပြီးပါက slip ကို Telegram သို့ ပေးပို့ပါခင်ဗျာ"
-                  value={editor.draft.instructions || ""}
-                  onChange={(e) =>
-                    setEditor({
-                      ...editor,
-                      draft: { ...editor.draft, instructions: e.target.value },
-                    })
-                  }
-                  className="mt-1.5 w-full rounded-xl border border-[#dedbd0] bg-white p-3 text-sm font-medium outline-none focus:border-black transition"
-                />
-              </div>
-
-              <div className="flex items-center gap-6 pt-1">
-                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editor.draft.isActive}
-                    onChange={(e) =>
-                      setEditor({
-                        ...editor,
-                        draft: { ...editor.draft, isActive: e.target.checked },
-                      })
-                    }
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  <span>Active account</span>
-                </label>
-
+        <ModalPortal isOpen={Boolean(editor)} onClose={() => setEditor(null)}>
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setEditor(null);
+            }}
+          >
+            <div className="flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#dedbd0] bg-white shadow-2xl">
+              <div className="flex shrink-0 items-center justify-between border-b border-[#f0ede6] bg-white p-4 sm:p-5">
                 <div className="flex items-center gap-2">
-                  <label className="text-xs font-bold">Sort Order:</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={99}
-                    value={editor.draft.displayOrder ?? 0}
-                    onChange={(e) =>
-                      setEditor({
-                        ...editor,
-                        draft: {
-                          ...editor.draft,
-                          displayOrder: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                    className="h-8 w-14 rounded-lg border border-[#dedbd0] px-2 text-center text-xs font-bold"
-                  />
+                  <CreditCard size={18} />
+                  <h3 className="display text-lg font-bold">
+                    {editor.id ? "Edit Payment Account" : "New Payment Account"}
+                  </h3>
                 </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-2 border-t border-[#f0ede6] pt-4">
                 <button
                   type="button"
+                  aria-label="Close"
                   onClick={() => setEditor(null)}
-                  className="rounded-xl border border-[#dedbd0] px-4 py-2.5 text-xs font-bold transition hover:bg-[#f1efe8]"
+                  className="grid h-9 w-9 place-items-center rounded-full border border-[#dedbd0] text-[#777] hover:bg-[#f1efe8] transition"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={pending}
-                  className="rounded-xl bg-black px-5 py-2.5 text-xs font-bold text-white transition hover:bg-neutral-800 disabled:opacity-50"
-                >
-                  {pending
-                    ? "Saving..."
-                    : editor.id
-                    ? "Save Changes"
-                    : "Create Account"}
+                  <X size={16} />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={submit} className="flex flex-1 flex-col min-h-0 overflow-hidden">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-[#1f211d]">
+                      Bank / Provider Name *
+                    </label>
+                    <input
+                      required
+                      placeholder="e.g. KBZPay (KPay), WavePay, KBZ Bank, CB Bank"
+                      value={editor.draft.bankName}
+                      onChange={(e) =>
+                        setEditor({
+                          ...editor,
+                          draft: { ...editor.draft, bankName: e.target.value },
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#1f211d]">
+                      Account Holder Name *
+                    </label>
+                    <input
+                      required
+                      placeholder="e.g. Ko Ko Kyaw"
+                      value={editor.draft.accountHolder}
+                      onChange={(e) =>
+                        setEditor({
+                          ...editor,
+                          draft: { ...editor.draft, accountHolder: e.target.value },
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#1f211d]">
+                      Account Number *
+                    </label>
+                    <input
+                      required
+                      placeholder="e.g. 09798888123 or 0123456789012"
+                      value={editor.draft.accountNumber}
+                      onChange={(e) =>
+                        setEditor({
+                          ...editor,
+                          draft: { ...editor.draft, accountNumber: e.target.value },
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#1f211d]">
+                      Transfer Note / Instructions (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. ငွေလွှဲပြီးပါက slip ကို Telegram သို့ ပေးပို့ပါခင်ဗျာ"
+                      value={editor.draft.instructions || ""}
+                      onChange={(e) =>
+                        setEditor({
+                          ...editor,
+                          draft: { ...editor.draft, instructions: e.target.value },
+                        })
+                      }
+                      className="mt-1.5 w-full rounded-xl border border-[#dedbd0] bg-white p-3 text-sm font-medium outline-none focus:border-black transition"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-6 pt-1">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editor.draft.isActive}
+                        onChange={(e) =>
+                          setEditor({
+                            ...editor,
+                            draft: { ...editor.draft, isActive: e.target.checked },
+                          })
+                        }
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <span>Active account</span>
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold">Sort Order:</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={editor.draft.displayOrder ?? 0}
+                        onChange={(e) =>
+                          setEditor({
+                            ...editor,
+                            draft: {
+                              ...editor.draft,
+                              displayOrder: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="h-8 w-14 rounded-lg border border-[#dedbd0] px-2 text-center text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 border-t border-[#f0ede6] bg-[#fdfcf9] p-3.5 sm:p-5">
+                  <button
+                    type="button"
+                    onClick={() => setEditor(null)}
+                    className="rounded-xl border border-[#dedbd0] bg-white px-4 py-2.5 text-xs font-bold transition hover:bg-[#f1efe8] min-h-[42px]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={pending}
+                    className="rounded-xl bg-black px-5 py-2.5 text-xs font-bold text-white transition hover:bg-neutral-800 disabled:opacity-50 min-h-[42px]"
+                  >
+                    {pending
+                      ? "Saving..."
+                      : editor.id
+                      ? "Save Changes"
+                      : "Create Account"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );

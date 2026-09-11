@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { ModalPortal } from "@/components/modal-portal";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -1206,113 +1207,130 @@ function RecordPaymentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between border-b pb-3">
-          <h3 className="font-bold text-black text-sm">Record Payment Ledger Entry</h3>
-          <button onClick={onClose}><X size={16} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4 text-xs">
-          <div>
-            <label className="font-bold">Payment Type</label>
-            <select
-              value={paymentType}
-              onChange={(e) =>
-                setPaymentType(
-                  e.target.value as
-                    | "deposit"
-                    | "cod_collection"
-                    | "direct_prepayment"
-                    | "direct_balance",
-                )
-              }
-              className="mt-1 h-9 w-full rounded-xl border px-2.5 font-semibold"
-            >
-              <option value="deposit">Deposit Payment</option>
-              <option value="cod_collection">COD Collection (Cash)</option>
-              <option value="direct_prepayment">Full Direct Prepayment</option>
-              <option value="direct_balance">Direct Balance Payment</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="font-bold">Amount (MMK) *</label>
-            <input
-              type="number"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="mt-1 h-9 w-full rounded-xl border px-3 font-mono font-bold"
-            />
-          </div>
-
-          <div>
-            <label className="font-bold">Payment Method</label>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="mt-1 h-9 w-full rounded-xl border px-2.5"
-            >
-              <option value="kbzpay">KBZPay</option>
-              <option value="wavepay">WavePay</option>
-              <option value="bank">Bank Transfer</option>
-              <option value="cash_courier">Cash via Courier</option>
-              <option value="cash">Direct Cash</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="font-bold">Bank / Transfer Reference</label>
-            <input
-              type="text"
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="e.g. KBZ-TXN-12345"
-              className="mt-1 h-9 w-full rounded-xl border px-3"
-            />
-          </div>
-
-          <div>
-            <label className="font-bold">Notes</label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional payment notes..."
-              className="mt-1 w-full rounded-xl border p-2"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 cursor-pointer pt-1">
-            <input
-              type="checkbox"
-              checked={autoVerify}
-              onChange={(e) => setAutoVerify(e.target.checked)}
-              className="rounded"
-            />
-            <span className="font-bold text-gray-700">Auto-verify immediately (skip pending review)</span>
-          </label>
-
-          <div className="flex justify-end gap-2 border-t pt-4">
+    <ModalPortal onClose={onClose}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div className="flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b p-4 sm:p-5">
+            <h3 className="font-bold text-black text-sm sm:text-base">Record Payment Ledger Entry</h3>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border px-4 py-2 font-bold text-gray-600"
+              className="grid h-8 w-8 place-items-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending || Number(amount) <= 0}
-              className="rounded-xl bg-black px-5 py-2 font-bold text-white disabled:opacity-50"
-            >
-              {pending ? "Recording..." : "Record Payment"}
+              <X size={16} />
             </button>
           </div>
-        </form>
+
+          <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 text-xs">
+              <div>
+                <label className="font-bold">Payment Type</label>
+                <select
+                  value={paymentType}
+                  onChange={(e) =>
+                    setPaymentType(
+                      e.target.value as
+                        | "deposit"
+                        | "cod_collection"
+                        | "direct_prepayment"
+                        | "direct_balance",
+                    )
+                  }
+                  className="mt-1 h-10 w-full rounded-xl border px-2.5 font-semibold text-xs"
+                >
+                  <option value="deposit">Deposit Payment</option>
+                  <option value="cod_collection">COD Collection (Cash)</option>
+                  <option value="direct_prepayment">Full Direct Prepayment</option>
+                  <option value="direct_balance">Direct Balance Payment</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold">Amount (MMK) *</label>
+                <input
+                  type="number"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-xl border px-3 font-mono font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold">Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-xl border px-2.5 text-xs font-medium"
+                >
+                  <option value="kbzpay">KBZPay</option>
+                  <option value="wavepay">WavePay</option>
+                  <option value="bank">Bank Transfer</option>
+                  <option value="cash_courier">Cash via Courier</option>
+                  <option value="cash">Direct Cash</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold">Bank / Transfer Reference</label>
+                <input
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="e.g. KBZ-TXN-12345"
+                  className="mt-1 h-10 w-full rounded-xl border px-3 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold">Notes</label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Optional payment notes..."
+                  className="mt-1 w-full rounded-xl border p-2.5 text-xs"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={autoVerify}
+                  onChange={(e) => setAutoVerify(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className="font-bold text-gray-700 text-xs">Auto-verify immediately (skip pending review)</span>
+              </label>
+            </div>
+
+            <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t p-3.5 sm:p-4 bg-gray-50">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border px-4 py-2.5 font-bold text-gray-600 bg-white hover:bg-gray-100 min-h-[42px] text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={pending || Number(amount) <= 0}
+                className="rounded-xl bg-black px-5 py-2.5 font-bold text-white disabled:opacity-50 min-h-[42px] text-xs"
+              >
+                {pending ? "Recording..." : "Record Payment"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 
@@ -1398,14 +1416,29 @@ function PreDispatchEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h3 className="font-bold text-black text-sm">Edit Pre-dispatch Order Terms</h3>
-          <button onClick={onClose}><X size={16} /></button>
-        </div>
+    <ModalPortal onClose={onClose}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div className="flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
+          <div className="flex shrink-0 items-center justify-between border-b p-4 sm:px-6 sm:py-4">
+            <h3 className="font-bold text-black text-sm sm:text-base">Edit Pre-dispatch Order Terms</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid h-8 w-8 place-items-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100"
+            >
+              <X size={16} />
+            </button>
+          </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+          <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 text-xs">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="font-bold">Customer Name</label>
@@ -1557,25 +1590,28 @@ function PreDispatchEditModal({
             />
           </div>
 
-          <div className="flex justify-end gap-2 border-t pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border px-4 py-2 font-bold text-gray-600"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-xl bg-black px-5 py-2 font-bold text-white disabled:opacity-50"
-            >
-              {pending ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
-        </form>
+            </div>
+
+            <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t p-3.5 sm:p-4 bg-gray-50">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border px-4 py-2.5 font-bold text-gray-600 bg-white hover:bg-gray-100 min-h-[42px] text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={pending}
+                className="rounded-xl bg-black px-5 py-2.5 font-bold text-white disabled:opacity-50 min-h-[42px] text-xs"
+              >
+                {pending ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 
@@ -1620,89 +1656,106 @@ function PostDispatchCorrectionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between border-b pb-3">
-          <h3 className="font-bold text-black text-sm">Post-dispatch Operational Update</h3>
-          <button onClick={onClose}><X size={16} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-4 space-y-3 text-xs">
-          <p className="text-gray-500">
-            Commercial terms (pricing, quantities, deposit, and COD) are frozen after dispatch. Only logistics and notes can be edited.
-          </p>
-
-          <div>
-            <label className="font-bold">Tracking Number</label>
-            <input
-              type="text"
-              value={trackingNumber}
-              onChange={(e) => setTrackingNumber(e.target.value)}
-              className="mt-1 h-9 w-full rounded-xl border px-3 font-mono font-bold"
-            />
-          </div>
-
-          <div>
-            <label className="font-bold">Shipping Carrier</label>
-            <input
-              type="text"
-              value={shippingCarrier}
-              onChange={(e) => setShippingCarrier(e.target.value)}
-              className="mt-1 h-9 w-full rounded-xl border px-3"
-            />
-          </div>
-
-          <div>
-            <label className="font-bold">Phone Number</label>
-            <input
-              type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="mt-1 h-9 w-full rounded-xl border px-3 font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="font-bold">Delivery Address Notes</label>
-            <textarea
-              rows={2}
-              value={shippingAddress}
-              onChange={(e) => setShippingAddress(e.target.value)}
-              className="mt-1 w-full rounded-xl border p-2"
-            />
-          </div>
-
-          <div>
-            <label className="font-bold text-rose-700">Reason for Correction *</label>
-            <textarea
-              rows={2}
-              required
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Courier changed parcel tracking code..."
-              className="mt-1 w-full rounded-xl border border-rose-300 p-2"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 border-t pt-4">
+    <ModalPortal onClose={onClose}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div className="flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b p-4 sm:p-5">
+            <h3 className="font-bold text-black text-sm sm:text-base">Post-dispatch Operational Update</h3>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border px-4 py-2 font-bold text-gray-600"
+              className="grid h-8 w-8 place-items-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending || !reason.trim()}
-              className="rounded-xl bg-black px-5 py-2 font-bold text-white disabled:opacity-50"
-            >
-              {pending ? "Saving..." : "Save Correction"}
+              <X size={16} />
             </button>
           </div>
-        </form>
+
+          <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-3 text-xs">
+              <p className="text-gray-500">
+                Commercial terms (pricing, quantities, deposit, and COD) are frozen after dispatch. Only logistics and notes can be edited.
+              </p>
+
+              <div>
+                <label className="font-bold">Tracking Number</label>
+                <input
+                  type="text"
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-xl border px-3 font-mono font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold">Shipping Carrier</label>
+                <input
+                  type="text"
+                  value={shippingCarrier}
+                  onChange={(e) => setShippingCarrier(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-xl border px-3 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold">Phone Number</label>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-xl border px-3 font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold">Delivery Address Notes</label>
+                <textarea
+                  rows={2}
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  className="mt-1 w-full rounded-xl border p-2.5 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-rose-700">Reason for Correction *</label>
+                <textarea
+                  rows={2}
+                  required
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Courier changed parcel tracking code..."
+                  className="mt-1 w-full rounded-xl border border-rose-300 p-2.5 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t p-3.5 sm:p-4 bg-gray-50">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border px-4 py-2.5 font-bold text-gray-600 bg-white hover:bg-gray-100 min-h-[42px] text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={pending || !reason.trim()}
+                className="rounded-xl bg-black px-5 py-2.5 font-bold text-white disabled:opacity-50 min-h-[42px] text-xs"
+              >
+                {pending ? "Saving..." : "Save Correction"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }
 
@@ -1747,101 +1800,118 @@ function FailedDeliveryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between border-b pb-3">
-          <h3 className="font-bold text-black text-sm">Record Failed Delivery / Parcel Return</h3>
-          <button onClick={onClose}><X size={16} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-4 space-y-3 text-xs">
-          <div>
-            <label className="font-bold">Courier Return Charge (MMK)</label>
-            <input
-              type="number"
-              value={returnCost}
-              onChange={(e) => setReturnCost(e.target.value)}
-              className="mt-1 h-9 w-full rounded-xl border px-3 font-mono font-bold"
-            />
-            <p className="text-[10px] text-gray-500 mt-0.5">Charged by Royal Express for returning parcel.</p>
-          </div>
-
-          <div>
-            <label className="font-bold">Product Stock Disposition</label>
-            <select
-              value={stockDisposition}
-              onChange={(e) =>
-                setStockDisposition(
-                  e.target.value as "return_to_stock" | "write_off" | "customer_hold",
-                )
-              }
-              className="mt-1 h-9 w-full rounded-xl border px-2.5 font-semibold"
-            >
-              <option value="return_to_stock">Restock items back to inventory</option>
-              <option value="write_off">Damaged / Write-off</option>
-              <option value="customer_hold">Hold for customer re-dispatch</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="font-bold">Customer Deposit Disposition</label>
-            <select
-              value={depositDisposition}
-              onChange={(e) =>
-                setDepositDisposition(
-                  e.target.value as "retain_fully" | "refund_fully" | "partial_refund",
-                )
-              }
-              className="mt-1 h-9 w-full rounded-xl border px-2.5 font-semibold"
-            >
-              <option value="retain_fully">Retain deposit (Covers return courier fee)</option>
-              <option value="refund_fully">Full refund to customer</option>
-              <option value="partial_refund">Partial refund</option>
-            </select>
-          </div>
-
-          {depositDisposition === "partial_refund" && (
-            <div>
-              <label className="font-bold">Partial Refund Amount (MMK)</label>
-              <input
-                type="number"
-                value={refundAmount}
-                onChange={(e) => setRefundAmount(e.target.value)}
-                className="mt-1 h-9 w-full rounded-xl border px-3"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="font-bold">Reason for Return *</label>
-            <textarea
-              rows={2}
-              required
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Customer unreachable, refused parcel, incorrect address..."
-              className="mt-1 w-full rounded-xl border p-2"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 border-t pt-4">
+    <ModalPortal onClose={onClose}>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div className="flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b p-4 sm:p-5">
+            <h3 className="font-bold text-black text-sm sm:text-base">Record Failed Delivery / Parcel Return</h3>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border px-4 py-2 font-bold text-gray-600"
+              className="grid h-8 w-8 place-items-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending || !reason.trim()}
-              className="rounded-xl bg-rose-600 px-5 py-2 font-bold text-white hover:bg-rose-700 disabled:opacity-50"
-            >
-              {pending ? "Recording..." : "Record Return"}
+              <X size={16} />
             </button>
           </div>
-        </form>
+
+          <form onSubmit={handleSubmit} className="flex flex-1 flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-3.5 text-xs">
+              <div>
+                <label className="font-bold">Courier Return Charge (MMK)</label>
+                <input
+                  type="number"
+                  value={returnCost}
+                  onChange={(e) => setReturnCost(e.target.value)}
+                  className="mt-1 h-10 w-full rounded-xl border px-3 font-mono font-bold text-sm"
+                />
+                <p className="text-[10px] text-gray-500 mt-0.5">Charged by Royal Express for returning parcel.</p>
+              </div>
+
+              <div>
+                <label className="font-bold">Product Stock Disposition</label>
+                <select
+                  value={stockDisposition}
+                  onChange={(e) =>
+                    setStockDisposition(
+                      e.target.value as "return_to_stock" | "write_off" | "customer_hold",
+                    )
+                  }
+                  className="mt-1 h-10 w-full rounded-xl border px-2.5 font-semibold text-xs"
+                >
+                  <option value="return_to_stock">Restock items back to inventory</option>
+                  <option value="write_off">Damaged / Write-off</option>
+                  <option value="customer_hold">Hold for customer re-dispatch</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold">Customer Deposit Disposition</label>
+                <select
+                  value={depositDisposition}
+                  onChange={(e) =>
+                    setDepositDisposition(
+                      e.target.value as "retain_fully" | "refund_fully" | "partial_refund",
+                    )
+                  }
+                  className="mt-1 h-10 w-full rounded-xl border px-2.5 font-semibold text-xs"
+                >
+                  <option value="retain_fully">Retain deposit (Covers return courier fee)</option>
+                  <option value="refund_fully">Full refund to customer</option>
+                  <option value="partial_refund">Partial refund</option>
+                </select>
+              </div>
+
+              {depositDisposition === "partial_refund" && (
+                <div>
+                  <label className="font-bold">Partial Refund Amount (MMK)</label>
+                  <input
+                    type="number"
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border px-3 text-xs"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="font-bold">Reason for Return *</label>
+                <textarea
+                  rows={2}
+                  required
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Customer unreachable, refused parcel, incorrect address..."
+                  className="mt-1 w-full rounded-xl border p-2.5 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t p-3.5 sm:p-4 bg-gray-50">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border px-4 py-2.5 font-bold text-gray-600 bg-white hover:bg-gray-100 min-h-[42px] text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={pending || !reason.trim()}
+                className="rounded-xl bg-rose-600 px-5 py-2.5 font-bold text-white hover:bg-rose-700 disabled:opacity-50 min-h-[42px] text-xs"
+              >
+                {pending ? "Recording..." : "Record Return"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

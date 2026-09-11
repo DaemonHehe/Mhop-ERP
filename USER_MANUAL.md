@@ -4,7 +4,7 @@
 
 1. Sign in at `/login` and open **Command center**.
 2. Review pending payments, unfinished orders, and gadget stock warnings.
-3. Check **Leads** for unfinished purchases and **Activity logs** for recent changes.
+3. Check **Orders** for pending fulfillments and **Activity logs** for recent changes.
 4. Review the operations-bot briefing if the n8n schedules have been configured and activated.
 
 ## Products & Stock
@@ -26,16 +26,6 @@ Use **Sale status** to mark a listing Available, Sold, or Withdrawn. Reserved is
 Customers create orders through the shop. A checkout linked to a Telegram user sends a branded receipt image through the customer bot, with the order code, purchased items, total, payment account, and slip instructions. A Telegram payment-slip photo must include the order code in its caption, for example `MHOP-260829-A1B2`. Staff must compare the slip with the payment provider's actual transaction before approving it. A photo alone is not proof of settlement.
 
 In **Orders**, select an order and review its payment evidence. Approval moves the order into packing. While packing a physical order, assign its serial or IMEI if applicable, then mark it packed. Physical dispatch uses the courier/tracking controls. For PUBG-only orders, use the digital handover controls; no courier or shipping fee is required. Mark delivered after confirming completion. Do not assume that changing order status automatically sends a customer tracking message.
-
-## Leads & recovery
-
-Leads are identified customers who made a Telegram catalog/sales inquiry without a subsequent order, or who started an order without finishing payment. Paid, cancelled, and payment-slip-review orders are excluded from the unpaid queue. An order after a Telegram inquiry supersedes that browsing entry. Existing customers can appear again when they start another unfinished purchase.
-
-New private-chat catalog and sales activity is tracked through the customer Telegram bot. Anonymous shop visitors cannot be contacted, and opening the shop does not automatically link a Telegram identity to a checkout.
-
-Use **Send Telegram reminder** on a reachable lead. The app rechecks eligibility and sends through the configured customer sales bot. The customer must have started and not blocked the bot. Customers without a linked Telegram ID have no reminder action. There is no Add lead, Convert, or manual sales-stage pipeline on this page.
-
-The app limits repeated sends to the same chat for one minute per running application process. A successful send is reported in the page and an audit write is attempted. If delivery is uncertain, inspect the chat before retrying. This is not a persistent cross-server contact history or opt-out system.
 
 ## Customers, staff, alerts, and logs
 
@@ -61,8 +51,6 @@ Choose a physical gadget with a catalog image, complete the campaign fields, and
 
 The application owns incoming customer-bot updates. It handles catalog/shop commands, support, payment photos, and sales questions. AI replies require configured provider credentials; otherwise catalog-based fallback replies remain available. Voice messages currently receive a request to send text; there is no transcription workflow.
 
-The n8n master workflow has four branches: lead recovery, critical staff-event alerts, 09:00/22:00 Asia/Yangon staff digests, and a daily accessory follow-up scan for qualifying older purchases. These run only after credentials, URLs, schedules, and activation have been tested.
-
-Lead recovery scans every 15 minutes and selects linked Telegram customers inactive for at least 15 minutes. It uses the same queue as Leads, deduplicates attempts by lead ID within retained workflow history, and calls the app to recheck eligibility and send the reminder. The app uses its customer bot token; n8n does not send this reminder directly. Changed activity or purchase status causes a skip. An HTTP or Telegram failure needs staff review; automatic reminder-send retries are disabled. Manual reminders and n8n do not share persistent deduplication history.
+The n8n master workflow manages critical staff-event alerts, 09:00 morning operations briefings, and 22:00 Asia/Yangon financial digests. These run after credentials, URLs, schedules, and activation have been tested.
 
 If messages stop, check application logs, Telegram credentials/webhook, n8n failed executions, internal API authentication, and configured URLs. See README for deployment steps and USER_TESTING for the release checklist.
