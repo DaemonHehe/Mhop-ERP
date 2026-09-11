@@ -45,6 +45,7 @@ export function CustomerDirectory({
           customer.name,
           customer.customerCode,
           customer.phone,
+          customer.secondaryPhone,
           customer.telegramUsername,
           customer.telegramUserId,
           customer.primaryAddress,
@@ -208,6 +209,11 @@ export function CustomerDirectory({
                         </span>
                       )}
                       <span className="text-[#666a60]">{customer.phone}</span>
+                      {customer.secondaryPhone && (
+                        <span className="text-[11px] text-[#888b80]">
+                          (Alt: {customer.secondaryPhone})
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span
@@ -319,9 +325,14 @@ export function CustomerDirectory({
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-xs text-[#77776f]">
-                        {customer.phone}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#77776f]">
+                        <span>{customer.phone}</span>
+                        {customer.secondaryPhone && (
+                          <span className="text-[11px] text-[#888b80]">
+                            (Alt: {customer.secondaryPhone})
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">

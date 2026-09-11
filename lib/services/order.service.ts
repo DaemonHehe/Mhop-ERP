@@ -663,10 +663,17 @@ export async function createOrder(
 
       // Check customer loyalty tier for automatic perks
       const cleanCustomerPhone = (customer.phone || "").trim().replace(/[^\d+]/g, "");
+      const cleanCustomerTag = (customer.telegramUsername || "").trim().replace(/^@/, "");
       const loyaltyConditions = [];
-      if (cleanCustomerPhone) loyaltyConditions.push(eq(customers.phone, cleanCustomerPhone));
+      if (cleanCustomerPhone) {
+        loyaltyConditions.push(eq(customers.phone, cleanCustomerPhone));
+        loyaltyConditions.push(eq(customers.secondaryPhone, cleanCustomerPhone));
+      }
       if (customer.telegramUserId) loyaltyConditions.push(eq(customers.telegramUserId, customer.telegramUserId));
-      if (customer.telegramUsername) loyaltyConditions.push(eq(customers.telegramUsername, customer.telegramUsername));
+      if (cleanCustomerTag) {
+        loyaltyConditions.push(eq(customers.telegramUsername, cleanCustomerTag));
+        loyaltyConditions.push(eq(customers.telegramUsername, `@${cleanCustomerTag}`));
+      }
 
       const matchingCustomers = loyaltyConditions.length
         ? await tx
@@ -676,78 +683,63 @@ export async function createOrder(
             .orderBy(desc(customers.points))
         : [];
 
-      const existingByPhone = matchingCustomers.find((c) => c.phone === cleanCustomerPhone);
-      const existingByTg = matchingCustomers.find(
-        (c) =>
-          (customer.telegramUserId && c.telegramUserId === customer.telegramUserId) ||
-          (customer.telegramUsername && c.telegramUsername === customer.telegramUsername),
-      );
-
       let customerTier: CustomerTier = "member";
       let resolvedCustomerProfileId: string;
       let effectiveTgUserId = customer.telegramUserId;
-      let effectiveTgUsername = customer.telegramUsername;
+      let effectiveTgUsername = cleanCustomerTag || customer.telegramUsername;
 
-      if (
-        existingByTg &&
-        existingByTg.phone.startsWith("TG-") &&
-        existingByPhone &&
-        existingByPhone.id !== existingByTg.id
-      ) {
-        // Merge placeholder TG account into real phone customer account
-        effectiveTgUsername = customer.telegramUsername || existingByTg.telegramUsername || existingByPhone.telegramUsername || undefined;
-        effectiveTgUserId = customer.telegramUserId || existingByTg.telegramUserId || existingByPhone.telegramUserId || undefined;
-        const totalPts = (existingByPhone.points || 0) + (existingByTg.points || 0);
-        customerTier = getTierForPoints(totalPts);
+      if (matchingCustomers.length > 0) {
+        // Existing customer found! Do NOT create duplicate customer account.
+        const baseCustomer = matchingCustomers[0];
+        const otherDuplicates = matchingCustomers.slice(1);
+
+        let accumulatedPoints = baseCustomer.points || 0;
+        for (const dup of otherDuplicates) {
+          accumulatedPoints += (dup.points || 0);
+          await tx
+            .update(orders)
+            .set({ customerId: baseCustomer.id })
+            .where(eq(orders.customerId, dup.id));
+          await tx
+            .update(customers)
+            .set({ isActive: false, updatedAt: new Date() })
+            .where(eq(customers.id, dup.id));
+        }
+
+        customerTier = getTierForPoints(accumulatedPoints);
+        resolvedCustomerProfileId = baseCustomer.id;
+        effectiveTgUserId = customer.telegramUserId || baseCustomer.telegramUserId || undefined;
+        effectiveTgUsername = cleanCustomerTag || baseCustomer.telegramUsername || undefined;
+
+        // Determine primary and secondary phone
+        let primaryPhone = baseCustomer.phone;
+        let secondaryPhone = baseCustomer.secondaryPhone;
+
+        if (primaryPhone.startsWith("TG-") && cleanCustomerPhone) {
+          primaryPhone = cleanCustomerPhone;
+        } else if (cleanCustomerPhone && cleanCustomerPhone !== primaryPhone) {
+          secondaryPhone = cleanCustomerPhone;
+        }
 
         await tx
           .update(customers)
           .set({
-            name: customer.customerName,
+            name: customer.customerName || baseCustomer.name,
+            phone: primaryPhone,
+            secondaryPhone: secondaryPhone || null,
             telegramUserId: effectiveTgUserId || null,
             telegramUsername: effectiveTgUsername || null,
-            points: totalPts,
+            points: accumulatedPoints,
             tier: customerTier,
             ...(!digitalOnly && customer.shippingAddress ? { primaryAddress: customer.shippingAddress } : {}),
             updatedAt: new Date(),
           })
-          .where(eq(customers.id, existingByPhone.id));
-
-        await tx
-          .update(orders)
-          .set({ customerId: existingByPhone.id })
-          .where(eq(orders.customerId, existingByTg.id));
-
-        await tx
-          .update(customers)
-          .set({ isActive: false, updatedAt: new Date() })
-          .where(eq(customers.id, existingByTg.id));
-
-        resolvedCustomerProfileId = existingByPhone.id;
-      } else if (existingByTg && existingByTg.phone.startsWith("TG-") && !existingByPhone) {
-        // Upgrade placeholder TG account with real phone
-        effectiveTgUsername = customer.telegramUsername || existingByTg.telegramUsername || undefined;
-        effectiveTgUserId = customer.telegramUserId || existingByTg.telegramUserId || undefined;
-        customerTier = getTierForPoints(existingByTg.points || 0);
-
-        await tx
-          .update(customers)
-          .set({
-            name: customer.customerName,
-            phone: cleanCustomerPhone,
-            telegramUserId: effectiveTgUserId || null,
-            telegramUsername: effectiveTgUsername || null,
-            ...(!digitalOnly && customer.shippingAddress ? { primaryAddress: customer.shippingAddress } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(customers.id, existingByTg.id));
-
-        resolvedCustomerProfileId = existingByTg.id;
+          .where(eq(customers.id, baseCustomer.id));
       } else {
-        const baseCustomer = existingByPhone || matchingCustomers[0];
-        customerTier = baseCustomer ? getTierForPoints(baseCustomer.points || 0) : "member";
-        effectiveTgUsername = customer.telegramUsername || baseCustomer?.telegramUsername || undefined;
-        effectiveTgUserId = customer.telegramUserId || baseCustomer?.telegramUserId || undefined;
+        // Brand new customer record
+        customerTier = "member";
+        effectiveTgUsername = cleanCustomerTag || undefined;
+        effectiveTgUserId = customer.telegramUserId || undefined;
 
         const [customerProfile] = await tx
           .insert(customers)
@@ -758,6 +750,9 @@ export async function createOrder(
             telegramUserId: effectiveTgUserId || null,
             telegramUsername: effectiveTgUsername || null,
             primaryAddress: digitalOnly ? null : customer.shippingAddress || null,
+            points: 0,
+            tier: "member",
+            isActive: true,
           })
           .onConflictDoUpdate({
             target: customers.phone,
@@ -1574,20 +1569,45 @@ export async function adminCreateOrder(
 
       // Check customer loyalty tier for automatic perks
       const cleanAdminPhone = (parsed.data.phone || "").trim().replace(/[^\d+]/g, "");
+      const rawAdminTag = (parsed.data.telegramUsername || "").trim().replace(/^@/, "");
       const adminLoyaltyConds = [];
-      if (cleanAdminPhone) adminLoyaltyConds.push(eq(customers.phone, cleanAdminPhone));
+      if (cleanAdminPhone) {
+        adminLoyaltyConds.push(eq(customers.phone, cleanAdminPhone));
+        adminLoyaltyConds.push(eq(customers.secondaryPhone, cleanAdminPhone));
+      }
       if (parsed.data.telegramUserId) adminLoyaltyConds.push(eq(customers.telegramUserId, parsed.data.telegramUserId));
+      if (rawAdminTag) {
+        adminLoyaltyConds.push(eq(customers.telegramUsername, rawAdminTag));
+        adminLoyaltyConds.push(eq(customers.telegramUsername, `@${rawAdminTag}`));
+      }
 
-      const [existingAdminCustomer] = adminLoyaltyConds.length
+      const matchingAdminCustomers = adminLoyaltyConds.length
         ? await tx
-            .select({ id: customers.id, points: customers.points, tier: customers.tier })
+            .select()
             .from(customers)
             .where(and(eq(customers.isActive, true), or(...adminLoyaltyConds)))
-            .limit(1)
+            .orderBy(desc(customers.points))
         : [];
 
+      const existingAdminCustomer = matchingAdminCustomers[0] || null;
+      let adminPoints = existingAdminCustomer?.points || 0;
+
+      if (matchingAdminCustomers.length > 1) {
+        for (const dup of matchingAdminCustomers.slice(1)) {
+          adminPoints += (dup.points || 0);
+          await tx
+            .update(orders)
+            .set({ customerId: existingAdminCustomer.id })
+            .where(eq(orders.customerId, dup.id));
+          await tx
+            .update(customers)
+            .set({ isActive: false, updatedAt: new Date() })
+            .where(eq(customers.id, dup.id));
+        }
+      }
+
       const customerTier = existingAdminCustomer
-        ? getTierForPoints(existingAdminCustomer.points || 0)
+        ? getTierForPoints(adminPoints)
         : "member";
 
       const standardDelivery = royalDelivery.customerDeliveryFee;
@@ -1625,36 +1645,73 @@ export async function adminCreateOrder(
           : calculateRequiredDeposit(total, isDigitalOnly);
       const codAmount = Math.max(0, total - requiredDeposit);
 
-      const rawAdminTag = (parsed.data.telegramUsername || "").trim().replace(/^@/, "");
-      const [customerProfile] = await tx
-        .insert(customers)
-        .values({
-          customerCode: generateCustomerCode(),
-          name: parsed.data.customerName,
-          phone: parsed.data.phone,
-          telegramUserId: parsed.data.telegramUserId || null,
-          telegramUsername: rawAdminTag || null,
-          primaryAddress: isDigitalOnly ? null : parsed.data.shippingAddress || null,
-        })
-        .onConflictDoUpdate({
-          target: customers.phone,
-          set: {
-            name: parsed.data.customerName,
-            ...(parsed.data.telegramUserId ? { telegramUserId: parsed.data.telegramUserId } : {}),
-            ...(rawAdminTag ? { telegramUsername: rawAdminTag } : {}),
+      let resolvedAdminCustomerId: string;
+
+      if (existingAdminCustomer) {
+        let primaryPhone = existingAdminCustomer.phone;
+        let secondaryPhone = existingAdminCustomer.secondaryPhone;
+
+        if (primaryPhone.startsWith("TG-") && cleanAdminPhone) {
+          primaryPhone = cleanAdminPhone;
+        } else if (cleanAdminPhone && cleanAdminPhone !== primaryPhone) {
+          secondaryPhone = cleanAdminPhone;
+        }
+
+        await tx
+          .update(customers)
+          .set({
+            name: parsed.data.customerName || existingAdminCustomer.name,
+            phone: primaryPhone,
+            secondaryPhone: secondaryPhone || null,
+            telegramUserId: parsed.data.telegramUserId || existingAdminCustomer.telegramUserId,
+            telegramUsername: rawAdminTag || existingAdminCustomer.telegramUsername,
+            points: adminPoints,
+            tier: customerTier,
             ...(!isDigitalOnly && parsed.data.shippingAddress
               ? { primaryAddress: parsed.data.shippingAddress }
               : {}),
-            isActive: true,
             updatedAt: new Date(),
-          },
-        })
-        .returning({ id: customers.id });
+          })
+          .where(eq(customers.id, existingAdminCustomer.id));
+
+        resolvedAdminCustomerId = existingAdminCustomer.id;
+      } else {
+        const [customerProfile] = await tx
+          .insert(customers)
+          .values({
+            customerCode: generateCustomerCode(),
+            name: parsed.data.customerName,
+            phone: parsed.data.phone,
+            telegramUserId: parsed.data.telegramUserId || null,
+            telegramUsername: rawAdminTag || null,
+            primaryAddress: isDigitalOnly ? null : parsed.data.shippingAddress || null,
+            points: 0,
+            tier: "member",
+            isActive: true,
+          })
+          .onConflictDoUpdate({
+            target: customers.phone,
+            set: {
+              name: parsed.data.customerName,
+              ...(parsed.data.telegramUserId ? { telegramUserId: parsed.data.telegramUserId } : {}),
+              ...(rawAdminTag ? { telegramUsername: rawAdminTag } : {}),
+              ...(!isDigitalOnly && parsed.data.shippingAddress
+                ? { primaryAddress: parsed.data.shippingAddress }
+                : {}),
+              isActive: true,
+              updatedAt: new Date(),
+            },
+          })
+          .returning({ id: customers.id });
+
+        if (!customerProfile) throw new Error("Customer profile could not be saved");
+        resolvedAdminCustomerId = customerProfile.id;
+      }
 
       const [created] = await tx
         .insert(orders)
         .values({
-          customerId: customerProfile.id,
+          customerId: resolvedAdminCustomerId,
           customerName: parsed.data.customerName,
           phone: parsed.data.phone,
           telegramUserId: parsed.data.telegramUserId || null,

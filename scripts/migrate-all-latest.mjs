@@ -18,6 +18,7 @@ const migrations = [
   "migrations/0019_customer_points_and_tiers.sql",
   "migrations/0020_customer_code_and_telegram_username.sql",
   "migrations/0021_drop_leads_table.sql",
+  "migrations/0022_customer_secondary_phone.sql",
 ];
 
 try {

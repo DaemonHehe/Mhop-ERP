@@ -15,6 +15,7 @@ export interface CustomerSummary {
   customerCode?: string | null;
   name: string;
   phone: string;
+  secondaryPhone?: string | null;
   telegramUserId: string | null;
   telegramUsername?: string | null;
   primaryAddress: string | null;
@@ -32,6 +33,7 @@ export interface CustomerLoyaltyProfile {
   customerCode?: string | null;
   name?: string;
   phone?: string;
+  secondaryPhone?: string | null;
   telegramUserId?: string | null;
   telegramUsername?: string | null;
   points: number;
@@ -74,6 +76,7 @@ export async function getCustomers(): Promise<CustomerSummary[]> {
         customerCode: `MH-CUST-${Math.floor(1000 + Math.random() * 9000)}`,
         name: order.customer,
         phone: order.phone || "—",
+        secondaryPhone: null,
         telegramUserId: null,
         telegramUsername: null,
         primaryAddress: order.address || null,
@@ -105,6 +108,7 @@ export async function getCustomers(): Promise<CustomerSummary[]> {
         customerCode: customers.customerCode,
         name: customers.name,
         phone: customers.phone,
+        secondaryPhone: customers.secondaryPhone,
         telegramUserId: customers.telegramUserId,
         telegramUsername: customers.telegramUsername,
         primaryAddress: customers.primaryAddress,
@@ -123,6 +127,7 @@ export async function getCustomers(): Promise<CustomerSummary[]> {
         customers.customerCode,
         customers.name,
         customers.phone,
+        customers.secondaryPhone,
         customers.telegramUserId,
         customers.telegramUsername,
         customers.primaryAddress,
@@ -143,6 +148,7 @@ export async function getCustomers(): Promise<CustomerSummary[]> {
         id: row.id,
         customerCode: row.customerCode || generateCustomerCode(row.id.slice(0, 4)),
         phone: row.phone,
+        secondaryPhone: row.secondaryPhone || null,
         telegramUserId: row.telegramUserId,
         telegramUsername: row.telegramUsername,
         primaryAddress: row.primaryAddress,
@@ -199,7 +205,9 @@ export async function lookupCustomerLoyalty(query: {
   }
 
   const conditions = [];
-  if (cleanPhone) conditions.push(eq(customers.phone, cleanPhone));
+  if (cleanPhone) {
+    conditions.push(or(eq(customers.phone, cleanPhone), eq(customers.secondaryPhone, cleanPhone)));
+  }
   if (cleanTelegram) conditions.push(eq(customers.telegramUserId, cleanTelegram));
   if (cleanTag) conditions.push(eq(customers.telegramUsername, cleanTag));
   if (cleanCode) conditions.push(eq(customers.customerCode, cleanCode));
@@ -213,6 +221,7 @@ export async function lookupCustomerLoyalty(query: {
         customerCode: customers.customerCode,
         name: customers.name,
         phone: customers.phone,
+        secondaryPhone: customers.secondaryPhone,
         telegramUserId: customers.telegramUserId,
         telegramUsername: customers.telegramUsername,
         points: customers.points,
@@ -220,6 +229,7 @@ export async function lookupCustomerLoyalty(query: {
       })
       .from(customers)
       .where(and(eq(customers.isActive, true), or(...conditions)))
+      .orderBy(desc(customers.points))
       .limit(1);
 
     if (!customer) {
@@ -235,6 +245,7 @@ export async function lookupCustomerLoyalty(query: {
       customerCode: customer.customerCode || generateCustomerCode(customer.id.slice(0, 4)),
       name: customer.name,
       phone: customer.phone,
+      secondaryPhone: customer.secondaryPhone,
       telegramUserId: customer.telegramUserId,
       telegramUsername: customer.telegramUsername,
       points: customer.points || 0,
@@ -332,55 +343,161 @@ export async function recalculateCustomerLoyalty(
 export async function reconcileDuplicateCustomers() {
   if (!db) return;
   try {
-    const tgPlaceholders = await db
+    const activeCustomers = await db
       .select()
       .from(customers)
-      .where(and(eq(customers.isActive, true), sql`${customers.phone} LIKE 'TG-%'`));
+      .where(eq(customers.isActive, true));
 
-    for (const tgCust of tgPlaceholders) {
-      const orConds = [];
-      if (tgCust.telegramUserId) orConds.push(eq(customers.telegramUserId, tgCust.telegramUserId));
-      if (tgCust.telegramUsername) orConds.push(eq(customers.telegramUsername, tgCust.telegramUsername));
-      if (!orConds.length) continue;
+    if (!activeCustomers || activeCustomers.length <= 1) return;
 
-      const realMatches = await db
-        .select()
-        .from(customers)
-        .where(
-          and(
-            eq(customers.isActive, true),
-            sql`${customers.phone} NOT LIKE 'TG-%'`,
-            or(...orConds),
-          ),
+    // Group customers into clusters of identical human identity
+    const visited = new Set<string>();
+    const clusters: Array<typeof activeCustomers> = [];
+
+    for (let i = 0; i < activeCustomers.length; i++) {
+      const c1 = activeCustomers[i];
+      if (visited.has(c1.id)) continue;
+
+      const cluster = [c1];
+      visited.add(c1.id);
+
+      for (let j = i + 1; j < activeCustomers.length; j++) {
+        const c2 = activeCustomers[j];
+        if (visited.has(c2.id)) continue;
+
+        const sameTgId = Boolean(
+          c1.telegramUserId &&
+          c2.telegramUserId &&
+          c1.telegramUserId === c2.telegramUserId,
+        );
+        const sameTgTag = Boolean(
+          c1.telegramUsername &&
+          c2.telegramUsername &&
+          c1.telegramUsername.toLowerCase().replace(/^@/, "") ===
+            c2.telegramUsername.toLowerCase().replace(/^@/, ""),
+        );
+        const samePhone = Boolean(
+          c1.phone &&
+          !c1.phone.startsWith("TG-") &&
+          (c1.phone === c2.phone || (c2.secondaryPhone && c1.phone === c2.secondaryPhone)),
+        );
+        const sameSecPhone = Boolean(
+          c1.secondaryPhone &&
+          (c1.secondaryPhone === c2.phone || (c2.secondaryPhone && c1.secondaryPhone === c2.secondaryPhone)),
         );
 
-      if (realMatches.length > 0) {
-        const realCust = realMatches[0];
-        const mergedTag = realCust.telegramUsername || tgCust.telegramUsername || null;
-        const mergedTgId = realCust.telegramUserId || tgCust.telegramUserId || null;
-        const totalPts = Math.max(realCust.points || 0, (realCust.points || 0) + (tgCust.points || 0));
+        if (sameTgId || sameTgTag || samePhone || sameSecPhone) {
+          cluster.push(c2);
+          visited.add(c2.id);
+        }
+      }
 
-        await db
-          .update(customers)
-          .set({
-            telegramUserId: mergedTgId,
-            telegramUsername: mergedTag,
-            points: totalPts,
-            tier: getTierForPoints(totalPts),
-            updatedAt: new Date(),
-          })
-          .where(eq(customers.id, realCust.id));
+      if (cluster.length > 1) {
+        clusters.push(cluster);
+      }
+    }
 
+    for (const cluster of clusters) {
+      // Sort to find the primary (winner) customer record:
+      // Priority 1: Real phone (non-TG) over TG- placeholder
+      // Priority 2: Most loyalty points
+      // Priority 3: Oldest record
+      cluster.sort((a, b) => {
+        const aIsTg = a.phone.startsWith("TG-") ? 1 : 0;
+        const bIsTg = b.phone.startsWith("TG-") ? 1 : 0;
+        if (aIsTg !== bIsTg) return aIsTg - bIsTg;
+        const ptsDiff = (b.points || 0) - (a.points || 0);
+        if (ptsDiff !== 0) return ptsDiff;
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return aTime - bTime;
+      });
+
+      const winner = cluster[0];
+      const losers = cluster.slice(1);
+
+      let mergedPoints = winner.points || 0;
+      let effectivePhone = winner.phone;
+      let effectiveSecondaryPhone = winner.secondaryPhone;
+      let effectiveAddress = winner.primaryAddress;
+      let effectiveTgUserId = winner.telegramUserId;
+      let effectiveTgUsername = winner.telegramUsername;
+      let effectiveName = winner.name;
+      let effectiveCode = winner.customerCode;
+
+      for (const loser of losers) {
+        mergedPoints += (loser.points || 0);
+
+        if (!effectiveCode && loser.customerCode) {
+          effectiveCode = loser.customerCode;
+        }
+        if (loser.telegramUserId && !effectiveTgUserId) {
+          effectiveTgUserId = loser.telegramUserId;
+        }
+        if (loser.telegramUsername && !effectiveTgUsername) {
+          effectiveTgUsername = loser.telegramUsername;
+        }
+        if (loser.primaryAddress && (!effectiveAddress || effectiveAddress === "Not recorded")) {
+          effectiveAddress = loser.primaryAddress;
+        }
+        if (loser.name && (!effectiveName || effectiveName === "Customer" || effectiveName.startsWith("Telegram @"))) {
+          effectiveName = loser.name;
+        }
+
+        // Phone consolidation:
+        if (effectivePhone.startsWith("TG-") && !loser.phone.startsWith("TG-")) {
+          effectivePhone = loser.phone;
+        } else if (!effectivePhone.startsWith("TG-") && !loser.phone.startsWith("TG-") && loser.phone !== effectivePhone) {
+          if (!effectiveSecondaryPhone) {
+            effectiveSecondaryPhone = loser.phone;
+          }
+        }
+        if (loser.secondaryPhone && loser.secondaryPhone !== effectivePhone && !effectiveSecondaryPhone) {
+          effectiveSecondaryPhone = loser.secondaryPhone;
+        }
+
+        // Reassign orders
         await db
           .update(orders)
-          .set({ customerId: realCust.id })
-          .where(eq(orders.customerId, tgCust.id));
+          .set({ customerId: winner.id })
+          .where(eq(orders.customerId, loser.id));
 
+        // Deactivate loser account
         await db
           .update(customers)
           .set({ isActive: false, updatedAt: new Date() })
-          .where(eq(customers.id, tgCust.id));
+          .where(eq(customers.id, loser.id));
       }
+
+      // Check if there is a more recent shipping address from winner's orders
+      const [latestOrder] = await db
+        .select({ shippingAddress: orders.shippingAddress, streetAddress: orders.streetAddress })
+        .from(orders)
+        .where(eq(orders.customerId, winner.id))
+        .orderBy(desc(orders.createdAt))
+        .limit(1);
+
+      if (latestOrder?.shippingAddress || latestOrder?.streetAddress) {
+        effectiveAddress = latestOrder.shippingAddress || latestOrder.streetAddress || effectiveAddress;
+      }
+
+      const finalTier = getTierForPoints(mergedPoints);
+
+      await db
+        .update(customers)
+        .set({
+          customerCode: effectiveCode || generateCustomerCode(winner.id.slice(0, 4)),
+          name: effectiveName,
+          phone: effectivePhone,
+          secondaryPhone: effectiveSecondaryPhone || null,
+          primaryAddress: effectiveAddress || null,
+          telegramUserId: effectiveTgUserId || null,
+          telegramUsername: effectiveTgUsername || null,
+          points: mergedPoints,
+          tier: finalTier,
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, winner.id));
     }
   } catch (err) {
     console.error("[reconcileDuplicateCustomers error]", err);
@@ -428,11 +545,21 @@ export async function linkCustomerTelegram(
       const mergedTag = cleanTag || existingByTelegram.telegramUsername || existingByPhone.telegramUsername || null;
       const combinedPoints = (existingByPhone.points || 0) + (existingByTelegram.points || 0);
 
+      let effectiveSecondary = existingByPhone.secondaryPhone || null;
+      if (
+        existingByTelegram.phone &&
+        !existingByTelegram.phone.startsWith("TG-") &&
+        existingByTelegram.phone !== existingByPhone.phone
+      ) {
+        effectiveSecondary = existingByTelegram.phone;
+      }
+
       await db
         .update(customers)
         .set({
           telegramUserId: cleanTelegram,
           telegramUsername: mergedTag,
+          secondaryPhone: effectiveSecondary,
           points: combinedPoints,
           tier: getTierForPoints(combinedPoints),
           ...(!existingByPhone.customerCode ? { customerCode: existingByTelegram.customerCode || generateCustomerCode() } : {}),
