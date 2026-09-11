@@ -208,11 +208,23 @@ export function Storefront({
             <span className="text-[#77776f]">Shop with confidence.</span>
           </h1>
           <div>
-            <p className="text-sm leading-6 text-[#62635d]">
-              {clientConfig.brand.tagline}. Verified PUBG Mobile accounts and
-              gaming gadgets (cooling fans, headphones, controllers), selected
-              for Myanmar gamers.
-            </p>
+            <div className="space-y-2.5 text-xs sm:text-sm leading-relaxed text-[#5c5d57]">
+              <p className="font-semibold text-black">
+                100% မူရင်းပစ္စည်းများ • Official Store မှ တိုက်ရိုက်ရရှိသော ပစ္စည်းများ
+              </p>
+              <p>
+                PUBG Mobile Verified Accounts များနှင့် Gaming Gadgets များကို မြန်မာ Gamer များအတွက် သေချာရွေးချယ်ပေးထားပါတယ်။
+              </p>
+              <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 rounded-xl bg-[#f5f4ed] p-2.5 text-[11px] font-medium text-neutral-800 border border-[#e5e2d8]">
+                <span>🎮 PUBG Mobile Accounts</span>
+                <span>❄️ Cooling Fans</span>
+                <span>🎧 Gaming Headphones & Earphones</span>
+                <span>🎮 Controllers & Gaming Accessories</span>
+              </div>
+              <p className="text-[11px] text-[#77776f]">
+                စသည့်ပစ္စည်းများကို ယုံကြည်စိတ်ချစွာ ဝယ်ယူနိုင်ပါတယ်။
+              </p>
+            </div>
             <a
               href="#products"
               className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#c7f36b] px-5 py-3 text-xs font-bold text-black"
