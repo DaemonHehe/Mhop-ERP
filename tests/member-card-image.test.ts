@@ -20,8 +20,7 @@ describe("Member Card Image Generator", () => {
     expect(getCardTier("silver", 300)).toBe("silver");
     expect(getCardTier("gold", 600)).toBe("gold");
     expect(getCardTier("platinum", 1200)).toBe("platinum");
-    expect(getCardTier("platinum", 2600)).toBe("diamond");
-    expect(getCardTier("diamond", 100)).toBe("diamond");
+    expect(getCardTier("platinum", 2600)).toBe("platinum");
   });
 
   it("renders a valid PNG buffer for Classic tier", async () => {
@@ -42,14 +41,14 @@ describe("Member Card Image Generator", () => {
   });
 
   it("renders valid PNG buffers for all other tiers", async () => {
-    const tiers = ["silver", "gold", "platinum", "diamond"] as const;
+    const tiers = ["silver", "gold", "platinum"] as const;
 
     for (const tier of tiers) {
       const png = await renderMemberCardImage({
         customerName: `VIP ${tier.toUpperCase()}`,
         memberId: `CUST-${tier}`,
         tier,
-        points: tier === "diamond" ? 3500 : tier === "platinum" ? 1500 : 500,
+        points: tier === "platinum" ? 1500 : 500,
       });
 
       expect(png).toBeInstanceOf(Buffer);

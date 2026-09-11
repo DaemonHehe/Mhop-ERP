@@ -124,7 +124,7 @@ async function run() {
     );
 
     // 1.2 Execute /member and /card, verify dynamic 1000x630 VIP card PNG generation with tier branding, points, and action buttons
-    const tiersToTest = ['classic', 'silver', 'gold', 'platinum', 'diamond'];
+    const tiersToTest = ['classic', 'silver', 'gold', 'platinum'];
     const cardResults = {};
     for (const tier of tiersToTest) {
       const cardHttpRes = await fetch(
@@ -143,7 +143,7 @@ async function run() {
 
     assertStep(
       'Customer Channel',
-      '1.2 Dynamic VIP member card renders as 1000x630 PNG buffer across all 5 tiers (Classic, Silver, Gold, Platinum, Diamond)',
+      '1.2 Dynamic VIP member card renders as 1000x630 PNG buffer across all 4 tiers (Classic, Silver, Gold, Platinum)',
       Object.values(cardResults).every(r => r.status === 200 && r.width === 1000 && r.height === 630 && r.format === 'png'),
       cardResults
     );
@@ -363,7 +363,6 @@ async function run() {
       UPDATE customers 
       SET points = points + $1,
           tier = CASE 
-            WHEN points + $1 >= 2500 THEN 'diamond'
             WHEN points + $1 >= 1000 THEN 'platinum'
             WHEN points + $1 >= 500 THEN 'gold'
             WHEN points + $1 >= 200 THEN 'silver'

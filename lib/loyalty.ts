@@ -1,6 +1,6 @@
-export type CustomerTier = "member" | "silver" | "gold" | "platinum" | "diamond";
+export type CustomerTier = "member" | "silver" | "gold" | "platinum";
 
-export type CardTier = "classic" | "silver" | "gold" | "platinum" | "diamond";
+export type CardTier = "classic" | "silver" | "gold" | "platinum";
 
 export interface TierDefinition {
   id: CustomerTier;
@@ -81,31 +81,15 @@ export const TIERS: Record<CustomerTier, TierDefinition> = {
     icon: "💎",
     description: "Free Delivery + 10% product discount on all orders.",
   },
-  diamond: {
-    id: "diamond",
-    name: "Diamond",
-    burmeseName: "ဒိုင်းမွန်း VIP",
-    cardTitle: "DIAMOND",
-    minPoints: 2500,
-    maxPoints: Number.POSITIVE_INFINITY,
-    freeDelivery: true,
-    discountPercent: 15,
-    badgeBg: "bg-[#e0f2fe]",
-    badgeText: "text-[#0369a1]",
-    badgeBorder: "border-[#bae6fd]",
-    icon: "💠",
-    description: "Free Delivery + 15% VIP discount on all orders.",
-  },
 };
 
 /**
- * Resolve the visual card tier (Classic, Silver, Gold, Platinum, Diamond)
+ * Resolve the visual card tier (Classic, Silver, Gold, Platinum)
  * based on customer tier or point threshold.
  */
 export function getCardTier(tier?: string | null, points = 0): CardTier {
   const p = Math.max(0, Math.floor(points || 0));
   const normalized = (tier || "").toLowerCase();
-  if (normalized === "diamond" || p >= 2500) return "diamond";
   if (normalized === "platinum" || p >= 1001) return "platinum";
   if (normalized === "gold" || p >= 500) return "gold";
   if (normalized === "silver" || p >= 200) return "silver";

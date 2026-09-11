@@ -143,26 +143,6 @@ const TIER_THEMES: Record<CardTier, TierTheme> = {
     pillBorder: "rgba(203, 213, 225, 0.35)",
     perksText: "FREE DELIVERY + 10% DISCOUNT",
   },
-  diamond: {
-    title: "DIAMOND",
-    subtitle: "MH OP LIMITLESS VIP",
-    burmeseName: "ဒိုင်းမွန်း VIP (Diamond)",
-    bgStops: [
-      { offset: "0%", color: "#080e18" },
-      { offset: "30%", color: "#122033" },
-      { offset: "65%", color: "#1e334f" },
-      { offset: "100%", color: "#0a1320" },
-    ],
-    accentColor: "#67e8f9",
-    accentGradient: ["#a5f3fc", "#ffffff"],
-    foilColor: "#ffffff",
-    chipBase: ["#e0f2fe", "#7dd3fc"],
-    chipLines: "#0284c7",
-    borderGradient: ["rgba(165, 243, 252, 0.6)", "rgba(56, 189, 248, 0.2)"],
-    pillBg: "rgba(8, 14, 24, 0.8)",
-    pillBorder: "rgba(103, 232, 249, 0.4)",
-    perksText: "FREE DELIVERY + 15% DISCOUNT",
-  },
 };
 
 /**

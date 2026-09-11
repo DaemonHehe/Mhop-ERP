@@ -572,13 +572,13 @@ describe("Tier 1: Feature Coverage (Isolated Happy Paths)", () => {
       expect(calculatePointsFromAmount(2500000)).toBe(2500);
     });
 
-    it("T1.F7.5: customer reaches Diamond VIP tier at 2,500 points with 15% discount", () => {
+    it("T1.F7.5: customer reaches Platinum VIP tier at 1,001+ points with 10% discount", () => {
       const tier = getTierForPoints(2500);
       expect(tier).toBe("platinum");
       const cardTier = getCardTier("platinum", 2500);
-      expect(cardTier).toBe("diamond");
-      const perks = calculateTierPerks("diamond", 100000, 4500);
-      expect(perks.productDiscountAmount).toBe(15000);
+      expect(cardTier).toBe("platinum");
+      const perks = calculateTierPerks("platinum", 100000, 4500);
+      expect(perks.productDiscountAmount).toBe(10000);
     });
   });
 
