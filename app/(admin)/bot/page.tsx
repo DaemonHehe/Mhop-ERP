@@ -37,16 +37,16 @@ export default async function BotPage() {
         title="Bot & Automation Messages"
         description="Feed Q&A data to train the 24/7 AI Sales Agent, and configure automated greetings, cart recovery, and manager operational briefings."
       />
-      <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mb-4 grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         {metrics.map(([label, value, Icon]) => (
-          <article className="card p-4" key={label}>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#77776f]">
+          <article className="card p-3 sm:p-4" key={label}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#77776f] truncate">
                 {label}
               </p>
-              <Icon size={15} className="text-[#6e7168]" />
+              <Icon size={14} className="text-[#6e7168] shrink-0" />
             </div>
-            <p className="display mt-4 text-2xl font-bold">{value}</p>
+            <p className="display mt-2 sm:mt-4 text-lg sm:text-2xl font-bold truncate">{value}</p>
           </article>
         ))}
       </section>

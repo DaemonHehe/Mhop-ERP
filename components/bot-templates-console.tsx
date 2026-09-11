@@ -19,6 +19,8 @@ import {
   Edit2,
   X,
   HelpCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   saveBotTemplateAction,
@@ -73,6 +75,13 @@ export function BotTemplatesConsole({
     null,
   );
   const textareaId = useId();
+  const [mobileTab, setMobileTab] = useState<"directory" | "editor" | "preview">("directory");
+
+  const selectItem = (key: string) => {
+    setSelectedKey(key);
+    setNotice(null);
+    setMobileTab("editor");
+  };
 
   // Q&A Knowledge Feed State
   const [isAddingQa, setIsAddingQa] = useState(false);
@@ -405,21 +414,24 @@ export function BotTemplatesConsole({
       {/* Top Filter & Search Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Category Pill Buttons */}
-        <div className="flex max-w-full overflow-x-auto rounded-full border bg-white/60 p-1">
+        <div className="flex max-w-full overflow-x-auto rounded-full border bg-white/60 p-1 no-scrollbar">
           <button
             type="button"
             onClick={() => {
               setChannelFilter("all");
               setSelectedKey("ai_sales_agent");
             }}
-            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-2 text-xs font-bold transition ${
               isAiAgentSelected
                 ? "bg-black text-white shadow-sm"
                 : "text-[#626258] hover:text-black"
             }`}
           >
             <Sparkles size={13} className="text-[#9fc744]" />
-            AI Sales Q&A Feed ({qaItems.length})
+            <span>
+              <span className="inline sm:hidden">AI Q&A</span>
+              <span className="hidden sm:inline">AI Sales Q&A Feed</span> ({qaItems.length})
+            </span>
           </button>
           <button
             type="button"
@@ -427,14 +439,17 @@ export function BotTemplatesConsole({
               setChannelFilter("customer");
               if (isAiAgentSelected) setSelectedKey("welcome");
             }}
-            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-2 text-xs font-bold transition ${
               channelFilter === "customer" && !isAiAgentSelected
                 ? "bg-black text-white shadow-sm"
                 : "text-[#626258] hover:text-black"
             }`}
           >
             <Bot size={13} />
-            Customer Bot Messages ({customerCount})
+            <span>
+              <span className="inline sm:hidden">Customer</span>
+              <span className="hidden sm:inline">Customer Bot Messages</span> ({customerCount})
+            </span>
           </button>
           <button
             type="button"
@@ -442,19 +457,22 @@ export function BotTemplatesConsole({
               setChannelFilter("staff");
               if (isAiAgentSelected) setSelectedKey("manager_morning_briefing");
             }}
-            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-2 text-xs font-bold transition ${
               channelFilter === "staff" && !isAiAgentSelected
                 ? "bg-black text-white shadow-sm"
                 : "text-[#626258] hover:text-black"
             }`}
           >
             <Users size={13} />
-            Staff & Manager Alerts ({staffCount})
+            <span>
+              <span className="inline sm:hidden">Staff Alerts</span>
+              <span className="hidden sm:inline">Staff & Manager Alerts</span> ({staffCount})
+            </span>
           </button>
         </div>
 
         {/* Search Box */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2 sm:gap-3">
           <label className="relative block w-full sm:w-auto sm:min-w-[260px]">
             <Search
               size={15}
@@ -472,10 +490,54 @@ export function BotTemplatesConsole({
                   ? "Search Q&A questions or answers..."
                   : "Search templates, triggers, copy..."
               }
-              className="h-11 w-full rounded-xl border bg-white pl-9 pr-3 text-sm outline-none focus:border-black"
+              className="h-11 w-full rounded-xl border bg-white pl-9 pr-3 text-base sm:text-sm outline-none focus:border-black"
             />
           </label>
         </div>
+      </div>
+
+      {/* Mobile View Switcher (< xl screens) */}
+      <div className="grid grid-cols-3 xl:hidden rounded-2xl border border-[#dedbd0] bg-[#f2efe9] p-1 gap-1 shadow-xs">
+        <button
+          type="button"
+          onClick={() => setMobileTab("directory")}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition ${
+            mobileTab === "directory"
+              ? "bg-black text-white shadow-xs"
+              : "text-[#626258] hover:text-black"
+          }`}
+        >
+          <Bot size={13} />
+          <span>Directory</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("editor")}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition ${
+            mobileTab === "editor"
+              ? "bg-black text-white shadow-xs"
+              : "text-[#626258] hover:text-black"
+          }`}
+        >
+          {isAiAgentSelected ? (
+            <Sparkles size={13} className={mobileTab === "editor" ? "text-[#c7f36b]" : "text-[#9fc744]"} />
+          ) : (
+            <Edit2 size={13} />
+          )}
+          <span>{isAiAgentSelected ? "Q&A Feed" : "Editor"}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("preview")}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition ${
+            mobileTab === "preview"
+              ? "bg-black text-white shadow-xs"
+              : "text-[#626258] hover:text-black"
+          }`}
+        >
+          <Send size={13} />
+          <span>{isAiAgentSelected ? "Live Test" : "Preview"}</span>
+        </button>
       </div>
 
       {/* Notice Banner */}
@@ -507,7 +569,7 @@ export function BotTemplatesConsole({
       {/* Master-Detail Layout */}
       <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
         {/* Left Column: Directory List */}
-        <section className="card min-w-0 overflow-hidden">
+        <section className={`card min-w-0 overflow-hidden ${mobileTab === "directory" ? "block" : "hidden xl:block"}`}>
           <div className="flex items-center justify-between border-b p-4">
             <div>
               <p className="font-bold">Bot Control Directory</p>
@@ -525,15 +587,11 @@ export function BotTemplatesConsole({
             <div
               role="button"
               tabIndex={0}
-              onClick={() => {
-                setSelectedKey("ai_sales_agent");
-                setNotice(null);
-              }}
+              onClick={() => selectItem("ai_sales_agent")}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setSelectedKey("ai_sales_agent");
-                  setNotice(null);
+                  selectItem("ai_sales_agent");
                 }
               }}
               className={`group relative grid w-full cursor-pointer grid-cols-1 gap-2 p-4 text-left transition ${
@@ -577,15 +635,11 @@ export function BotTemplatesConsole({
                   key={t.key}
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
-                    setSelectedKey(t.key);
-                    setNotice(null);
-                  }}
+                  onClick={() => selectItem(t.key)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setSelectedKey(t.key);
-                      setNotice(null);
+                      selectItem(t.key);
                     }
                   }}
                   className={`group relative grid w-full cursor-pointer grid-cols-1 gap-2 p-4 text-left transition ${
@@ -637,9 +691,27 @@ export function BotTemplatesConsole({
         </section>
 
         {/* Right Workspace: AI Q&A Feed OR Message Template Editor */}
-        <div className="grid gap-4 2xl:grid-cols-2 items-start">
+        <div className={`grid gap-4 2xl:grid-cols-2 items-start ${mobileTab !== "directory" ? "block" : "hidden xl:grid"}`}>
           {isAiAgentSelected ? (
-            <div className="card p-5 sm:p-6 space-y-4">
+            <div className={`card p-4 sm:p-6 space-y-4 ${mobileTab === "editor" ? "block" : "hidden xl:block"}`}>
+              {/* Mobile View Switch Header */}
+              <div className="flex xl:hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("directory")}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-[#626258] hover:text-black"
+                >
+                  <ChevronLeft size={14} /> Triggers & Feed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("preview")}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#f0eee6] px-2.5 py-1 text-xs font-bold text-[#171914] hover:bg-[#e6e2d8]"
+                >
+                  Live AI Test <ChevronRight size={14} />
+                </button>
+              </div>
+
               {/* Header */}
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#dedbd0] pb-4">
                 <div>
@@ -700,7 +772,7 @@ export function BotTemplatesConsole({
                     <select
                       value={qaFormCategory}
                       onChange={(e) => setQaFormCategory(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-[#dedbd0] bg-white px-3 text-xs font-medium text-[#171813] outline-none focus:border-black"
+                      className="h-10 w-full rounded-xl border border-[#dedbd0] bg-white px-3 text-base sm:text-xs font-medium text-[#171813] outline-none focus:border-black"
                     >
                       {QA_CATEGORIES.map((cat) => (
                         <option key={cat.id} value={cat.id}>
@@ -719,7 +791,7 @@ export function BotTemplatesConsole({
                       value={qaFormQuestion}
                       onChange={(e) => setQaFormQuestion(e.target.value)}
                       placeholder="e.g. iPhone 15 Pro Max အတွက် ဘယ် cooler အဆင်ပြေဆုံးလဲ?"
-                      className="h-10 w-full rounded-xl border border-[#dedbd0] bg-white px-3 text-xs text-[#171813] outline-none focus:border-black font-medium"
+                      className="h-10 w-full rounded-xl border border-[#dedbd0] bg-white px-3 text-base sm:text-xs text-[#171813] outline-none focus:border-black font-medium"
                     />
                   </div>
 
@@ -733,7 +805,7 @@ export function BotTemplatesConsole({
                       value={qaFormAnswer}
                       onChange={(e) => setQaFormAnswer(e.target.value)}
                       placeholder="e.g. iPhone 12 နဲ့အထက်အတွက် MagSafe magnetic cooler ကို တိုက်ရိုက်ကပ်သုံးနိုင်ပါတယ်။ ဂိမ်းဆော့ရင်း အပူချိန် 15-20°C ထိ အမြန်လျှော့ချပေးနိုင်ပါတယ်..."
-                      className="w-full rounded-xl border border-[#dedbd0] bg-white p-3 text-xs text-[#171813] outline-none focus:border-black leading-relaxed"
+                      className="w-full rounded-xl border border-[#dedbd0] bg-white p-3 text-base sm:text-xs text-[#171813] outline-none focus:border-black leading-relaxed"
                     />
                     <p className="mt-1 text-[11px] text-[#77776f]">
                       Write clear advice or policy. The AI seamlessly adapts this knowledge during conversations.
@@ -771,11 +843,11 @@ export function BotTemplatesConsole({
               )}
 
               {/* Category Filter Pills */}
-              <div className="flex max-w-full overflow-x-auto gap-1.5 pb-1">
+              <div className="flex max-w-full overflow-x-auto gap-1.5 pb-1 no-scrollbar">
                 <button
                   type="button"
                   onClick={() => setQaCategoryFilter("all")}
-                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
                     qaCategoryFilter === "all"
                       ? "bg-black text-white"
                       : "bg-[#f5f4ed] text-[#555] hover:bg-[#eee]"
@@ -790,7 +862,7 @@ export function BotTemplatesConsole({
                       key={cat.id}
                       type="button"
                       onClick={() => setQaCategoryFilter(cat.id)}
-                      className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                      className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
                         qaCategoryFilter === cat.id
                           ? "bg-black text-white"
                           : "bg-[#f5f4ed] text-[#555] hover:bg-[#eee]"
@@ -886,7 +958,25 @@ export function BotTemplatesConsole({
               </div>
             </div>
           ) : (
-            <div className="card p-5 sm:p-6 space-y-4">
+            <div className={`card p-4 sm:p-6 space-y-4 ${mobileTab === "editor" ? "block" : "hidden xl:block"}`}>
+              {/* Mobile View Switch Header */}
+              <div className="flex xl:hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("directory")}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-[#626258] hover:text-black"
+                >
+                  <ChevronLeft size={14} /> Triggers & Feed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("preview")}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#f0eee6] px-2.5 py-1 text-xs font-bold text-[#171914] hover:bg-[#e6e2d8]"
+                >
+                  Telegram Preview <ChevronRight size={14} />
+                </button>
+              </div>
+
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#dedbd0] pb-4">
                 <div>
                   <div className="flex items-center gap-2">
@@ -959,17 +1049,17 @@ export function BotTemplatesConsole({
                   value={draftContent}
                   onChange={(e) => handleDraftChange(e.target.value)}
                   placeholder="Enter message text here..."
-                  className="w-full rounded-xl border border-[#dedbd0] bg-white p-4 text-sm text-[#171914] leading-relaxed outline-none focus:border-black transition font-mono"
+                  className="w-full rounded-xl border border-[#dedbd0] bg-white p-3 sm:p-4 text-base sm:text-sm text-[#171914] leading-relaxed outline-none focus:border-black transition font-mono"
                 />
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-2">
                 <button
                   type="button"
                   disabled={pending}
                   onClick={handleReset}
-                  className="flex h-11 items-center gap-2 rounded-xl border border-[#dedbd0] bg-white px-4 text-xs font-bold text-[#626258] hover:border-black hover:text-[#171813] transition disabled:opacity-40"
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[#dedbd0] bg-white px-4 text-xs font-bold text-[#626258] hover:border-black hover:text-[#171813] transition disabled:opacity-40"
                 >
                   <RotateCcw size={14} /> Reset to factory default
                 </button>
@@ -978,7 +1068,7 @@ export function BotTemplatesConsole({
                   type="button"
                   disabled={pending || draftContent.trim() === activeTemplate.content.trim()}
                   onClick={handleSave}
-                  className="flex h-11 items-center gap-2 rounded-xl bg-[#c7f36b] px-6 text-xs font-bold text-[#171914] hover:bg-[#bbf055] shadow-sm transition disabled:opacity-40"
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#c7f36b] px-6 text-xs font-bold text-[#171914] hover:bg-[#bbf055] shadow-sm transition disabled:opacity-40"
                 >
                   <Save size={14} /> {pending ? "Saving..." : "Save Template"}
                 </button>
@@ -989,7 +1079,25 @@ export function BotTemplatesConsole({
           {/* ============================================================== */}
           {/* RIGHT PANE: TELEGRAM LIVE SIMULATOR / PREVIEW                  */}
           {/* ============================================================== */}
-          <div className="card p-5 sm:p-6 space-y-4">
+          <div className={`card p-4 sm:p-6 space-y-4 ${mobileTab === "preview" ? "block" : "hidden xl:block"}`}>
+            {/* Mobile View Switch Header */}
+            <div className="flex xl:hidden items-center justify-between gap-2 border-b border-[#dedbd0] pb-2.5">
+              <button
+                type="button"
+                onClick={() => setMobileTab("editor")}
+                className="inline-flex items-center gap-1 text-xs font-bold text-[#626258] hover:text-black"
+              >
+                <ChevronLeft size={14} /> Back to {isAiAgentSelected ? "Q&A Feed" : "Editor"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileTab("directory")}
+                className="inline-flex items-center gap-1 rounded-lg bg-[#f0eee6] px-2.5 py-1 text-xs font-bold text-[#171914] hover:bg-[#e6e2d8]"
+              >
+                Directory
+              </button>
+            </div>
+
             <div className="flex items-center justify-between border-b border-[#dedbd0] pb-3">
               <div>
                 <p className="eyebrow">
@@ -1112,14 +1220,14 @@ export function BotTemplatesConsole({
                     <p className="text-[10px] font-bold uppercase tracking-wider text-[#77776f] mb-1.5">
                       Test Fed Q&A Questions:
                     </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {qaItems.slice(0, 5).map((item) => (
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar sm:flex-wrap">
+                      {qaItems.slice(0, 8).map((item) => (
                         <button
                           key={item.id}
                           type="button"
                           disabled={testLoading}
                           onClick={() => handleTestSubmit(item.question)}
-                          className="rounded-lg border border-[#dedbd0] bg-white px-2 py-1 text-[11px] font-medium text-[#171813] hover:border-black hover:bg-[#fbfaf6] transition disabled:opacity-40 max-w-[240px] truncate"
+                          className="shrink-0 whitespace-nowrap rounded-lg border border-[#dedbd0] bg-white px-2 py-1 text-[11px] font-medium text-[#171813] hover:border-black hover:bg-[#fbfaf6] transition disabled:opacity-40 max-w-[260px] truncate"
                           title={item.question}
                         >
                           {item.question}
@@ -1141,7 +1249,7 @@ export function BotTemplatesConsole({
                       onChange={(e) => setTestQuestion(e.target.value)}
                       placeholder="Ask any question to test AI with your fed data..."
                       disabled={testLoading}
-                      className="h-10 flex-1 rounded-xl border border-[#dedbd0] bg-white px-3 text-xs text-[#171914] outline-none focus:border-black"
+                      className="h-10 flex-1 rounded-xl border border-[#dedbd0] bg-white px-3 text-base sm:text-xs text-[#171813] outline-none focus:border-black"
                     />
                     <button
                       type="submit"
