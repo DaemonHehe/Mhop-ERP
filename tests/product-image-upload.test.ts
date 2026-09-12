@@ -157,5 +157,48 @@ describe("Product & PUBG Account Image Uploads and Multi-Image Support", () => {
       ]);
       expect(publicItem.availability).toBe("available");
     });
+
+    it("preserves images array and description for Gaming Gadget storefront view", () => {
+      const gadget: InventoryItem = {
+        id: "gadget-item-1",
+        variantId: "variant-gadget-1",
+        name: "Flydigi Apex 4 Gaming Controller",
+        brand: "Flydigi",
+        category: "Gaming Gadgets",
+        subcategory: "Controllers",
+        image: "/api/media/apex4-front.webp",
+        images: [
+          "/api/media/apex4-front.webp",
+          "/api/media/apex4-back.webp",
+          "/api/media/apex4-box.webp",
+        ],
+        sku: "FDG-APEX4-WHT",
+        color: "White",
+        storage: null,
+        ram: null,
+        condition: "Brand New Sealed",
+        price: 245000,
+        cost: 180000,
+        stock: 5,
+        warranty: 12,
+        tagline: "Adjustable force feedback triggers",
+        specs: [{ label: "Sticks", value: "Hall Effect" }],
+        description:
+          "Official Flydigi Apex 4 wireless gaming controller with adjustable tension alloy sticks, full color interactive screen, and 1000Hz polling rate.",
+        lowStockThreshold: 2,
+        listingStatus: "available",
+      };
+
+      const publicItem = toPublicCatalogItem(gadget);
+      expect(publicItem.image).toBe("/api/media/apex4-front.webp");
+      expect(publicItem.images).toHaveLength(3);
+      expect(publicItem.images).toEqual([
+        "/api/media/apex4-front.webp",
+        "/api/media/apex4-back.webp",
+        "/api/media/apex4-box.webp",
+      ]);
+      expect(publicItem.description).toContain("Official Flydigi Apex 4");
+      expect(publicItem.availability).toBe("available");
+    });
   });
 });

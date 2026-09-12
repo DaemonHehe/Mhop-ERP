@@ -29,7 +29,7 @@ Use a dedicated staging database and test Telegram bots. Record the date, tester
 
 ## Purchase and fulfillment
 
-- [ ] Shop search, filters, comparison, gadget bundles, and checkout work at desktop and 390px widths.
+- [ ] Shop search, filters, gadget bundles, and checkout work at desktop and 390px widths.
 - [ ] Payment evidence attaches to the intended order; staff approval/rejection updates the order and alerts.
 - [ ] Payment verification is checked against the provider by staff.
 - [ ] Physical serial assignment rejects wrong variants, reused serials, and concurrent duplicate allocation.

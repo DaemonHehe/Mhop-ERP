@@ -24,6 +24,7 @@ import {
   calculateSettlementAfterOrderDeletion,
   shouldRestoreOrderInventory,
 } from "@/lib/services/order.service";
+import { orderSchema } from "@/lib/validation/schemas";
 
 describe("Deposit + COD Orders and Royal Express Settlement", () => {
   describe("Permanent order deletion accounting", () => {
@@ -79,21 +80,21 @@ describe("Deposit + COD Orders and Royal Express Settlement", () => {
       const orderTotal = productsSubtotal + deliveryCalc.customerDeliveryFee;
       expect(orderTotal).toBe(255_500);
 
-      // Default required deposit: 10,000 MMK
+      // Default required deposit: 5,000 MMK
       const requiredDeposit = calculateRequiredDeposit(orderTotal, false);
-      expect(requiredDeposit).toBe(10_000);
+      expect(requiredDeposit).toBe(5_000);
 
-      // Customer pays Royal on delivery (COD): 255,500 - 10,000 = 245,500 MMK
+      // Customer pays Royal on delivery (COD): 255,500 - 5,000 = 250,500 MMK
       const customerCodToRoyal = orderTotal - requiredDeposit;
-      expect(customerCodToRoyal).toBe(245_500);
+      expect(customerCodToRoyal).toBe(250_500);
 
       // Expected Royal deduction: 4,500 MMK
       const expectedRoyalDeduction = deliveryCalc.expectedCourierCost;
       expect(expectedRoyalDeduction).toBe(4500);
 
-      // Expected Royal transfer to shop: 245,500 - 4,500 = 241,000 MMK
+      // Expected Royal transfer to shop: 250,500 - 4,500 = 246,000 MMK
       const expectedRoyalTransfer = customerCodToRoyal - expectedRoyalDeduction;
-      expect(expectedRoyalTransfer).toBe(241_000);
+      expect(expectedRoyalTransfer).toBe(246_000);
 
       // Customer balance becomes zero once customer pays Royal, while Royal payout is an internal transfer
       const customerBalanceAfterCod = customerCodToRoyal - customerCodToRoyal;
@@ -254,14 +255,14 @@ describe("Deposit + COD Orders and Royal Express Settlement", () => {
   });
 
   describe("Required Deposit Calculation Rules", () => {
-    it("defaults physical gadgets to 10,000 MMK deposit", () => {
+    it("defaults physical gadgets to 5,000 MMK deposit", () => {
       const deposit = calculateRequiredDeposit(255_000, false);
-      expect(deposit).toBe(10_000);
+      expect(deposit).toBe(5_000);
     });
 
-    it("caps deposit at order total if order is under 10,000 MMK", () => {
-      const deposit = calculateRequiredDeposit(7_500, false);
-      expect(deposit).toBe(7_500);
+    it("caps deposit at order total if order is under 5,000 MMK", () => {
+      const deposit = calculateRequiredDeposit(3_500, false);
+      expect(deposit).toBe(3_500);
     });
 
     it("requires 100% prepayment for digital products (PUBG accounts)", () => {
@@ -459,4 +460,74 @@ describe("Deposit + COD Orders and Royal Express Settlement", () => {
       }
     });
   });
+
+  describe("Checkout Payment Methods: COD vs Full-Prepaid", () => {
+    it("validates COD and Full-Prepaid as valid payment methods in orderSchema", () => {
+      const codResult = orderSchema.safeParse({
+        customerName: "Kyaw Kyaw",
+        phone: "0912345678",
+        shippingAddress: "No. 123 Bogyoke St",
+        destinationCity: "Yangon",
+        paymentMethod: "COD",
+        items: [{ productId: "p1", quantity: 1 }],
+      });
+      expect(codResult.success).toBe(true);
+
+      const prepaidResult = orderSchema.safeParse({
+        customerName: "Kyaw Kyaw",
+        phone: "0912345678",
+        shippingAddress: "No. 123 Bogyoke St",
+        destinationCity: "Yangon",
+        paymentMethod: "Full-Prepaid",
+        items: [{ productId: "p1", quantity: 1 }],
+      });
+      expect(prepaidResult.success).toBe(true);
+    });
+
+    it("calculates 5,000 MMK deposit for COD and sets remaining balance as COD amount", () => {
+      const orderTotal = 65000;
+      const isDigitalOnly = false;
+      const paymentMethod: string = "COD";
+
+      const isFullPrepaid = paymentMethod === "Full-Prepaid" || isDigitalOnly;
+      const requiredDeposit = isFullPrepaid
+        ? orderTotal
+        : calculateRequiredDeposit(orderTotal, isDigitalOnly);
+      const codAmount = Math.max(0, orderTotal - requiredDeposit);
+
+      expect(requiredDeposit).toBe(5000);
+      expect(codAmount).toBe(60000);
+    });
+
+    it("calculates 100% full prepayment and zero COD for Full-Prepaid physical orders", () => {
+      const orderTotal = 65000;
+      const isDigitalOnly = false;
+      const paymentMethod: string = "Full-Prepaid";
+
+      const isFullPrepaid = paymentMethod === "Full-Prepaid" || isDigitalOnly;
+      const requiredDeposit = isFullPrepaid
+        ? orderTotal
+        : calculateRequiredDeposit(orderTotal, isDigitalOnly);
+      const codAmount = Math.max(0, orderTotal - requiredDeposit);
+
+      expect(requiredDeposit).toBe(65000);
+      expect(codAmount).toBe(0);
+    });
+
+    it("enforces 100% full prepayment for digital items even if COD is selected", () => {
+      const orderTotal = 150000;
+      const isDigitalOnly = true;
+      const paymentMethod: string = "COD";
+
+      const isFullPrepaid = paymentMethod === "Full-Prepaid" || isDigitalOnly;
+      const requiredDeposit = isFullPrepaid
+        ? orderTotal
+        : calculateRequiredDeposit(orderTotal, isDigitalOnly);
+      const codAmount = Math.max(0, orderTotal - requiredDeposit);
+
+      expect(requiredDeposit).toBe(150000);
+      expect(codAmount).toBe(0);
+    });
+  });
 });
+

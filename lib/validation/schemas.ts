@@ -19,7 +19,9 @@ export const orderSchema = z.object({
   shippingAddress: z.string().trim().max(500).default(""),
   destinationCity: z.string().trim().max(120).default("Yangon"),
   shippingZone: z.string().trim().max(40).default("yangonInner"),
-  paymentMethod: z.enum(["kbzpay", "wavepay", "bank", "cash"]).default("kbzpay"),
+  paymentMethod: z
+    .enum(["COD", "Full-Prepaid", "kbzpay", "wavepay", "bank", "cash"])
+    .default("COD"),
   orderSource: z
     .enum([
       "web",
@@ -112,8 +114,9 @@ export const catalogItemSchema = z
   .object({
     name: text(180),
     brand: text(80),
-    category: z.enum(["Gaming Gadgets", "PUBG Accounts"]),
+    category: z.enum(["Gaming Gadgets", "PUBG Accounts", "Preorder Items"]),
     subcategory: text(80),
+    waitingTime: optionalText(80),
     description: optionalText(1000),
     imageUrl: imageSource,
     imageUrls: z.array(imageSource).max(25).default([]),
@@ -134,8 +137,8 @@ export const catalogItemSchema = z
     lowStockThreshold: z.coerce.number().int().min(0).max(100_000),
   })
   .superRefine((value, ctx) => {
-    if (value.category === "PUBG Accounts") {
-      if (value.stockQuantity !== 0) ctx.addIssue({ code: "custom", path: ["stockQuantity"], message: "PUBG accounts do not hold stock" });
+    if (value.category === "PUBG Accounts" || value.category === "Preorder Items") {
+      if (value.stockQuantity !== 0) ctx.addIssue({ code: "custom", path: ["stockQuantity"], message: `${value.category} do not hold stock` });
     }
     if (value.costPrice > value.price)
       ctx.addIssue({
@@ -295,7 +298,9 @@ export const adminCreateOrderSchema = z.object({
   customDeliveryFee: z.coerce.number().min(0).max(1_000_000_000).optional(),
   customCourierCost: z.coerce.number().min(0).max(1_000_000_000).optional(),
   internalNotes: z.string().trim().max(2000).default(""),
-  paymentMethod: z.enum(["kbzpay", "wavepay", "bank", "cash"]).default("kbzpay"),
+  paymentMethod: z
+    .enum(["COD", "Full-Prepaid", "kbzpay", "wavepay", "bank", "cash"])
+    .default("COD"),
   items: z
     .array(
       z.object({

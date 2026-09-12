@@ -55,11 +55,15 @@ export const products = pgTable("products", {
   category: varchar("category", { length: 80 }).notNull(),
   subcategory: varchar("subcategory", { length: 80 }).notNull(),
   description: text("description"),
+  waitingTime: varchar("waiting_time", { length: 80 }),
   imageUrl: text("image_url"),
   imageUrls: jsonb("image_urls").$type<string[]>().default([]),
   baseCost: numeric("base_cost", { precision: 14, scale: 2 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
-});
+}, (table) => [
+  index("products_sort_order_idx").on(table.sortOrder),
+]);
 
 // --- Product Variants ---
 export const productVariants = pgTable(
@@ -201,7 +205,7 @@ export const orders = pgTable(
     packedWeightKg: numeric("packed_weight_kg", { precision: 8, scale: 2 }).notNull().default("1.00"),
     expectedCourierCost: numeric("expected_courier_cost", { precision: 14, scale: 2 }).notNull().default("0"),
     actualCourierCost: numeric("actual_courier_cost", { precision: 14, scale: 2 }),
-    requiredDeposit: numeric("required_deposit", { precision: 14, scale: 2 }).notNull().default("10000"),
+    requiredDeposit: numeric("required_deposit", { precision: 14, scale: 2 }).notNull().default("5000"),
     customerPaidAmount: numeric("customer_paid_amount", { precision: 14, scale: 2 }).notNull().default("0"),
     customerBalance: numeric("customer_balance", { precision: 14, scale: 2 }).notNull().default("0"),
     codAmount: numeric("cod_amount", { precision: 14, scale: 2 }).notNull().default("0"),

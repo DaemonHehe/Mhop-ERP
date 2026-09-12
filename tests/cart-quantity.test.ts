@@ -84,13 +84,13 @@ describe("Cart & Multiple Quantity Support", () => {
       const deliveryFee = 3_500; // Yangon delivery
       const orderTotal = itemsSubtotal + deliveryFee; // 108,500 MMK
 
-      // Standard physical item deposit is 10,000 MMK
+      // Standard physical item deposit is 5,000 MMK
       const requiredDeposit = calculateRequiredDeposit(orderTotal, false);
-      expect(requiredDeposit).toBe(10_000);
+      expect(requiredDeposit).toBe(5_000);
 
       // Remaining COD to pay courier on delivery
       const codAmount = orderTotal - requiredDeposit;
-      expect(codAmount).toBe(98_500);
+      expect(codAmount).toBe(103_500);
     });
   });
 });

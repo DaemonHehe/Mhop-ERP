@@ -15,6 +15,7 @@ export interface CheckoutSummaryItem {
     storage?: string | null;
     color?: string | null;
     subcategory?: string | null;
+    waitingTime?: string | null;
   };
   quantity: number;
   sku: string;
@@ -86,6 +87,14 @@ export function CheckoutSummary({
               </p>
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[#77776f]">
                 <span>{p.storage || p.color || p.subcategory || p.category}</span>
+                {p.waitingTime && (
+                  <>
+                    <span>·</span>
+                    <span className="font-semibold text-[#1c55b5]">
+                      ⏳ {p.waitingTime}
+                    </span>
+                  </>
+                )}
                 <span>·</span>
                 <span className="font-semibold text-black">
                   Qty: {quantity}

@@ -3,8 +3,9 @@ export type Condition =
   | "Open Box Grade A+"
   | "Refurbished Grade A"
   | "Grade B"
-  | "Verified Digital Account";
-export type Category = "Gaming Gadgets" | "PUBG Accounts";
+  | "Verified Digital Account"
+  | "Brand New Preorder";
+export type Category = "Gaming Gadgets" | "PUBG Accounts" | "Preorder Items";
 export type Subcategory =
   | "Gaming Headphones"
   | "Cooling Fans"
@@ -13,7 +14,12 @@ export type Subcategory =
   | "Gaming Earbuds"
   | "Starter Accounts"
   | "Competitive Accounts"
-  | "Collector Accounts";
+  | "Collector Accounts"
+  | "Upcoming Releases"
+  | "Preorder Gadgets"
+  | "Special Editions"
+  | "Custom Orders"
+  | string;
 
 export interface Product {
   id: string;
@@ -21,6 +27,7 @@ export interface Product {
   brand: string;
   category: Category;
   subcategory: Subcategory;
+  waitingTime?: string | null;
   image: string;
   tagline: string;
   specs: { label: string; value: string }[];
@@ -33,6 +40,7 @@ export interface Product {
   ram?: string;
   condition: Condition;
   warranty: number;
+  sortOrder?: number;
 }
 
 export interface Order {

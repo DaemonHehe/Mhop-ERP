@@ -148,7 +148,7 @@ export function calculateRoyalDelivery(input: DeliveryQuoteInput): DeliveryRateS
 
 /**
  * Calculates standard required deposit:
- * - Physical gadgets default to 10,000 MMK deposit, capped at the order total.
+ * - Physical gadgets default to 5,000 MMK deposit, capped at the order total.
  * - PUBG digital accounts require 100% full prepayment.
  * - Admins can override the required deposit.
  */
@@ -163,5 +163,5 @@ export function calculateRequiredDeposit(
   if (customDeposit != null && Number.isFinite(customDeposit) && customDeposit >= 0) {
     return Math.min(orderTotal, Math.max(0, customDeposit));
   }
-  return Math.min(orderTotal, 10000);
+  return Math.min(orderTotal, 5000);
 }

@@ -81,7 +81,7 @@ export default async function Checkout({
           <div className="mt-6 rounded-2xl border border-[#ffcdbe] bg-[#fff2ee] p-4 sm:p-5 text-xs sm:text-sm text-[#b83814]">
             <p className="font-bold">⚠️ Mixed Cart Detected · ပစ္စည်းအမျိုးအစား ခွဲခြား၍ ဝယ်ယူပေးပါရန်</p>
             <p className="mt-1 leading-relaxed">
-              PUBG Accounts (Digital delivery with 100% prepayment) and Physical Gaming Gadgets (Royal Express shipping with 10,000 MMK deposit &amp; COD) cannot be ordered in the same checkout. Please return to shop and checkout digital accounts and physical gadgets separately.
+              PUBG Accounts (Digital delivery with 100% prepayment) and Physical Gaming Gadgets (Royal Express shipping with 5,000 MMK deposit &amp; COD) cannot be ordered in the same checkout. Please return to shop and checkout digital accounts and physical gadgets separately.
             </p>
           </div>
         )}

@@ -23,7 +23,12 @@ import {
 import { ModalPortal } from "@/components/modal-portal";
 import { clientConfig } from "@/lib/client-config";
 
-const departments = ["All", "PUBG Accounts", "Gaming Gadgets"] as const;
+const departments = [
+  "All",
+  "Gaming Gadgets",
+  "PUBG Accounts",
+  "Preorder Items",
+] as const;
 const gadgetTypes = [
   "All gadgets",
   "Gaming Headphones",
@@ -37,6 +42,13 @@ const accountTypes = [
   "Starter Accounts",
   "Competitive Accounts",
   "Collector Accounts",
+] as const;
+const preorderTypes = [
+  "All preorders",
+  "Upcoming Releases",
+  "Preorder Gadgets",
+  "Special Editions",
+  "Custom Orders",
 ] as const;
 
 export function Storefront({
@@ -52,15 +64,25 @@ export function Storefront({
     useState<(typeof gadgetTypes)[number]>("All gadgets");
   const [accountType, setAccountType] =
     useState<(typeof accountTypes)[number]>("All accounts");
+  const [preorderType, setPreorderType] =
+    useState<(typeof preorderTypes)[number]>("All preorders");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
-  const [compare, setCompare] = useState<string[]>([]);
-  const [galleryModal, setGalleryModal] = useState<{
-    title: string;
-    images: string[];
-    activeIndex: number;
+  const [productDetail, setProductDetail] = useState<{
+    product: PublicCatalogItem;
+    activeImageIndex: number;
   } | null>(null);
+
+  const openProductDetails = (
+    product: PublicCatalogItem,
+    initialImageIndex = 0,
+  ) => {
+    setProductDetail({
+      product,
+      activeImageIndex: initialImageIndex,
+    });
+  };
 
   const totalCartCount = useMemo(
     () => Object.values(cart).reduce((sum, qty) => sum + qty, 0),
@@ -135,13 +157,23 @@ export function Storefront({
           department !== "PUBG Accounts" ||
           accountType === "All accounts" ||
           p.subcategory === accountType;
+        const matchesPreorder =
+          department !== "Preorder Items" ||
+          preorderType === "All preorders" ||
+          p.subcategory === preorderType;
         const matchesQuery =
-          `${p.name} ${p.brand} ${p.subcategory} ${p.tagline}`
+          `${p.name} ${p.brand} ${p.subcategory} ${p.tagline} ${p.waitingTime || ""}`
             .toLowerCase()
             .includes(query.toLowerCase());
-        return matchesDept && matchesGadget && matchesAccount && matchesQuery;
+        return (
+          matchesDept &&
+          matchesGadget &&
+          matchesAccount &&
+          matchesPreorder &&
+          matchesQuery
+        );
       }),
-    [products, department, gadgetType, accountType, query],
+    [products, department, gadgetType, accountType, preorderType, query],
   );
 
   return (
@@ -294,6 +326,7 @@ export function Storefront({
                     setDepartment(category);
                     setGadgetType("All gadgets");
                     setAccountType("All accounts");
+                    setPreorderType("All preorders");
                   }}
                   key={category}
                   className={`whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-bold transition ${department === category ? "bg-black text-white shadow-md" : "border border-[#dedbd1] bg-white/65 text-[#5e6158]"}`}
@@ -332,110 +365,119 @@ export function Storefront({
               ))}
             </div>
           )}
+          {department === "Preorder Items" && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {preorderTypes.map((type) => (
+                <button
+                  onClick={() => setPreorderType(type)}
+                  key={type}
+                  className={`whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-bold ${preorderType === type ? "bg-[#c7f36b]" : "bg-[#f1efe8]"}`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
       <section className="mx-auto grid max-w-7xl gap-4 px-5 py-7 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((p, index) => (
           <article
             key={p.variantId}
-            className="group overflow-hidden rounded-[22px] border border-[#ddd9ce] bg-[#fffef9]"
+            className="group flex flex-col justify-between overflow-hidden rounded-[22px] border border-[#ddd9ce] bg-[#fffef9] transition duration-300 hover:border-[#bbb7aa] hover:shadow-lg"
           >
-            <div
-              className={`relative aspect-[4/3] overflow-hidden bg-[#e8e6df] ${
-                p.images && p.images.length > 1 ? "cursor-pointer" : ""
-              }`}
-              onClick={() => {
-                if (p.images && p.images.length > 1) {
-                  setGalleryModal({
-                    title: p.name,
-                    images: p.images,
-                    activeIndex: 0,
-                  });
-                }
-              }}
-            >
-              <Image
-                src={p.image}
-                alt={p.name}
-                fill
-                priority={index < 2}
-                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
-              />
-              {p.images && p.images.length > 1 && (
+            <div>
+              <div
+                className="relative aspect-[4/3] overflow-hidden bg-[#e8e6df] cursor-pointer"
+                onClick={() => openProductDetails(p)}
+              >
+                <Image
+                  src={p.image}
+                  alt={p.name}
+                  fill
+                  priority={index < 2}
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
+                />
+                {p.images && p.images.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openProductDetails(p);
+                    }}
+                    className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/75 px-2.5 py-1 text-[11px] font-bold text-white shadow-xs backdrop-blur-md hover:bg-black transition"
+                  >
+                    <Camera size={12} /> {p.images.length} photos
+                  </button>
+                )}
+              </div>
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="eyebrow">
+                      {p.brand} · {p.subcategory}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openProductDetails(p)}
+                      className="mt-1 block text-left group/title w-full"
+                    >
+                      <h2 className="display text-2xl font-semibold group-hover/title:text-[#416c17] transition line-clamp-1">
+                        {p.name}
+                      </h2>
+                    </button>
+                  </div>
+                  <span
+                    className={`pill shrink-0 ${
+                      p.category === "Preorder Items"
+                        ? "bg-[#e8f2fc] text-[#1c55b5]"
+                        : p.availability === "sold_out"
+                          ? "bg-[#f1f0eb] text-[#73766d]"
+                          : p.availability === "low"
+                            ? "bg-[#fff1ec] text-[#a84422]"
+                            : "bg-[#effbdc] text-[#416c17]"
+                    }`}
+                  >
+                    {p.category === "Preorder Items"
+                      ? `Preorder · ${p.waitingTime || "7-14 days"}`
+                      : p.availability === "sold_out"
+                        ? "Sold out"
+                        : p.availability === "low"
+                          ? "Only a few left"
+                          : "Available"}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-[#5c5d57] line-clamp-2 leading-relaxed">
+                  {p.description || p.tagline}
+                </p>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setGalleryModal({
-                      title: p.name,
-                      images: p.images!,
-                      activeIndex: 0,
-                    });
-                  }}
-                  className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/75 px-2.5 py-1 text-[11px] font-bold text-white shadow-xs backdrop-blur-md hover:bg-black transition"
+                  onClick={() => openProductDetails(p)}
+                  className="mt-2.5 inline-flex items-center gap-1 text-xs font-bold text-[#416c17] hover:underline"
                 >
-                  <Camera size={12} /> {p.images.length} photos
+                  <span>View details</span>
+                  <ArrowRight size={12} />
                 </button>
-              )}
-              <button
-                aria-label={`${compare.includes(p.sku) ? "Remove" : "Add"} ${p.name} ${compare.includes(p.sku) ? "from" : "to"} comparison`}
-                onClick={() =>
-                  setCompare((x) =>
-                    x.includes(p.sku)
-                      ? x.filter((i) => i !== p.sku)
-                      : x.length < 3
-                        ? [...x, p.sku]
-                        : x,
-                  )
-                }
-                className={`absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full ${compare.includes(p.sku) ? "bg-[#c7f36b]" : "bg-white/90"}`}
-              >
-                {compare.includes(p.sku) ? (
-                  <Check size={16} />
-                ) : (
-                  <Plus size={16} />
+                {p.specs.length > 0 && (
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {p.specs.map((s) => (
+                      <div
+                        key={s.label}
+                        className="rounded-xl bg-[#f1efe8] p-2.5"
+                      >
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-[#888]">
+                          {s.label}
+                        </p>
+                        <p className="mt-1 text-xs font-bold">{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="eyebrow">
-                    {p.brand} · {p.subcategory}
-                  </p>
-                  <h2 className="display mt-1 text-2xl font-semibold">
-                    {p.name}
-                  </h2>
-                </div>
-                <span
-                  className={`pill ${p.availability === "sold_out" ? "bg-[#f1f0eb] text-[#73766d]" : p.availability === "low" ? "bg-[#fff1ec] text-[#a84422]" : "bg-[#effbdc] text-[#416c17]"}`}
-                >
-                  {p.availability === "sold_out"
-                    ? "Sold out"
-                    : p.availability === "low"
-                      ? "Only a few left"
-                      : "Available"}
-                </span>
               </div>
-              <p className="mt-2 text-sm text-[#77776f]">{p.tagline}</p>
-              {p.specs.length > 0 && (
-                <div className="mt-5 grid grid-cols-3 gap-2">
-                  {p.specs.map((s) => (
-                    <div
-                      key={s.label}
-                      className="rounded-xl bg-[#f1efe8] p-2.5"
-                    >
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#888]">
-                        {s.label}
-                      </p>
-                      <p className="mt-1 text-xs font-bold">{s.value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="mt-5 flex items-end justify-between gap-2">
+            </div>
+            <div className="p-5 pt-0 mt-auto border-t border-[#f0eee6] pt-4 flex items-end justify-between gap-2">
                 <div>
                   <p className="text-[10px] text-[#888]">
                     {getProductQty(p.sku) > 1
@@ -504,12 +546,11 @@ export function Storefront({
                       onClick={() => updateCartQty(p.sku, 1, 20)}
                       className="rounded-full bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition active:scale-95"
                     >
-                      Add to bag
+                      {p.category === "Preorder Items" ? "Preorder" : "Add to bag"}
                     </button>
                   )
                 )}
               </div>
-            </div>
           </article>
         ))}
         {!filtered.length && (
@@ -525,6 +566,7 @@ export function Storefront({
                 setDepartment("All");
                 setGadgetType("All gadgets");
                 setAccountType("All accounts");
+                setPreorderType("All preorders");
               }}
               className="mt-5 rounded-full bg-black px-5 py-2.5 text-xs font-bold text-white"
             >
@@ -614,156 +656,354 @@ export function Storefront({
           {clientConfig.developer.name}
         </span>
       </footer>
-      {compare.length > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center gap-3 rounded-2xl bg-black p-3 text-white shadow-2xl">
-          <div className="flex -space-x-2">
-            {compare.map((sku) => {
-              const p = products.find((x) => x.sku === sku)!;
-              return (
-                <Image
-                  key={sku}
-                  src={p.image}
-                  width={40}
-                  height={40}
-                  className="h-10 w-10 rounded-full border-2 border-black object-cover"
-                  alt=""
-                  unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
-                />
-              );
-            })}
-          </div>
-          <p className="flex-1 text-xs font-bold">
-            {compare.length} selected for comparison
-          </p>
-          <Link
-            href={`/shop/compare?skus=${compare.join(",")}`}
-            className="rounded-full bg-[#c7f36b] px-4 py-2 text-xs font-bold text-black"
-          >
-            Compare
-          </Link>
-          <button aria-label="Clear comparison" onClick={() => setCompare([])}>
-            <X size={16} />
-          </button>
-        </div>
-      )}
 
-      {galleryModal && (
+      {productDetail && (
         <ModalPortal
-          isOpen={Boolean(galleryModal)}
-          onClose={() => setGalleryModal(null)}
+          isOpen={Boolean(productDetail)}
+          onClose={() => setProductDetail(null)}
         >
           <div
-            className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 p-2 sm:p-4 backdrop-blur-md transition-opacity"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-2 sm:p-4 md:p-6 backdrop-blur-md transition-opacity duration-200"
             role="dialog"
             aria-modal="true"
-            aria-label={galleryModal.title}
+            aria-label={productDetail.product.name}
             onClick={(e) => {
-              if (e.target === e.currentTarget) setGalleryModal(null);
+              if (e.target === e.currentTarget) setProductDetail(null);
             }}
           >
-            <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col items-center">
-              <div className="mb-2.5 sm:mb-3 flex w-full items-center justify-between text-white px-1">
-                <div>
-                  <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#c7f36b]">
-                    Verified Account Screenshots
-                  </p>
-                  <h3 className="text-sm font-bold text-white sm:text-lg line-clamp-1">
-                    {galleryModal.title}
-                  </h3>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative flex max-h-[94dvh] w-full max-w-4xl flex-col rounded-3xl border border-[#dedbd1] bg-[#fffef9] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            >
+              {/* Header */}
+              <div className="flex shrink-0 items-center justify-between border-b border-[#eee] bg-white px-5 py-4 sm:px-6">
+                <div className="min-w-0 flex-1 pr-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[#f1efe8] px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-[#666]">
+                      {productDetail.product.category}
+                    </span>
+                    <span className="text-xs text-[#777]">
+                      {productDetail.product.brand} · {productDetail.product.subcategory}
+                    </span>
+                  </div>
+                  <h2 className="display mt-1 truncate text-lg sm:text-2xl font-bold text-[#1f1f1d]">
+                    {productDetail.product.name}
+                  </h2>
                 </div>
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <span className="rounded-full bg-white/20 px-2.5 py-1 text-xs font-bold text-white backdrop-blur-xs">
-                    {galleryModal.activeIndex + 1} / {galleryModal.images.length}
+                <button
+                  type="button"
+                  aria-label="Close details"
+                  onClick={() => setProductDetail(null)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#dedbd1] text-[#777] hover:bg-[#f1efe8] hover:text-black transition active:scale-95"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Body: 2 Columns on desktop, scrollable */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
+                <div className="grid gap-6 md:grid-cols-2 md:gap-8">
+                  {/* Left Column: Image Viewer */}
+                  <div className="space-y-3">
+                    {(() => {
+                      const allImgs =
+                        productDetail.product.images &&
+                        productDetail.product.images.length > 0
+                          ? productDetail.product.images
+                          : productDetail.product.image
+                            ? [productDetail.product.image]
+                            : ["/placeholder.svg"];
+                      const currentIdx = Math.min(
+                        productDetail.activeImageIndex,
+                        allImgs.length - 1,
+                      );
+                      return (
+                        <>
+                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-[#f1efe8] border border-[#e2dfd5]">
+                            <img
+                              src={allImgs[currentIdx]}
+                              alt={`${productDetail.product.name} - Photo ${currentIdx + 1}`}
+                              className="h-full w-full object-contain"
+                            />
+                            {allImgs.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  aria-label="Previous image"
+                                  onClick={() =>
+                                    setProductDetail((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            activeImageIndex:
+                                              (currentIdx -
+                                                1 +
+                                                allImgs.length) %
+                                              allImgs.length,
+                                          }
+                                        : null,
+                                    )
+                                  }
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white hover:bg-black transition shadow-md"
+                                >
+                                  <ChevronLeft size={18} />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Next image"
+                                  onClick={() =>
+                                    setProductDetail((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            activeImageIndex:
+                                              (currentIdx + 1) % allImgs.length,
+                                          }
+                                        : null,
+                                    )
+                                  }
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white hover:bg-black transition shadow-md"
+                                >
+                                  <ChevronRight size={18} />
+                                </button>
+                                <span className="absolute bottom-2.5 right-2.5 rounded-md bg-black/75 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                                  {currentIdx + 1} / {allImgs.length}
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          {allImgs.length > 1 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {allImgs.map((img, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() =>
+                                    setProductDetail((prev) =>
+                                      prev
+                                        ? { ...prev, activeImageIndex: idx }
+                                        : null,
+                                    )
+                                  }
+                                  className={`relative h-14 w-18 shrink-0 overflow-hidden rounded-xl border-2 transition ${
+                                    currentIdx === idx
+                                      ? "border-[#416c17] scale-105"
+                                      : "border-transparent opacity-60 hover:opacity-100"
+                                  }`}
+                                >
+                                  <img
+                                    src={img}
+                                    alt={`Thumbnail ${idx + 1}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Right Column: Details & Specs */}
+                  <div className="flex flex-col space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs text-[#777]">
+                        SKU: {productDetail.product.sku}
+                      </span>
+                      <span
+                        className={`pill ${
+                          productDetail.product.category === "Preorder Items"
+                            ? "bg-[#e8f2fc] text-[#1c55b5]"
+                            : productDetail.product.availability === "sold_out"
+                              ? "bg-[#f1f0eb] text-[#73766d]"
+                              : productDetail.product.availability === "low"
+                                ? "bg-[#fff1ec] text-[#a84422]"
+                                : "bg-[#effbdc] text-[#416c17]"
+                        }`}
+                      >
+                        {productDetail.product.category === "Preorder Items"
+                          ? "Preorder Open"
+                          : productDetail.product.availability === "sold_out"
+                            ? "Sold out"
+                            : productDetail.product.availability === "low"
+                              ? "Only a few left"
+                              : "Available"}
+                      </span>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#dedbd1] bg-[#fbfaf6] p-4">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#888]">
+                        Price
+                      </span>
+                      <p className="display text-2xl sm:text-3xl font-black text-black">
+                        {formatMMK(productDetail.product.price)}
+                      </p>
+                    </div>
+
+                    {/* Specs & Highlights */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {productDetail.product.category === "Preorder Items" && (
+                        <div className="rounded-xl border border-[#b8d4f8] bg-[#f0f6ff] p-2.5 col-span-2">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-[#1c55b5]">
+                            Estimated Waiting Time
+                          </span>
+                          <span className="mt-0.5 block font-bold text-[#144294] text-sm">
+                            ⏳ {productDetail.product.waitingTime || "7-14 business days"}
+                          </span>
+                        </div>
+                      )}
+                      <div className="rounded-xl border border-[#e5e2d8] bg-white p-2.5">
+                        <span className="block text-[10px] font-bold uppercase text-[#888]">
+                          Warranty
+                        </span>
+                        <span className="mt-0.5 block font-bold text-black">
+                          {productDetail.product.warranty > 0
+                            ? `${productDetail.product.warranty} Months Warranty`
+                            : "Direct Verified Handover"}
+                        </span>
+                      </div>
+                      {productDetail.product.color && (
+                        <div className="rounded-xl border border-[#e5e2d8] bg-white p-2.5">
+                          <span className="block text-[10px] font-bold uppercase text-[#888]">
+                            Color / Edition
+                          </span>
+                          <span className="mt-0.5 block font-bold text-black truncate">
+                            {productDetail.product.color}
+                          </span>
+                        </div>
+                      )}
+                      <div className="rounded-xl border border-[#e5e2d8] bg-white p-2.5 col-span-2">
+                        <span className="block text-[10px] font-bold uppercase text-[#888]">
+                          Authenticity & Trust
+                        </span>
+                        <span className="mt-0.5 block font-bold text-[#416c17]">
+                          ✓ 100% Genuine · Official Store Direct
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Description Block */}
+                    <div className="rounded-2xl border border-[#e5e2d8] bg-white p-4 sm:p-5">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[#777] mb-2.5">
+                        Product Description
+                      </h4>
+                      {productDetail.product.description ? (
+                        <div className="text-xs sm:text-sm text-[#333] whitespace-pre-line leading-relaxed font-normal">
+                          {productDetail.product.description}
+                        </div>
+                      ) : (
+                        <p className="text-xs sm:text-sm text-[#777] italic leading-relaxed">
+                          {productDetail.product.tagline ||
+                            "Authentic gaming hardware curated for Myanmar gamers. Guaranteed original quality."}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer: Action / Add to Bag */}
+              <div className="shrink-0 border-t border-[#eee] bg-[#fbfaf6] px-5 py-3.5 sm:px-6 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#666]">In bag:</span>
+                  <span className="font-bold text-black text-sm">
+                    {getProductQty(productDetail.product.sku)} item
+                    {getProductQty(productDetail.product.sku) === 1 ? "" : "s"}
                   </span>
-                  <button
-                    type="button"
-                    aria-label="Close modal"
-                    onClick={() => setGalleryModal(null)}
-                    className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 transition"
-                  >
-                    <X size={18} />
-                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {productDetail.product.availability === "sold_out" ? (
+                    <span className="rounded-full bg-[#f1f0eb] px-5 py-2.5 text-xs font-bold text-[#888]">
+                      Sold out
+                    </span>
+                  ) : productDetail.product.category === "PUBG Accounts" ? (
+                    getProductQty(productDetail.product.sku) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeFromCart(productDetail.product.sku)
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#376911] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#2b520d] transition active:scale-95"
+                      >
+                        <Check size={14} />
+                        <span>In bag (Click to remove)</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateCartQty(productDetail.product.sku, 1, 1)
+                        }
+                        className="rounded-full bg-black px-6 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition active:scale-95"
+                      >
+                        Add to bag
+                      </button>
+                    )
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      {getProductQty(productDetail.product.sku) > 0 ? (
+                        <div className="flex items-center gap-1.5 rounded-full border border-[#dcd9cf] bg-white p-1 shadow-xs">
+                          <button
+                            type="button"
+                            aria-label={`Decrease quantity of ${productDetail.product.name}`}
+                            onClick={() =>
+                              updateCartQty(productDetail.product.sku, -1)
+                            }
+                            className="grid h-7 w-7 place-items-center rounded-full bg-[#f1efe8] text-black hover:bg-[#e4e1d7] active:scale-95 transition"
+                          >
+                            <Minus size={13} />
+                          </button>
+                          <span className="min-w-6 text-center text-xs font-black">
+                            {getProductQty(productDetail.product.sku)}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Increase quantity of ${productDetail.product.name}`}
+                            disabled={
+                              getProductQty(productDetail.product.sku) >= 20
+                            }
+                            onClick={() =>
+                              updateCartQty(productDetail.product.sku, 1, 20)
+                            }
+                            className="grid h-7 w-7 place-items-center rounded-full bg-black text-white hover:bg-neutral-800 disabled:opacity-30 active:scale-95 transition"
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateCartQty(productDetail.product.sku, 1, 20)
+                          }
+                          className="rounded-full bg-black px-6 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition active:scale-95"
+                        >
+                          {productDetail.product.category === "Preorder Items"
+                            ? "Preorder Now"
+                            : "Add to bag"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {totalCartCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductDetail(null);
+                        setCartDrawerOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[#c7f36b] px-4 py-2.5 text-xs font-bold text-black hover:bg-[#b8e858] transition active:scale-95 shadow-sm"
+                    >
+                      <ShoppingBag size={14} />
+                      <span>View bag ({totalCartCount})</span>
+                    </button>
+                  )}
                 </div>
               </div>
-
-              <div className="relative flex aspect-[16/10] w-full max-h-[58dvh] sm:max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl bg-black">
-                <img
-                  src={galleryModal.images[galleryModal.activeIndex]}
-                  alt={`${galleryModal.title} screenshot ${galleryModal.activeIndex + 1}`}
-                  className="max-h-full max-w-full object-contain"
-                />
-
-                {galleryModal.images.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      aria-label="Previous image"
-                      onClick={() =>
-                        setGalleryModal((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                activeIndex:
-                                  (prev.activeIndex - 1 + prev.images.length) %
-                                  prev.images.length,
-                              }
-                            : null,
-                        )
-                      }
-                      className="absolute left-2 sm:left-3 top-1/2 grid h-9 w-9 sm:h-10 sm:w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
-                    >
-                      <ChevronLeft size={20} />
-                    </button>
-
-                    <button
-                      type="button"
-                      aria-label="Next image"
-                      onClick={() =>
-                        setGalleryModal((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                activeIndex:
-                                  (prev.activeIndex + 1) % prev.images.length,
-                              }
-                            : null,
-                        )
-                      }
-                      className="absolute right-2 sm:right-3 top-1/2 grid h-9 w-9 sm:h-10 sm:w-10 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black shadow-lg backdrop-blur-xs"
-                    >
-                      <ChevronRight size={20} />
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {galleryModal.images.length > 1 && (
-                <div className="mt-2.5 sm:mt-3 flex max-w-full gap-2 overflow-x-auto overscroll-contain p-1">
-                  {galleryModal.images.map((img, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      aria-label={`View screenshot ${idx + 1}`}
-                      onClick={() =>
-                        setGalleryModal((prev) =>
-                          prev ? { ...prev, activeIndex: idx } : null,
-                        )
-                      }
-                      className={`relative h-12 w-16 sm:h-14 sm:w-20 shrink-0 overflow-hidden rounded-lg border-2 transition ${
-                        galleryModal.activeIndex === idx
-                          ? "border-[#c7f36b] scale-105"
-                          : "border-transparent opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      <img
-                        src={img}
-                        alt={`Thumbnail ${idx + 1}`}
-                        className="h-full w-full object-cover"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         </ModalPortal>

@@ -19,6 +19,9 @@ const migrations = [
   "migrations/0020_customer_code_and_telegram_username.sql",
   "migrations/0021_drop_leads_table.sql",
   "migrations/0022_customer_secondary_phone.sql",
+  "migrations/0023_preorder_items_support.sql",
+  "migrations/0024_deposit_5000.sql",
+  "migrations/0025_add_products_sort_order.sql",
 ];
 
 try {

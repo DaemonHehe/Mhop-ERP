@@ -32,7 +32,7 @@ export const clientConfig = {
   },
   shipping: {
     courier: "Royal Express",
-    defaultDeposit: 10000,
+    defaultDeposit: 5000,
     zones: {
       yangonInner: {
         label: "Yangon (Inner)",

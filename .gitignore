@@ -34,3 +34,5 @@ public/uploads/*
 .idea/
 .DS_Store
 Thumbs.db
+output/
+

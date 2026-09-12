@@ -16,7 +16,9 @@
     "db:setup:test": "node scripts/setup-test-db.mjs",
     "db:migrate": "node scripts/migrate-all-latest.mjs",
     "db:clean": "node scripts/cleanup-database.mjs",
-    "db:seed": "node scripts/seed-catalog.mjs"
+    "db:seed": "node scripts/seed-catalog.mjs",
+    "db:backup-inventory": "node scripts/backup-inventory.mjs",
+    "db:restore-inventory": "node scripts/restore-inventory.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

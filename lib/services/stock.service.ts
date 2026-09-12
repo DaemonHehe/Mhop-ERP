@@ -1,4 +1,4 @@
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { z } from "zod";
 import {
@@ -38,6 +38,8 @@ export interface InventoryItem {
   description: string;
   lowStockThreshold: number;
   listingStatus?: string;
+  waitingTime?: string | null;
+  sortOrder?: number;
 }
 
 export type PublicAvailability = "available" | "low" | "sold_out";
@@ -61,16 +63,19 @@ export function toPublicCatalogItem(item: InventoryItem): PublicCatalogItem {
     availability:
       item.category === "PUBG Accounts"
         ? item.listingStatus === "available" ? "available" : "sold_out"
-        : stock < 1 ? "sold_out" : stock <= lowStockThreshold ? "low" : "available",
+        : item.category === "Preorder Items"
+          ? item.listingStatus === "withdrawn" ? "sold_out" : "available"
+          : stock < 1 ? "sold_out" : stock <= lowStockThreshold ? "low" : "available",
   };
 }
 
 export type CatalogItemInput = z.input<typeof catalogItemSchema>;
 
-const internalCondition = (category: "Gaming Gadgets" | "PUBG Accounts") =>
-  category === "PUBG Accounts"
-    ? "Verified Digital Account"
-    : "Brand New Sealed";
+const internalCondition = (category: "Gaming Gadgets" | "PUBG Accounts" | "Preorder Items") => {
+  if (category === "PUBG Accounts") return "Verified Digital Account";
+  if (category === "Preorder Items") return "Brand New Preorder";
+  return "Brand New Sealed";
+};
 
 const errorOf = (error: unknown) => {
   if (error instanceof Error && !(error as Error & { code?: string }).code)
@@ -131,7 +136,7 @@ export async function getDashboardSnapshot() {
 
 export async function getInventory(): Promise<InventoryItem[]> {
   if (!db) {
-    return demoProducts.map((p) => ({
+    return demoProducts.map((p, idx) => ({
       ...p,
       variantId: p.id,
       listingStatus: "available",
@@ -140,6 +145,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
       ram: p.ram || null,
       description: p.tagline,
       lowStockThreshold: 3,
+      sortOrder: p.sortOrder ?? idx,
     }));
   }
 
@@ -151,6 +157,7 @@ export async function getInventory(): Promise<InventoryItem[]> {
       brand: products.brand,
       category: products.category,
       subcategory: products.subcategory,
+      sortOrder: products.sortOrder,
       image: products.imageUrl,
       imageUrls: products.imageUrls,
       sku: productVariants.sku,
@@ -164,13 +171,15 @@ export async function getInventory(): Promise<InventoryItem[]> {
       listingStatus: productVariants.listingStatus,
       warranty: productVariants.warrantyMonths,
       description: products.description,
+      waitingTime: products.waitingTime,
       lowStockThreshold: productVariants.lowStockThreshold,
     })
     .from(productVariants)
     .innerJoin(products, eq(productVariants.productId, products.id))
     .where(
       and(eq(products.isActive, true), eq(productVariants.isActive, true)),
-    );
+    )
+    .orderBy(asc(products.sortOrder), asc(products.name));
 
   return rows.map((r) => {
     const primaryImage =
@@ -192,9 +201,11 @@ export async function getInventory(): Promise<InventoryItem[]> {
       tagline: `${r.brand} ${r.category}`,
       specs: [],
       description: r.description || "",
+      waitingTime: r.waitingTime || null,
       lowStockThreshold: Number(r.lowStockThreshold),
       stock: Number(r.stock),
       warranty: Number(r.warranty),
+      sortOrder: Number(r.sortOrder ?? 0),
     };
   });
 }
@@ -202,6 +213,44 @@ export async function getInventory(): Promise<InventoryItem[]> {
 export async function getPublicCatalog(): Promise<PublicCatalogItem[]> {
   const inventory = await getInventory();
   return inventory.map(toPublicCatalogItem);
+}
+
+export async function reorderProducts(
+  orderedProductIds: string[],
+): Promise<ActionResult> {
+  try {
+    if (!Array.isArray(orderedProductIds) || orderedProductIds.length === 0) {
+      return { ok: false, error: "No products provided for reordering." };
+    }
+    if (!db) {
+      return {
+        ok: false,
+        error: "Database is not configured. Add DATABASE_URL to .env.local.",
+      };
+    }
+
+    await db.transaction(async (tx) => {
+      for (let index = 0; index < orderedProductIds.length; index++) {
+        const id = orderedProductIds[index];
+        if (id) {
+          await tx
+            .update(products)
+            .set({ sortOrder: index })
+            .where(eq(products.id, id));
+        }
+      }
+    });
+
+    await audit(
+      "catalog.reorder",
+      "catalog",
+      JSON.stringify({ count: orderedProductIds.length }),
+    );
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorOf(error) };
+  }
 }
 
 function mutationError(error: unknown, fallback: string) {
@@ -253,6 +302,7 @@ export async function createCatalogItem(
           category: value.category,
           subcategory: value.subcategory,
           description: value.description || null,
+          waitingTime: value.waitingTime || null,
           imageUrl: primaryImg,
           imageUrls: allImgs,
           baseCost: String(value.costPrice),
@@ -269,8 +319,9 @@ export async function createCatalogItem(
           costPrice: String(value.costPrice),
           warrantyMonths: value.warrantyMonths,
           stockQuantity:
-            value.category === "PUBG Accounts" ? 0 : value.stockQuantity,
-          lowStockThreshold: value.category === "PUBG Accounts" ? 0 : value.lowStockThreshold,
+            value.category === "Gaming Gadgets" ? value.stockQuantity : 0,
+          lowStockThreshold:
+            value.category === "Gaming Gadgets" ? value.lowStockThreshold : 0,
           listingStatus: value.listingStatus,
         })
         .returning({ id: productVariants.id });
@@ -347,6 +398,7 @@ export async function updateCatalogItem(
           brand: value.brand,
           subcategory: value.subcategory,
           description: value.description || null,
+          waitingTime: value.waitingTime || null,
           imageUrl: primaryImg,
           imageUrls: allImgs,
           baseCost: String(value.costPrice),
@@ -362,10 +414,9 @@ export async function updateCatalogItem(
           costPrice: String(value.costPrice),
           warrantyMonths: value.warrantyMonths,
           stockQuantity:
-            value.category === "PUBG Accounts"
-              ? 0
-              : value.stockQuantity,
-          lowStockThreshold: value.category === "PUBG Accounts" ? 0 : value.lowStockThreshold,
+            value.category === "Gaming Gadgets" ? value.stockQuantity : 0,
+          lowStockThreshold:
+            value.category === "Gaming Gadgets" ? value.lowStockThreshold : 0,
           listingStatus: value.listingStatus,
         })
         .where(eq(productVariants.id, variantId));

@@ -265,6 +265,9 @@ export async function deleteOrder(
                   inArray(productVariants.listingStatus, ["reserved", "sold"]),
                 ),
               );
+          } else if (item.category === "Preorder Items") {
+            // Preorder items do not hold physical stock
+            continue;
           } else {
             await tx
               .update(productVariants)
@@ -440,7 +443,7 @@ export async function getOrders(): Promise<OperationalOrder[]> {
     orderSource: o.orderSource || "web",
     destinationCity: o.destinationCity,
     destinationState: o.destinationState,
-    requiredDeposit: num(o.requiredDeposit) || (num(o.totalAmount) > 0 ? (itemCategories.get(o.id)?.every((c) => c === "PUBG Accounts") ? num(o.totalAmount) : Math.min(10000, num(o.totalAmount))) : 0),
+    requiredDeposit: num(o.requiredDeposit) || (num(o.totalAmount) > 0 ? (itemCategories.get(o.id)?.every((c) => c === "PUBG Accounts") ? num(o.totalAmount) : Math.min(5000, num(o.totalAmount))) : 0),
     customerPaidAmount: num(o.customerPaidAmount),
     customerBalance:
       o.customerBalance != null && num(o.customerBalance) > 0
@@ -450,7 +453,7 @@ export async function getOrders(): Promise<OperationalOrder[]> {
       o.codAmount != null && num(o.codAmount) > 0
         ? num(o.codAmount)
         : (!(itemCategories.get(o.id)?.every((c) => c === "PUBG Accounts")) && num(o.totalAmount) > num(o.customerPaidAmount)
-            ? Math.max(0, num(o.totalAmount) - Math.max(num(o.customerPaidAmount), num(o.requiredDeposit) || 10000))
+            ? Math.max(0, num(o.totalAmount) - Math.max(num(o.customerPaidAmount), num(o.requiredDeposit) || 5000))
             : 0),
     expectedCourierCost:
       o.expectedCourierCost != null && num(o.expectedCourierCost) > 0
@@ -985,7 +988,10 @@ export async function createOrder(
       const total = tierPerks.netProductSubtotal + shippingFee;
       const pointsEarned = calculatePointsFromAmount(total);
 
-      const requiredDeposit = calculateRequiredDeposit(total, digitalOnly);
+      const isFullPrepaid = parsed.data.paymentMethod === "Full-Prepaid";
+      const requiredDeposit = isFullPrepaid
+        ? total
+        : calculateRequiredDeposit(total, digitalOnly);
       const codAmount = Math.max(0, total - requiredDeposit);
 
       const [created] = await tx
@@ -1058,6 +1064,10 @@ export async function createOrder(
               .where(and(eq(productVariants.id, item.variantId), eq(productVariants.listingStatus, "available")))
               .returning({ id: productVariants.id });
             if (!reserved) throw new Error(`${item.sku} is already reserved`);
+            continue;
+          }
+          if (item.category === "Preorder Items") {
+            // Preorder items do not hold physical stock
             continue;
           }
           const [updated] = await tx
@@ -2043,6 +2053,9 @@ export async function adminCreateOrder(
             )
             .returning({ id: productVariants.id });
           if (!reserved) throw new Error(`${variant.sku} is already reserved`);
+        } else if (variant.category === "Preorder Items") {
+          // Preorder items do not hold physical stock
+          continue;
         } else {
           const [updated] = await tx
             .update(productVariants)

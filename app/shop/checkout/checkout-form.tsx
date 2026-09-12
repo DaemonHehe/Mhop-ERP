@@ -66,7 +66,7 @@ interface CompletedOrderData {
   requiredDeposit: number;
   codAmount: number;
   destinationCity: string;
-  paymentMethod: "kbzpay" | "wavepay" | "bank";
+  paymentMethod: "COD" | "Full-Prepaid" | string;
   customerName: string;
   phone: string;
   isDigitalOnly: boolean;
@@ -93,9 +93,13 @@ export function CheckoutForm({
   const [customerName, setCustomerName] = useState("");
   const [telegramUserId, setTelegramUserId] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"COD" | "Full-Prepaid">(
+    digitalOnly ? "Full-Prepaid" : "COD",
+  );
   const [completedOrder, setCompletedOrder] =
     useState<CompletedOrderData | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.Telegram?.WebApp) {
@@ -192,7 +196,10 @@ export function CheckoutForm({
   const shipping = digitalOnly ? 0 : tierPerks.netDeliveryFee;
   const orderTotal = discountedSubtotal + shipping;
   const pointsToEarn = tierPerks.pointsToEarn;
-  const requiredDeposit = calculateRequiredDeposit(orderTotal, digitalOnly);
+  const isFullPrepaid = paymentMethod === "Full-Prepaid" || digitalOnly;
+  const requiredDeposit = isFullPrepaid
+    ? orderTotal
+    : calculateRequiredDeposit(orderTotal, digitalOnly);
   const codAmount = Math.max(0, orderTotal - requiredDeposit);
 
   const submit = (form: FormData) =>
@@ -205,11 +212,11 @@ export function CheckoutForm({
       form.set("destinationCity", selectedCity);
       form.set("weightKg", "1.0");
       form.set("orderSource", "web");
+      form.set("paymentMethod", paymentMethod);
+      if (telegramUsername) form.set("telegramUsername", telegramUsername);
+      if (telegramUserId) form.set("telegramUserId", telegramUserId);
       const result = await createOrder(form);
       if (result.ok && result.data?.orderCode) {
-        const pMethod =
-          (form.get("paymentMethod") as "kbzpay" | "wavepay" | "bank") ||
-          "kbzpay";
         const cName = (form.get("customerName") as string) || customerName;
         const cPhone = (form.get("phone") as string) || "";
         setCompletedOrder({
@@ -218,7 +225,7 @@ export function CheckoutForm({
           requiredDeposit,
           codAmount,
           destinationCity: deliverySnapshot.destinationCity,
-          paymentMethod: pMethod,
+          paymentMethod,
           customerName: cName,
           phone: cPhone,
           isDigitalOnly: digitalOnly,
@@ -240,6 +247,12 @@ export function CheckoutForm({
     }
   };
 
+  const handleCopyAccount = (acc: string) => {
+    navigator.clipboard.writeText(acc);
+    setCopiedAccount(acc);
+    setTimeout(() => setCopiedAccount(null), 2500);
+  };
+
   const handleProceedInBot = () => {
     if (typeof window !== "undefined" && window.Telegram?.WebApp?.close) {
       try {
@@ -253,12 +266,9 @@ export function CheckoutForm({
   };
 
   if (completedOrder) {
-    const payment =
-      completedOrder.paymentMethod === "wavepay"
-        ? clientConfig.payments.wavePay
-        : completedOrder.paymentMethod === "bank"
-          ? clientConfig.payments.bank
-          : clientConfig.payments.kbzPay;
+    const isFull =
+      completedOrder.paymentMethod === "Full-Prepaid" ||
+      completedOrder.isDigitalOnly;
 
     return (
       <div className="space-y-5 sm:space-y-6">
@@ -310,20 +320,30 @@ export function CheckoutForm({
 
           <div className="mt-3.5 space-y-2 border-t border-[#f1efe8] pt-3 text-xs sm:text-sm">
             <div className="flex items-center justify-between gap-2">
+              <span className="text-[#777]">Payment Method · ငွေပေးချေမှုစနစ်</span>
+              <span className="rounded-full bg-[#f0f4ff] px-2.5 py-0.5 text-[11px] font-bold text-[#2b59c3]">
+                {isFull ? "Full-Prepaid (100% Prepayment)" : "COD (5,000 MMK Deposit)"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
               <span className="text-[#777]">Order Total · စုစုပေါင်း</span>
               <span className="font-mono font-bold text-black">
                 {formatMMK(completedOrder.total)}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2 font-bold text-[#ff6b35]">
-              <span>Deposit Required Now · ယခုလွှဲရမည့် စရန်ငွေ</span>
+              <span>
+                {isFull
+                  ? "Full Prepayment Required Now · ယခုလွှဲရမည့်ငွေ"
+                  : "Deposit Required Now · ယခုလွှဲရမည့် စရန်ငွေ"}
+              </span>
               <span className="font-mono">{formatMMK(completedOrder.requiredDeposit)}</span>
             </div>
             {!completedOrder.isDigitalOnly && (
               <div className="flex items-center justify-between gap-2 text-[#555]">
                 <span>Remaining COD on Delivery · ပစ္စည်းရောက်မှ ပေးချေရန်</span>
                 <span className="font-mono font-bold text-black">
-                  {formatMMK(completedOrder.codAmount)}
+                  {isFull ? "0 MMK (Fully Paid)" : formatMMK(completedOrder.codAmount)}
                 </span>
               </div>
             )}
@@ -350,60 +370,92 @@ export function CheckoutForm({
         </div>
 
         {/* Payment Account Details */}
-        <div className="rounded-2xl border border-[#dcd9cf] bg-white p-5">
-          <p className="text-xs font-bold text-black">
-            Payment Transfer Details · ငွေလွှဲရန် အကောင့်အချက်အလက်
-          </p>
-          <div className="mt-3 rounded-xl bg-[#f7f6f1] p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#333]">
-                {payment.label}
-              </span>
-              <span className="rounded-full bg-[#e8e6df] px-2.5 py-0.5 text-[10px] font-bold text-[#555]">
-                {completedOrder.paymentMethod.toUpperCase()}
-              </span>
-            </div>
-            <div className="mt-2 space-y-1.5 text-xs">
-              <p className="text-[#777]">
-                Account Name:{" "}
-                <strong className="text-black">{payment.holder}</strong>
-              </p>
-              <p className="text-[#777]">
-                Account Number:{" "}
-                <strong className="font-mono text-sm text-black">
-                  {payment.account}
-                </strong>
-              </p>
-              <p className="text-[#777]">
-                {completedOrder.isDigitalOnly
-                  ? "Transfer Full Amount: "
-                  : "Deposit to Transfer Now: "}
-                <strong className="font-bold text-[#ff6b35]">
-                  {formatMMK(completedOrder.requiredDeposit)}
-                </strong>
-              </p>
-            </div>
+        <div className="rounded-2xl border border-[#dcd9cf] bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-black">
+              Payment Transfer Accounts · ငွေလွှဲရန် အကောင့်များ
+            </p>
+            <span className="rounded-full bg-[#effbdc] px-2.5 py-0.5 text-[10px] font-bold text-[#376911]">
+              Amount to Transfer: {formatMMK(completedOrder.requiredDeposit)}
+            </span>
           </div>
-          <div className="mt-3 text-xs leading-5 text-[#62635d]">
-            {completedOrder.isDigitalOnly ? (
+          <p className="mt-1 text-xs text-[#777]">
+            {isFull
+              ? `အောက်ပါ အကောင့် ၃ ခုအနက် အဆင်ပြေရာသို့ စုစုပေါင်း ${formatMMK(completedOrder.requiredDeposit)} အပြည့် လွှဲပေးပါရန်`
+              : `အောက်ပါ အကောင့် ၃ ခုအနက် အဆင်ပြေရာသို့ စရန်ငွေ ${formatMMK(completedOrder.requiredDeposit)} လွှဲပေးပါရန်`}
+          </p>
+
+          <div className="mt-3.5 grid gap-3 sm:grid-cols-3">
+            {paymentEntries.map(([key, payment]) => (
+              <div
+                key={key}
+                className="flex flex-col justify-between rounded-xl border border-[#e5e2d8] bg-[#f7f6f1] p-3.5"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#1f1f1d]">
+                      {payment.label}
+                    </span>
+                    <span className="rounded-full bg-[#e8e6df] px-2 py-0.5 text-[9px] font-bold uppercase text-[#555]">
+                      {key}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1 text-xs">
+                    <p className="text-[#777]">
+                      Name: <strong className="text-black">{payment.holder}</strong>
+                    </p>
+                    <p className="text-[#777]">
+                      Acc:{" "}
+                      <strong className="font-mono text-xs sm:text-sm text-black">
+                        {payment.account}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopyAccount(payment.account)}
+                  className="mt-3 flex items-center justify-center gap-1 rounded-lg border border-[#dedbd1] bg-white px-2.5 py-1.5 text-[11px] font-bold text-[#444] transition hover:bg-[#eee] active:bg-[#e4e2d8]"
+                >
+                  {copiedAccount === payment.account ? (
+                    <>
+                      <Check size={12} className="text-[#376911]" />
+                      <span className="text-[#376911]">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      <span>Copy Number</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3.5 rounded-xl bg-[#fffcf5] border border-[#f5ecd2] p-3.5 text-xs leading-5 text-[#62635d]">
+            {isFull ? (
               <>
-                💡 PUBG Account မှာ 100% Prepayment စနစ်ဖြစ်ပါသဖြင့် စုစုပေါင်း{" "}
-                <strong>{formatMMK(completedOrder.total)}</strong> ကို
-                လွှဲပေးပြီးပါက <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order
-                Code <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram
-                Bot သို့ ပေးပို့ပေးပါခင်ဗျာ။ Admin Team မှ အကောင့်အချက်အလက်ကို
-                ချက်ချင်း လွှဲပြောင်းပေးပါမည်။
+                💡 100% Prepayment စနစ်ဖြစ်ပါသဖြင့် စုစုပေါင်း{" "}
+                <strong>{formatMMK(completedOrder.total)}</strong> ကို အထက်ပါ
+                အကောင့်တစ်ခုခုသို့ လွှဲပေးပြီးပါက{" "}
+                <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order Code{" "}
+                <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram
+                Bot သို့ ပေးပို့ပေးပါခင်ဗျာ။ Admin Team မှ အတည်ပြုပြီး ချက်ချင်း
+                စီစဉ်ဆောင်ရွက်ပေးပါမည်။
               </>
             ) : (
               <>
                 💡 စရန်ငွေ{" "}
                 <strong>{formatMMK(completedOrder.requiredDeposit)}</strong> ကို
-                လွှဲပြီးပါက <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order
-                Code <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram
+                အထက်ပါ အကောင့်တစ်ခုခုသို့ လွှဲပြီးပါက{" "}
+                <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order Code{" "}
+                <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram
                 Bot သို့ ပေးပို့ပေးပါခင်ဗျာ။ စရန်ငွေ စစ်ဆေးအတည်ပြုပြီးသည်နှင့်
                 Royal Express ဖြင့် ထုတ်ပိုးပို့ဆောင်ပေးမည်ဖြစ်ပြီး ကျန်ငွေ{" "}
                 <strong>{formatMMK(completedOrder.codAmount)}</strong> ကို
-                ပစ္စည်းရောက်ရှိချိန်တွင် Royal Express courier သို့ ပေးချေနိုင်ပါသည်။
+                ပစ္စည်းရောက်ရှိချိန်တွင် Royal Express courier သို့
+                ပေးချေနိုင်ပါသည်။
               </>
             )}
           </div>
@@ -490,26 +542,19 @@ export function CheckoutForm({
           </div>
         </div>
 
-        <div>
-          <label htmlFor="checkout-telegram-tag" className="flex items-center justify-between text-xs font-bold text-[#1f1f1d]">
-            <span>Telegram Tag · တယ်လီဂရမ် Username</span>
-            <span className="text-[11px] font-normal text-[#777]">Optional · Point & VIP ချိတ်ဆက်ရန်</span>
-          </label>
-          <div className="relative mt-1.5">
-            <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center font-mono text-sm font-bold text-[#999]">
-              @
+        <input type="hidden" name="telegramUsername" value={telegramUsername} />
+        <input type="hidden" name="telegramUserId" value={telegramUserId} />
+        {telegramUsername && (
+          <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50/80 px-3.5 py-2.5 text-xs text-sky-900 shadow-xs">
+            <span className="text-base leading-none">✈️</span>
+            <span className="font-medium">
+              Telegram Account: <strong className="font-mono text-sky-950">@{telegramUsername}</strong>
             </span>
-            <input
-              id="checkout-telegram-tag"
-              name="telegramUsername"
-              value={telegramUsername}
-              onChange={(e) => setTelegramUsername(e.target.value.replace(/^@/, "").trim())}
-              placeholder="username"
-              maxLength={80}
-              className="h-12 w-full rounded-xl border border-[#dcd9cf] bg-white pl-8 pr-3.5 text-base sm:text-sm font-medium text-black shadow-xs transition hover:border-black focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-            />
+            <span className="ml-auto rounded-full bg-sky-200/80 px-2 py-0.5 text-[10px] font-extrabold text-sky-800">
+              Auto-linked
+            </span>
           </div>
-        </div>
+        )}
 
         {/* Customer Loyalty Tier & Perks Banner */}
         {loyalty?.found ? (
@@ -666,24 +711,70 @@ export function CheckoutForm({
           <legend className="px-1 text-xs font-bold text-[#666]">
             Payment method · ငွေပေးချေမည့်စနစ်
           </legend>
-          <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
-            {paymentEntries.map(([key, payment], index) => (
+          <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
+            {!digitalOnly && (
               <label
-                key={key}
-                className="flex min-h-[50px] cursor-pointer items-center gap-3 rounded-xl border border-[#e5e2d8] p-3.5 transition hover:bg-[#faf9f6] active:bg-[#f2efe8]"
+                className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 sm:p-4 transition ${
+                  paymentMethod === "COD"
+                    ? "border-black bg-[#faf9f6] ring-1 ring-black"
+                    : "border-[#e5e2d8] hover:bg-[#faf9f6]"
+                }`}
               >
                 <input
                   type="radio"
                   name="paymentMethod"
-                  value={key}
-                  defaultChecked={index === 0}
-                  className="h-4 w-4 accent-black"
+                  value="COD"
+                  checked={paymentMethod === "COD"}
+                  onChange={() => setPaymentMethod("COD")}
+                  className="mt-0.5 h-4 w-4 accent-black"
                 />
-                <span className="text-xs sm:text-sm font-bold text-[#1f1f1d]">
-                  {payment.label}
-                </span>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm font-bold text-[#1f1f1d]">
+                      Cash on Delivery (COD)
+                    </span>
+                    <span className="rounded-full bg-[#effbdc] px-2 py-0.5 text-[10px] font-bold text-[#376911]">
+                      Deposit 5,000 MMK
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#666] leading-relaxed">
+                    စရန်ငွေ 5,000 MMK ကြိုလွှဲပြီး ကျန်ငွေကို ပစ္စည်းရောက်ရှိချိန်တွင် Royal Express courier သို့ ပေးချေနိုင်ပါသည်။
+                  </p>
+                </div>
               </label>
-            ))}
+            )}
+
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 sm:p-4 transition ${
+                paymentMethod === "Full-Prepaid"
+                  ? "border-black bg-[#faf9f6] ring-1 ring-black"
+                  : "border-[#e5e2d8] hover:bg-[#faf9f6]"
+              } ${digitalOnly ? "sm:col-span-2" : ""}`}
+            >
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="Full-Prepaid"
+                checked={paymentMethod === "Full-Prepaid"}
+                onChange={() => setPaymentMethod("Full-Prepaid")}
+                className="mt-0.5 h-4 w-4 accent-black"
+              />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm font-bold text-[#1f1f1d]">
+                    Full-Prepaid (100% Prepayment)
+                  </span>
+                  <span className="rounded-full bg-[#f0f4ff] px-2 py-0.5 text-[10px] font-bold text-[#2b59c3]">
+                    100% Full Payment
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#666] leading-relaxed">
+                  {digitalOnly
+                    ? "PUBG Account အတွက် ၁၀၀% အပြည့် ကြိုတင်ငွေလွှဲပေးချေရပါမည်။"
+                    : "ပစ္စည်းတန်ဖိုး ၁၀၀% အပြည့် ကြိုလွှဲမည် (ပစ္စည်းရောက်မှ ထပ်မံပေးချေရန် မလိုပါ)။"}
+                </p>
+              </div>
+            </label>
           </div>
         </fieldset>
 
@@ -731,13 +822,19 @@ export function CheckoutForm({
             <span className="font-mono shrink-0">+{pointsToEarn} pts</span>
           </div>
           <div className="flex items-center justify-between gap-2 rounded-xl bg-[#effbdc] p-2.5 sm:p-3 font-bold text-[#376911] text-xs sm:text-sm">
-            <span className="min-w-0">Deposit to pay now · ယခုလွှဲရမည့် စရန်ငွေ</span>
+            <span className="min-w-0">
+              {isFullPrepaid
+                ? "Full Prepayment to pay now · ယခုလွှဲရမည့်ငွေ (100%)"
+                : "Deposit to pay now · ယခုလွှဲရမည့် စရန်ငွေ"}
+            </span>
             <span className="font-mono font-extrabold shrink-0 text-sm sm:text-base">{formatMMK(requiredDeposit)}</span>
           </div>
           {!digitalOnly && (
             <div className="flex items-center justify-between gap-2 rounded-xl bg-[#fff8e8] p-2.5 sm:p-3 font-bold text-[#9e5d00] text-xs sm:text-sm">
               <span className="min-w-0">Pay Royal on delivery (COD) · ပစ္စည်းရောက်မှ ပေးချေရန်</span>
-              <span className="font-mono font-extrabold shrink-0 text-sm sm:text-base">{formatMMK(codAmount)}</span>
+              <span className="font-mono font-extrabold shrink-0 text-sm sm:text-base">
+                {isFullPrepaid ? "0 MMK (Fully Paid)" : formatMMK(codAmount)}
+              </span>
             </div>
           )}
         </div>

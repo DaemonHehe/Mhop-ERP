@@ -117,7 +117,7 @@ async function cleanupOrderFixture(phone: string) {
   });
 }
 
-test("public storefront search, filters, bag, comparison and warranty navigation", async ({
+test("public storefront search, filters, bag, and warranty navigation", async ({
   page,
 }) => {
   await page.goto("/shop");
@@ -144,11 +144,7 @@ test("public storefront search, filters, bag, comparison and warranty navigation
     ).toBeVisible();
   }
 
-  const compare = firstCard.getByRole("button", {
-    name: /Add .* to comparison/,
-  });
-  await compare.click();
-  await expect(page.getByRole("link", { name: "Compare" })).toBeVisible();
+
 
   await page.getByRole("link", { name: "Warranty" }).click();
   await expect(

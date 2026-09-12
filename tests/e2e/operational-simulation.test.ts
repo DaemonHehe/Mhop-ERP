@@ -297,9 +297,9 @@ describe("Tier 1: Feature Coverage (Isolated Happy Paths)", () => {
       expect(delivery.expectedCourierCost).toBe(3400);
     });
 
-    it("T1.F3.2: calculateRequiredDeposit computes 10,000 MMK standard deposit for physical orders", () => {
+    it("T1.F3.2: calculateRequiredDeposit computes 5,000 MMK standard deposit for physical orders", () => {
       const deposit = calculateRequiredDeposit(150000, false);
-      expect(deposit).toBe(10000);
+      expect(deposit).toBe(5000);
     });
 
     it("T1.F3.3: calculateRequiredDeposit enforces 100% full prepayment for digital PUBG accounts", () => {

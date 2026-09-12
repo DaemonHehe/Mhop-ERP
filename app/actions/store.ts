@@ -250,6 +250,16 @@ export async function adjustStockAction(variantId: string, delta: number) {
   return result;
 }
 
+export async function reorderProductsAction(orderedProductIds: string[]) {
+  if (!(await authorizeStaff(["admin", "staff"])))
+    return { ok: false as const, error: "Unauthorized" };
+  const result = await stockService.reorderProducts(orderedProductIds);
+  if (result.ok) {
+    revalidateCatalog();
+  }
+  return result;
+}
+
 export async function assignDeviceToOrder(
   orderItemId: string,
   deviceUnitId: string,

@@ -224,3 +224,24 @@ export const orders: Order[] = [
 
 export const formatMMK = (value: number) =>
   `${new Intl.NumberFormat("en-US").format(value)} MMK`;
+
+export const CANONICAL_SUBCATEGORIES: Record<"Gaming Gadgets" | "PUBG Accounts" | "Preorder Items", string[]> = {
+  "Gaming Gadgets": [
+    "Gaming Headphones",
+    "Cooling Fans",
+    "Controllers",
+    "Charging Gear",
+    "Gaming Earbuds",
+  ],
+  "PUBG Accounts": [
+    "Starter Accounts",
+    "Competitive Accounts",
+    "Collector Accounts",
+  ],
+  "Preorder Items": [
+    "Upcoming Releases",
+    "Preorder Gadgets",
+    "Special Editions",
+    "Custom Orders",
+  ],
+};
