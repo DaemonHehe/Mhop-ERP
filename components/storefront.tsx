@@ -1,6 +1,6 @@
 "use client";
 import { brandAssets } from "@/lib/brand-assets";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { formatMMK } from "@/lib/data";
@@ -51,6 +51,208 @@ const preorderTypes = [
   "Custom Orders",
 ] as const;
 
+function ProductCardGallery({
+  product,
+  priority,
+  onOpenDetails,
+}: {
+  product: PublicCatalogItem;
+  priority: boolean;
+  onOpenDetails: (product: PublicCatalogItem, initialIndex: number) => void;
+}) {
+  const allImgs = useMemo(() => {
+    if (product.images && product.images.length > 0) return product.images;
+    if (product.image) return [product.image];
+    return ["/placeholder.svg"];
+  }, [product.images, product.image]);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  const isMouseDownRef = useRef(false);
+  const didSwipeRef = useRef(false);
+
+  const nextImage = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (allImgs.length <= 1) return;
+    setCurrentIndex((prev) => (prev + 1) % allImgs.length);
+  };
+
+  const prevImage = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (allImgs.length <= 1) return;
+    setCurrentIndex((prev) => (prev - 1 + allImgs.length) % allImgs.length);
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+    didSwipeRef.current = false;
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const t = e.changedTouches[0];
+    const diffX = t.clientX - touchStartRef.current.x;
+    const diffY = t.clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+
+    if (Math.abs(diffX) > 35 && Math.abs(diffX) > Math.abs(diffY)) {
+      didSwipeRef.current = true;
+      if (diffX < 0) {
+        setCurrentIndex((prev) => (prev + 1) % allImgs.length);
+      } else {
+        setCurrentIndex((prev) => (prev - 1 + allImgs.length) % allImgs.length);
+      }
+    }
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    mouseStartRef.current = { x: e.clientX, y: e.clientY };
+    isMouseDownRef.current = true;
+    didSwipeRef.current = false;
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || !mouseStartRef.current) return;
+    if (Math.abs(e.clientX - mouseStartRef.current.x) > 10) {
+      didSwipeRef.current = true;
+    }
+  };
+
+  const onMouseUp = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || !mouseStartRef.current) return;
+    const diffX = e.clientX - mouseStartRef.current.x;
+    isMouseDownRef.current = false;
+    mouseStartRef.current = null;
+
+    if (Math.abs(diffX) > 35) {
+      didSwipeRef.current = true;
+      if (diffX < 0) {
+        setCurrentIndex((prev) => (prev + 1) % allImgs.length);
+      } else {
+        setCurrentIndex((prev) => (prev - 1 + allImgs.length) % allImgs.length);
+      }
+    }
+  };
+
+  const handleClick = () => {
+    if (didSwipeRef.current) {
+      didSwipeRef.current = false;
+      return;
+    }
+    onOpenDetails(product, currentIndex);
+  };
+
+  if (allImgs.length <= 1) {
+    return (
+      <div
+        className="relative aspect-[4/3] overflow-hidden bg-[#e8e6df] cursor-pointer"
+        onClick={() => onOpenDetails(product, 0)}
+      >
+        <Image
+          src={allImgs[0]}
+          alt={product.name}
+          fill
+          priority={priority}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          unoptimized={
+            typeof allImgs[0] === "string" &&
+            allImgs[0].startsWith("/api/media")
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative aspect-[4/3] overflow-hidden bg-[#e8e6df] cursor-pointer select-none touch-pan-y group/card-gallery"
+      onClick={handleClick}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={() => {
+        isMouseDownRef.current = false;
+        mouseStartRef.current = null;
+      }}
+    >
+      {/* Sliding Image Track */}
+      <div
+        className="flex h-full w-full transition-transform duration-300 ease-out"
+        style={{ transform: `translateX(-${currentIndex * 100}%)` }}
+      >
+        {allImgs.map((img, idx) => (
+          <div key={idx} className="relative h-full w-full shrink-0">
+            <Image
+              src={img}
+              alt={`${product.name} - Photo ${idx + 1}`}
+              fill
+              priority={priority && idx === 0}
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              className="h-full w-full object-cover pointer-events-none"
+              unoptimized={typeof img === "string" && img.startsWith("/api/media")}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Photos Count Badge */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenDetails(product, currentIndex);
+        }}
+        className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/75 px-2.5 py-1 text-[11px] font-bold text-white shadow-xs backdrop-blur-md hover:bg-black transition"
+      >
+        <Camera size={12} /> {allImgs.length} photos
+      </button>
+
+      {/* Desktop Prev / Next Chevrons on hover */}
+      <button
+        type="button"
+        aria-label="Previous photo"
+        onClick={prevImage}
+        className="absolute left-2 top-1/2 -translate-y-1/2 z-10 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white opacity-0 group-hover/card-gallery:opacity-100 hover:bg-black transition-opacity active:scale-95 shadow-md"
+      >
+        <ChevronLeft size={16} />
+      </button>
+      <button
+        type="button"
+        aria-label="Next photo"
+        onClick={nextImage}
+        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white opacity-0 group-hover/card-gallery:opacity-100 hover:bg-black transition-opacity active:scale-95 shadow-md"
+      >
+        <ChevronRight size={16} />
+      </button>
+
+      {/* Pagination Dots */}
+      <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 backdrop-blur-xs">
+        {allImgs.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-label={`Go to photo ${i + 1}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setCurrentIndex(i);
+            }}
+            className={`h-1.5 rounded-full transition-all ${
+              i === currentIndex
+                ? "w-3.5 bg-white"
+                : "w-1.5 bg-white/50 hover:bg-white/80"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Storefront({
   products,
   bundles,
@@ -83,6 +285,113 @@ export function Storefront({
       activeImageIndex: initialImageIndex,
     });
   };
+
+  const modalImages = useMemo(() => {
+    if (!productDetail) return [];
+    if (
+      productDetail.product.images &&
+      productDetail.product.images.length > 0
+    ) {
+      return productDetail.product.images;
+    }
+    if (productDetail.product.image) {
+      return [productDetail.product.image];
+    }
+    return ["/placeholder.svg"];
+  }, [productDetail]);
+
+  const handleModalNext = useCallback(() => {
+    if (!productDetail || modalImages.length <= 1) return;
+    setProductDetail((prev) =>
+      prev
+        ? {
+            ...prev,
+            activeImageIndex: (prev.activeImageIndex + 1) % modalImages.length,
+          }
+        : null,
+    );
+  }, [productDetail, modalImages.length]);
+
+  const handleModalPrev = useCallback(() => {
+    if (!productDetail || modalImages.length <= 1) return;
+    setProductDetail((prev) =>
+      prev
+        ? {
+            ...prev,
+            activeImageIndex:
+              (prev.activeImageIndex - 1 + modalImages.length) %
+              modalImages.length,
+          }
+        : null,
+    );
+  }, [productDetail, modalImages.length]);
+
+  const modalTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const modalMouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  const modalIsDraggingRef = useRef(false);
+
+  const onModalTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    modalTouchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const onModalTouchEnd = (e: React.TouchEvent) => {
+    if (!modalTouchStartRef.current) return;
+    const t = e.changedTouches[0];
+    const diffX = t.clientX - modalTouchStartRef.current.x;
+    const diffY = t.clientY - modalTouchStartRef.current.y;
+    modalTouchStartRef.current = null;
+
+    if (Math.abs(diffX) > 35 && Math.abs(diffX) > Math.abs(diffY)) {
+      if (diffX < 0) {
+        handleModalNext();
+      } else {
+        handleModalPrev();
+      }
+    }
+  };
+
+  const onModalMouseDown = (e: React.MouseEvent) => {
+    modalMouseStartRef.current = { x: e.clientX, y: e.clientY };
+    modalIsDraggingRef.current = true;
+  };
+
+  const onModalMouseUp = (e: React.MouseEvent) => {
+    if (!modalIsDraggingRef.current || !modalMouseStartRef.current) return;
+    const diffX = e.clientX - modalMouseStartRef.current.x;
+    modalIsDraggingRef.current = false;
+    modalMouseStartRef.current = null;
+
+    if (Math.abs(diffX) > 35) {
+      if (diffX < 0) {
+        handleModalNext();
+      } else {
+        handleModalPrev();
+      }
+    }
+  };
+
+  const onModalMouseLeave = () => {
+    modalIsDraggingRef.current = false;
+    modalMouseStartRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!productDetail || modalImages.length <= 1) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handleModalPrev();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleModalNext();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [productDetail, modalImages.length, handleModalNext, handleModalPrev]);
 
   const totalCartCount = useMemo(
     () => Object.values(cart).reduce((sum, qty) => sum + qty, 0),
@@ -387,32 +696,11 @@ export function Storefront({
             className="group flex flex-col justify-between overflow-hidden rounded-[22px] border border-[#ddd9ce] bg-[#fffef9] transition duration-300 hover:border-[#bbb7aa] hover:shadow-lg"
           >
             <div>
-              <div
-                className="relative aspect-[4/3] overflow-hidden bg-[#e8e6df] cursor-pointer"
-                onClick={() => openProductDetails(p)}
-              >
-                <Image
-                  src={p.image}
-                  alt={p.name}
-                  fill
-                  priority={index < 2}
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                  unoptimized={typeof p.image === "string" && p.image.startsWith("/api/media")}
-                />
-                {p.images && p.images.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openProductDetails(p);
-                    }}
-                    className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/75 px-2.5 py-1 text-[11px] font-bold text-white shadow-xs backdrop-blur-md hover:bg-black transition"
-                  >
-                    <Camera size={12} /> {p.images.length} photos
-                  </button>
-                )}
-              </div>
+              <ProductCardGallery
+                product={p}
+                priority={index < 2}
+                onOpenDetails={openProductDetails}
+              />
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
@@ -706,75 +994,112 @@ export function Storefront({
                   {/* Left Column: Image Viewer */}
                   <div className="space-y-3">
                     {(() => {
-                      const allImgs =
-                        productDetail.product.images &&
-                        productDetail.product.images.length > 0
-                          ? productDetail.product.images
-                          : productDetail.product.image
-                            ? [productDetail.product.image]
-                            : ["/placeholder.svg"];
+                      const allImgs = modalImages;
                       const currentIdx = Math.min(
                         productDetail.activeImageIndex,
-                        allImgs.length - 1,
+                        Math.max(0, allImgs.length - 1),
                       );
                       return (
                         <>
-                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-[#f1efe8] border border-[#e2dfd5]">
-                            <img
-                              src={allImgs[currentIdx]}
-                              alt={`${productDetail.product.name} - Photo ${currentIdx + 1}`}
-                              className="h-full w-full object-contain"
-                            />
+                          {/* Swipeable Main Image Frame */}
+                          <div
+                            className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-[#f1efe8] border border-[#e2dfd5] select-none touch-pan-y group/modal-gallery cursor-grab active:cursor-grabbing"
+                            onTouchStart={onModalTouchStart}
+                            onTouchEnd={onModalTouchEnd}
+                            onMouseDown={onModalMouseDown}
+                            onMouseUp={onModalMouseUp}
+                            onMouseLeave={onModalMouseLeave}
+                          >
+                            {/* Sliding Track */}
+                            <div
+                              className="flex h-full w-full transition-transform duration-300 ease-out"
+                              style={{
+                                transform: `translateX(-${currentIdx * 100}%)`,
+                              }}
+                            >
+                              {allImgs.map((img, idx) => (
+                                <div
+                                  key={idx}
+                                  className="relative h-full w-full shrink-0 flex items-center justify-center p-2"
+                                >
+                                  <img
+                                    src={img}
+                                    alt={`${productDetail.product.name} - Photo ${idx + 1}`}
+                                    className="h-full w-full object-contain pointer-events-none select-none"
+                                    draggable={false}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+
                             {allImgs.length > 1 && (
                               <>
+                                {/* Prev Button */}
                                 <button
                                   type="button"
                                   aria-label="Previous image"
-                                  onClick={() =>
-                                    setProductDetail((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            activeImageIndex:
-                                              (currentIdx -
-                                                1 +
-                                                allImgs.length) %
-                                              allImgs.length,
-                                          }
-                                        : null,
-                                    )
-                                  }
-                                  className="absolute left-2 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white hover:bg-black transition shadow-md"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleModalPrev();
+                                  }}
+                                  className="absolute left-2.5 top-1/2 -translate-y-1/2 grid h-9 w-9 place-items-center rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-xs transition shadow-md active:scale-95"
                                 >
-                                  <ChevronLeft size={18} />
+                                  <ChevronLeft size={20} />
                                 </button>
+
+                                {/* Next Button */}
                                 <button
                                   type="button"
                                   aria-label="Next image"
-                                  onClick={() =>
-                                    setProductDetail((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            activeImageIndex:
-                                              (currentIdx + 1) % allImgs.length,
-                                          }
-                                        : null,
-                                    )
-                                  }
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white hover:bg-black transition shadow-md"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleModalNext();
+                                  }}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 grid h-9 w-9 place-items-center rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur-xs transition shadow-md active:scale-95"
                                 >
-                                  <ChevronRight size={18} />
+                                  <ChevronRight size={20} />
                                 </button>
-                                <span className="absolute bottom-2.5 right-2.5 rounded-md bg-black/75 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+
+                                {/* Pagination Dots at Bottom Center */}
+                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full bg-black/50 px-2.5 py-1 backdrop-blur-md">
+                                  {allImgs.map((_, i) => (
+                                    <button
+                                      key={i}
+                                      type="button"
+                                      aria-label={`Go to photo ${i + 1}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setProductDetail((prev) =>
+                                          prev
+                                            ? { ...prev, activeImageIndex: i }
+                                            : null,
+                                        );
+                                      }}
+                                      className={`h-1.5 rounded-full transition-all ${
+                                        i === currentIdx
+                                          ? "w-5 bg-white"
+                                          : "w-1.5 bg-white/50 hover:bg-white/90"
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+
+                                {/* Counter Pill */}
+                                <div className="absolute top-3 right-3 rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-bold text-white shadow-xs backdrop-blur-md">
                                   {currentIdx + 1} / {allImgs.length}
-                                </span>
+                                </div>
+
+                                {/* Mobile Swipe Hint */}
+                                <div className="sm:hidden absolute top-3 left-3 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-medium text-white/90 backdrop-blur-md pointer-events-none">
+                                  <span>⇄ Swipe</span>
+                                </div>
                               </>
                             )}
                           </div>
 
+                          {/* Thumbnail Row */}
                           {allImgs.length > 1 && (
-                            <div className="flex gap-2 overflow-x-auto pb-1">
+                            <div className="flex gap-2 overflow-x-auto pb-1 pt-0.5">
                               {allImgs.map((img, idx) => (
                                 <button
                                   key={idx}
@@ -786,10 +1111,10 @@ export function Storefront({
                                         : null,
                                     )
                                   }
-                                  className={`relative h-14 w-18 shrink-0 overflow-hidden rounded-xl border-2 transition ${
+                                  className={`relative h-14 w-18 shrink-0 overflow-hidden rounded-xl border-2 transition active:scale-95 ${
                                     currentIdx === idx
-                                      ? "border-[#416c17] scale-105"
-                                      : "border-transparent opacity-60 hover:opacity-100"
+                                      ? "border-[#416c17] ring-2 ring-[#416c17]/30 scale-105"
+                                      : "border-transparent opacity-60 hover:opacity-100 hover:border-[#ccc]"
                                   }`}
                                 >
                                   <img
