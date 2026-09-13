@@ -66,8 +66,11 @@ async function generateQr(value: string, size = 80) {
     margin: 0,
     color: { dark: "#20221d", light: "#ffffff" },
   });
-  const match = qrSvg.match(/<svg[^>]*>([\s\S]*?)<\/svg>/);
-  return match ? match[1] : "";
+  const viewBoxMatch = qrSvg.match(/viewBox="([^"]+)"/i);
+  const viewBox = viewBoxMatch ? viewBoxMatch[1] : "0 0 37 37";
+  const innerMatch = qrSvg.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i);
+  const inner = innerMatch ? innerMatch[1] : "";
+  return `<svg width="${size}" height="${size}" viewBox="${viewBox}">${inner}</svg>`;
 }
 
 /**
@@ -238,7 +241,7 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
   const PAD = 48;
   const CONTENT_W = WIDTH - PAD * 2;
 
-  const qrSvg = await generateQr(MAIN_RECEIPT_TELEGRAM_URL, 80);
+  const qrSvg = await generateQr(MAIN_RECEIPT_TELEGRAM_URL, 68);
 
   const allRows: Array<{
     no: number;
@@ -295,9 +298,9 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
   const paymentBoxH = 140;
   const warrantyBoxY = paymentBoxY + paymentBoxH + 16;
   const warrantyBoxH = 142;
-  const footerY = warrantyBoxY + warrantyBoxH + 18;
-  const footerH = 136;
-  const totalHeight = footerY + footerH + 36;
+  const footerY = warrantyBoxY + warrantyBoxH + 24;
+  const footerH = 104;
+  const totalHeight = footerY + footerH + 32;
 
   const now = new Date();
   const issuedDate = now.toLocaleDateString("en-GB", { timeZone: "Asia/Yangon" });
@@ -373,15 +376,9 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
 
     <!-- Socials bar -->
     <g transform="translate(${PAD}, 150)">
-      <text x="0" y="0" class="txt" font-size="10" fill="#666a60">
-        <tspan font-weight="800" fill="#292c26">Telegram </tspan>${xml(clientConfig.receipt.telegram)}
-      </text>
-      <text x="170" y="0" class="txt" font-size="10" fill="#666a60">
-        <tspan font-weight="800" fill="#292c26">Viber </tspan>${xml(clientConfig.receipt.viber)}
-      </text>
-      <text x="330" y="0" class="txt" font-size="10" fill="#666a60">
-        <tspan font-weight="800" fill="#292c26">TikTok </tspan>${xml(clientConfig.receipt.tiktok)}
-      </text>
+      <text x="0" y="0" class="txt" font-size="10" fill="#666a60"><tspan font-weight="800" fill="#292c26">Telegram:</tspan><tspan dx="5">${xml(clientConfig.receipt.telegram)}</tspan></text>
+      <text x="240" y="0" class="txt" font-size="10" fill="#666a60"><tspan font-weight="800" fill="#292c26">Viber:</tspan><tspan dx="5">${xml(clientConfig.receipt.viber)}</tspan></text>
+      <text x="420" y="0" class="txt" font-size="10" fill="#666a60"><tspan font-weight="800" fill="#292c26">TikTok:</tspan><tspan dx="5">${xml(clientConfig.receipt.tiktok)}</tspan></text>
     </g>
 
     <!-- Two-column: SOLD TO & ISSUED/TIME/COURIER -->
@@ -534,18 +531,28 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
     <g transform="translate(${PAD}, ${footerY})">
       <line x1="0" y1="0" x2="${CONTENT_W}" y2="0" stroke="#dfe1da" stroke-width="1"/>
 
-      <!-- Left: Thank you -->
-      <text x="0" y="28" class="txt" font-size="15" font-weight="900" fill="#252820">ကျေးဇူးတင်ပါတယ်ခင်ဗျာ</text>
-      <text x="0" y="46" class="txt" font-size="9.5" fill="#70746a">Thank you for choosing MH OP. Keep this original voucher as your proof of purchase and warranty record.</text>
-
-      <!-- Right: Telegram QR Code -->
-      <g transform="translate(${CONTENT_W - 190}, 45)">
-        <text x="0" y="16" text-anchor="end" class="txt" font-size="9" font-weight="800" fill="#30332c">MH OP Telegram</text>
-        <text x="0" y="30" text-anchor="end" class="txt" font-size="8" fill="#777b70">Scan to open</text>
-        <text x="0" y="42" text-anchor="end" class="txt" font-size="8" fill="#777b70">our Telegram link</text>
+      <!-- Left: Thank you & Support Information -->
+      <g transform="translate(0, 16)">
+        <text x="0" y="18" class="txt" font-size="16" font-weight="900" fill="#252820">ကျေးဇူးတင်ပါတယ်ခင်ဗျာ</text>
+        <text x="0" y="38" class="txt" font-size="9.5" fill="#666a60">Thank you for choosing MH OP. Keep this original voucher as your proof of purchase and warranty record.</text>
+        <g transform="translate(0, 50)">
+          <rect x="0" y="0" width="370" height="24" rx="6" fill="#f4f5f0" stroke="#e3e5de" stroke-width="1"/>
+          <text x="12" y="16" class="txt" font-size="9" font-weight="700" fill="#44473f">Official Support: <tspan font-weight="900" fill="#0369a1">@Mhopassistant_bot</tspan> · Viber: <tspan font-weight="800" fill="#20221d">${xml(clientConfig.receipt.viber)}</tspan></text>
+        </g>
       </g>
-      <g transform="translate(${CONTENT_W - 80}, 20)">
-        ${qrSvg}
+
+      <!-- Right: Telegram QR Code Card -->
+      <g transform="translate(${CONTENT_W - 230}, 14)">
+        <rect x="0" y="0" width="230" height="84" rx="8" fill="#fafbf8" stroke="#dfe1da" stroke-width="1"/>
+        <g transform="translate(12, 0)">
+          <text x="0" y="24" class="txt" font-size="10" font-weight="900" fill="#252820">MH OP Telegram</text>
+          <text x="0" y="38" class="txt" font-size="8.5" fill="#666a60">Scan to open official</text>
+          <text x="0" y="51" class="txt" font-size="8.5" fill="#666a60">bot &amp; customer chat</text>
+          <text x="0" y="69" class="txt" font-size="8.5" font-weight="800" fill="#0369a1">@Mhopassistant_bot</text>
+        </g>
+        <g transform="translate(${230 - 68 - 8}, 8)">
+          ${qrSvg}
+        </g>
       </g>
     </g>
   </svg>

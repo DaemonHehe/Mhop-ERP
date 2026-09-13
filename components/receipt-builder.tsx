@@ -448,10 +448,8 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
           </div>
           <div className="flex items-end gap-3">
             <div className="text-right text-[8px] leading-relaxed text-[#777b70]">
-              <b className="block text-[#30332c]">Order reference</b>Scan to
-              identify
-              <br />
-              this transaction
+              <b className="block text-[#30332c]">Order reference</b>
+              <span>Scan to identify this transaction</span>
             </div>
             <PaymentQR code={order.code} />
           </div>
