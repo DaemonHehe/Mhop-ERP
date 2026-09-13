@@ -148,13 +148,13 @@ let cachedWarriorUri: string | null = null;
 function getWarriorDataUri(): string {
   if (cachedWarriorUri) return cachedWarriorUri;
   const candidatePaths = [
-    path.join(process.cwd(), "assets", "images", "taksin-horse.jpg"),
-    path.join(process.cwd(), "public", "images", "taksin-horse.jpg"),
+    path.join(process.cwd(), "assets", "images", "taksin-lineart.png"),
+    path.join(process.cwd(), "public", "images", "taksin-lineart.png"),
   ];
   for (const p of candidatePaths) {
     if (fs.existsSync(p)) {
       const buf = fs.readFileSync(p);
-      cachedWarriorUri = `data:image/jpeg;base64,${buf.toString("base64")}`;
+      cachedWarriorUri = `data:image/png;base64,${buf.toString("base64")}`;
       return cachedWarriorUri;
     }
   }
@@ -205,23 +205,11 @@ export async function renderMemberCardImage(
         <stop offset="100%" stop-color="${theme.bgStops[2]}"/>
       </linearGradient>
 
-      <!-- Feathered Mask for Seamless Image Blending -->
-      <mask id="featherMask">
-        <linearGradient id="hFade" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#000000"/>
-          <stop offset="20%" stop-color="#ffffff"/>
-          <stop offset="80%" stop-color="#ffffff"/>
-          <stop offset="100%" stop-color="#000000"/>
-        </linearGradient>
-        <rect x="220" y="0" width="560" height="630" fill="url(#hFade)"/>
-      </mask>
-
-      <!-- Top and Bottom Vignette Overlays to guarantee 100% text readability -->
-      <linearGradient id="topBottomVignette" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="${theme.bgStops[0]}" stop-opacity="0.92"/>
-        <stop offset="24%" stop-color="${theme.bgStops[0]}" stop-opacity="0.2"/>
-        <stop offset="68%" stop-color="${theme.bgStops[2]}" stop-opacity="0.25"/>
-        <stop offset="100%" stop-color="${theme.bgStops[2]}" stop-opacity="0.96"/>
+      <!-- Vertical Foil Gradient for Engraved Line Art -->
+      <linearGradient id="foilVertical" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="${theme.foilGrad[0]}"/>
+        <stop offset="50%" stop-color="${theme.foilGrad[1]}"/>
+        <stop offset="100%" stop-color="${theme.foilGrad[2]}"/>
       </linearGradient>
 
       <!-- Metallic Foil Gradient for Typography -->
@@ -237,15 +225,29 @@ export async function renderMemberCardImage(
         <stop offset="100%" stop-color="${theme.borderGrad[1]}"/>
       </linearGradient>
 
-      <!-- Atmospheric Radial Aura -->
-      <radialGradient id="auraGlow" cx="50%" cy="25%" r="55%">
-        <stop offset="0%" stop-color="${theme.glowColor}" stop-opacity="0.25"/>
+      <!-- Atmospheric Ambient Aura -->
+      <radialGradient id="centerAura" cx="50%" cy="45%" r="48%">
+        <stop offset="0%" stop-color="${theme.glowColor}" stop-opacity="0.18"/>
+        <stop offset="60%" stop-color="${theme.glowColor}" stop-opacity="0.04"/>
         <stop offset="100%" stop-color="${theme.glowColor}" stop-opacity="0"/>
       </radialGradient>
 
+      <!-- Mask to apply metallic foil directly onto the vector line art -->
+      <mask id="warriorLineMask">
+        <image href="${warriorUri}" x="220" y="10" width="560" height="590" preserveAspectRatio="xMidYMid meet"/>
+      </mask>
+
       <!-- Drop Shadow Filter -->
       <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.85"/>
+        <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.9"/>
+      </filter>
+      <!-- Subtle Foil Bloom Filter -->
+      <filter id="foilGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="2" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
       </filter>
     </defs>
 
@@ -287,20 +289,20 @@ export async function renderMemberCardImage(
 
     <!-- 2. Internal Card Elements (Clipped inside rounded card boundary) -->
     <g clip-path="url(#cardClip)">
-      <!-- Atmospheric Ambient Aura -->
-      <rect width="1000" height="630" fill="url(#auraGlow)"/>
+      <!-- Atmospheric Ambient Lighting -->
+      <rect width="1000" height="630" fill="url(#centerAura)"/>
 
-      <!-- Hero Artwork: King Taksin on Rearing Horse with Feathered Blending Mask -->
+      <!-- Subtle Luxury Guilloche Concentric Texture Rings -->
+      <circle cx="500" cy="305" r="280" fill="none" stroke="${theme.glowColor}" stroke-opacity="0.08" stroke-width="1"/>
+      <circle cx="500" cy="305" r="230" fill="none" stroke="${theme.glowColor}" stroke-opacity="0.06" stroke-width="1" stroke-dasharray="6,4"/>
+      <circle cx="500" cy="305" r="180" fill="none" stroke="${theme.glowColor}" stroke-opacity="0.05" stroke-width="1"/>
+
+      <!-- HERO CENTER: Pure Vector Line Art of King Taksin on Rearing Horse (NO photo background!) -->
       ${
         warriorUri
-          ? `<g mask="url(#featherMask)">
-        <image href="${warriorUri}" x="250" y="8" width="500" height="618" preserveAspectRatio="xMidYMid meet"/>
-      </g>`
+          ? `<rect x="220" y="10" width="560" height="590" fill="url(#foilVertical)" mask="url(#warriorLineMask)" filter="url(#foilGlow)"/>`
           : ""
       }
-
-      <!-- Top and Bottom Contrast Vignette Overlays -->
-      <rect width="1000" height="630" fill="url(#topBottomVignette)"/>
 
       <!-- 3. Top Header Left: MH OP Brand Emblem & Wordmark -->
       <g transform="translate(64, 52)">
