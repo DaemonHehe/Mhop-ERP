@@ -161,6 +161,25 @@ export async function updateFulfillmentAction(
   return result;
 }
 
+export async function updateOrderPackedImageAction(
+  orderId: string,
+  packedImageUrl: string | null,
+  packedImageUrls: string[] = [],
+) {
+  if (!(await authorizeStaff(["admin", "staff"])))
+    return { ok: false as const, error: "Unauthorized" };
+  const result = await orderService.updateOrderPackedImages(
+    orderId,
+    packedImageUrl,
+    packedImageUrls,
+  );
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidateCatalog();
+  }
+  return result;
+}
+
 export async function deleteOrderAction(
   orderId: string,
   input: { confirmationCode: string; reason: string },

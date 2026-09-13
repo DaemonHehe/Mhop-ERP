@@ -70,6 +70,7 @@ import {
   formatBankAccountsTelegramMessage,
   getPaymentAccountForMethod,
 } from "./payment-account.service";
+import { getMediaById } from "./media.service";
 
 export interface OperationalOrder {
   id: string;
@@ -88,6 +89,8 @@ export interface OperationalOrder {
   shippingCarrier?: string | null;
   telegramUserId?: string | null;
   paymentSlipUrl?: string | null;
+  packedImageUrl?: string | null;
+  packedImageUrls?: string[];
   isDigitalOnly?: boolean;
   orderSource?: string;
   destinationCity?: string | null;
@@ -433,6 +436,8 @@ export async function getOrders(): Promise<OperationalOrder[]> {
     shippingCarrier: o.shippingCarrier,
     telegramUserId: o.telegramUserId,
     paymentSlipUrl: o.paymentSlipUrl,
+    packedImageUrl: o.packedImageUrl,
+    packedImageUrls: (o.packedImageUrls as string[]) || (o.packedImageUrl ? [o.packedImageUrl] : []),
     isDigitalOnly: (() => {
       const items = itemCategories.get(o.id) || [];
       return (
@@ -1157,7 +1162,7 @@ export async function createOrder(
         });
         await sendTelegramPhoto(orderSummary.telegramUserId, receiptImage, {
           filename: `${orderSummary.orderCode}-45mm-deposit-request.png`,
-          caption: `🧾 <b>${orderSummary.orderCode}</b> · 45mm စရန်ငွေတောင်းခံလွှာ\nယခုပေးချေရမည့် စရန်ငွေ: <b>${formatMMK(orderSummary.requiredDeposit)}</b>\n\nPayment Slip ပုံနှင့် Order Code ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။ Admin အတည်ပြုပြီးပါက Royal COD ပါသော အဓိကပြေစာကို ပို့ပေးပါမည်။`,
+          caption: `🧾 <b>${orderSummary.orderCode}</b> · 45mm စရန်ငွေတောင်းခံလွှာ\nယခုပေးချေရမည့် စရန်ငွေ: <b>${formatMMK(orderSummary.requiredDeposit)}</b>\n\nPayment Slip ကို @Mhopassistant_bot သို့ ပေးပို့ပါ ခင်ဗျာ၊ Adminအတည်ပြုပြီးပါက အိမ်အရောက်ငွေချေ ရှင်းရမည့် အဓိကပြေစာကို ပို့ပေးပါမည်။`,
           parse_mode: "HTML",
         });
         // Also send bank transfer details
@@ -1742,6 +1747,7 @@ export async function addShipment(
           code: orders.orderCode,
           telegramUserId: orders.telegramUserId,
           customerId: orders.customerId,
+          packedImageUrl: orders.packedImageUrl,
         });
       return changed;
     });
@@ -1768,13 +1774,108 @@ export async function addShipment(
     if (tgId) {
       try {
         const text = `🚚 <b>လူကြီးမင်း၏ အော်ဒါကို ပို့ဆောင်ပေးလိုက်ပါပြီခင်ဗျာ</b>\n\nOrder Code: <code>${updated.code}</code>\nပို့ဆောင်သည့် လုပ်ငန်း: <b>${parsed.data.carrier}</b>\nTracking Number: <code>${parsed.data.trackingNumber}</code>\n\n📦 <b>၁၀ ရက် မှ ၁၅ ရက်အတွင်း</b> လူကြီးမင်းထံသို့ အရောက်ပို့ဆောင်ပေးပါမည်ခင်ဗျာ။\n<i>(10–15 days atwin yout pr mal)</i>\n\nအော်ဒါနှင့် ပတ်သက်၍ အကူအညီလိုအပ်ပါက /support သို့ ဆက်သွယ်နိုင်ပါသည်ခင်ဗျာ။ MH OP ကို အားပေးမှုအတွက် ကျေးဇူးတင်ရှိပါသည်! 🙏`;
-        await sendTelegramMessage(tgId, text, { parse_mode: "HTML" });
+
+        let photoSent = false;
+        if (updated.packedImageUrl) {
+          try {
+            const cleanId = updated.packedImageUrl
+              .replace(/^\/api\/media\//, "")
+              .replace(/\.webp$/i, "")
+              .trim();
+            const media = await getMediaById(cleanId);
+            if (media?.buffer) {
+              await sendTelegramPhoto(tgId, media.buffer, {
+                caption: text,
+                parse_mode: "HTML",
+                filename: `parcel-${updated.code}.png`,
+              });
+              photoSent = true;
+            }
+          } catch (photoErr) {
+            console.warn("[Telegram Parcel Photo Send Warning]", photoErr);
+          }
+        }
+
+        if (!photoSent) {
+          await sendTelegramMessage(tgId, text, { parse_mode: "HTML" });
+        }
       } catch (tgErr) {
         console.error("[Telegram Customer Dispatch Notification Error]", tgErr);
       }
     }
 
     return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorOf(error) };
+  }
+}
+
+/**
+ * Update the packaging proof photo(s) of an order in the packed stage or before dispatch.
+ */
+export async function updateOrderPackedImages(
+  orderId: string,
+  packedImageUrl: string | null,
+  packedImageUrls: string[] = [],
+): Promise<
+  ActionResult<{ packedImageUrl: string | null; packedImageUrls: string[] }>
+> {
+  try {
+    if (!orderId) return { ok: false, error: "Missing order ID." };
+    if (!db) return { ok: false, error: "Database is not configured." };
+
+    const [current] = await db
+      .select({
+        id: orders.id,
+        orderCode: orders.orderCode,
+        fulfillmentStatus: orders.fulfillmentStatus,
+      })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+
+    if (!current) {
+      return { ok: false, error: "Order not found." };
+    }
+
+    if (current.fulfillmentStatus === "cancelled") {
+      return {
+        ok: false,
+        error: "Cannot update packaging photos for a cancelled order.",
+      };
+    }
+
+    const normalizedUrls =
+      packedImageUrls.length > 0
+        ? packedImageUrls
+        : packedImageUrl
+          ? [packedImageUrl]
+          : [];
+    const primaryUrl = packedImageUrl || normalizedUrls[0] || null;
+
+    await db
+      .update(orders)
+      .set({
+        packedImageUrl: primaryUrl,
+        packedImageUrls: normalizedUrls,
+      })
+      .where(eq(orders.id, orderId));
+
+    await audit(
+      "order.packaging_image_updated",
+      current.orderCode,
+      primaryUrl
+        ? `Packaging photo updated (${normalizedUrls.length} attached)`
+        : "Packaging photo removed",
+    );
+
+    return {
+      ok: true,
+      data: {
+        packedImageUrl: primaryUrl,
+        packedImageUrls: normalizedUrls,
+      },
+    };
   } catch (error) {
     return { ok: false, error: errorOf(error) };
   }
@@ -2188,6 +2289,8 @@ export async function getOrderById(orderId: string) {
     customerBalance,
     codAmount,
     packedWeightKg: num(order.packedWeightKg),
+    packedImageUrl: order.packedImageUrl || null,
+    packedImageUrls: (order.packedImageUrls as string[]) || (order.packedImageUrl ? [order.packedImageUrl] : []),
     returnCost: num(order.returnCost),
     customer,
     items: items.map((i) => ({

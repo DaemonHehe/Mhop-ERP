@@ -10,7 +10,7 @@ export const clientConfig = {
   },
   telegram: {
     displayName: "Mh Op Store Virtual Assistance",
-    handle: "@MhopAssistant",
+    handle: "@Mhopassistant_bot",
     operationsGroup: "Mh Op Operations Group",
     welcome:
       "မင်္ဂလာပါ။ MH OP Store မှ ကြိုဆိုပါတယ်။\n\nMobile Gadgets များနဲ့ PUBG Mobile Account များကို စျေးနှုန်းမှန်ကန်စွာနဲ့ 100% authentic အာမခံဖြင့် ရရှိနိုင်ပါမယ်ခင်ဗျာ။\n\nအောက်ပါ Menu မှတဆင့် စတင်ကြည့်ရှုနိုင်ပါသည်—\n• /catalog — ရရှိနိုင်သော Gadgets များနှင့် Account စျေးနှုန်းများ ကြည့်ရန်\n• /support — Customer Service နှင့် တိုက်ရိုက်ဆက်သွယ်ရန်\n• Payment Slip ပုံပေးပို့၍ အော်ဒါအတည်ပြုရန်",
@@ -62,7 +62,7 @@ export const clientConfig = {
   admin: { email: "admin@decantos.com" },
   receipt: {
     storeName: "Mh OP Gadget Store",
-    telegram: "@mhop1478",
+    telegram: "@Mhopassistant_bot",
     viber: "09772601762",
     tiktok: "Mh Op",
     voucherTitle: "အရောင်းဘောက်ချာ",

@@ -22,6 +22,7 @@ const migrations = [
   "migrations/0023_preorder_items_support.sql",
   "migrations/0024_deposit_5000.sql",
   "migrations/0025_add_products_sort_order.sql",
+  "migrations/0026_order_packed_image.sql",
 ];
 
 try {

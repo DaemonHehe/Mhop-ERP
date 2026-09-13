@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
+  Camera,
   Check,
   CheckCircle2,
   CircleDollarSign,
   Coins,
   Image as ImageIcon,
+  Loader2,
   MapPin,
   PackageCheck,
   Plus,
   ShieldCheck,
+  Trash2,
   Truck,
+  UploadCloud,
   X,
   ZoomIn,
   ZoomOut,
@@ -27,6 +31,7 @@ import {
   confirmCodCollectionAction,
   reviewPayment,
   updateFulfillmentAction,
+  updateOrderPackedImageAction,
 } from "@/app/actions/store";
 import { ModalPortal } from "@/components/modal-portal";
 import { CreateOrderDialog } from "@/components/create-order-dialog";
@@ -81,16 +86,36 @@ export function OrderConsole({
   const [slipModalOpen, setSlipModalOpen] = useState(false);
   const [slipZoom, setSlipZoom] = useState(1);
   const [slipRotation, setSlipRotation] = useState(0);
+  const [packedModalOpen, setPackedModalOpen] = useState(false);
+  const [packedZoom, setPackedZoom] = useState(1);
+  const [packedRotation, setPackedRotation] = useState(0);
+  const [isUploadingPacked, setIsUploadingPacked] = useState(false);
+  const packedFileInputRef = useRef<HTMLInputElement>(null);
+  const [localPackedImages, setLocalPackedImages] = useState<
+    Record<string, { url: string | null; urls: string[] }>
+  >({});
   const [editingTracking, setEditingTracking] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  const mergedOrders = useMemo(() => {
+    return orders.map((o) => {
+      const local = localPackedImages[o.id];
+      if (!local) return o;
+      return {
+        ...o,
+        packedImageUrl: local.url,
+        packedImageUrls: local.urls,
+      };
+    });
+  }, [orders, localPackedImages]);
 
   // Order Detail Modal (Click Triggered)
   const [modalOrderId, setModalOrderId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const modalOrder = useMemo(
-    () => orders.find((o) => o.id === modalOrderId) || null,
-    [orders, modalOrderId],
+    () => mergedOrders.find((o) => o.id === modalOrderId) || null,
+    [mergedOrders, modalOrderId],
   );
 
   const handleRowClick = (order: OperationalOrder) => {
@@ -110,23 +135,83 @@ export function OrderConsole({
         filters.map((item) => [
           item,
           item === "All"
-            ? orders.length
-            : orders.filter((order) => stageOf(order) === item).length,
+            ? mergedOrders.length
+            : mergedOrders.filter((order) => stageOf(order) === item).length,
         ]),
       ) as Record<Filter, number>,
-    [orders],
+    [mergedOrders],
   );
   const visible =
     filter === "All"
-      ? orders
-      : orders.filter((order) => stageOf(order) === filter);
+      ? mergedOrders
+      : mergedOrders.filter((order) => stageOf(order) === filter);
   const active =
-    visible.find((order) => order.id === activeId) || visible[0] || orders[0];
+    visible.find((order) => order.id === activeId) || visible[0] || mergedOrders[0];
 
   useEffect(() => {
     setTracking(active?.trackingNumber || "");
     setEditingTracking(false);
   }, [active?.id, active?.trackingNumber]);
+
+  const handleUploadPackedPhoto = async (file: File) => {
+    if (!active?.id) return;
+    if (file.size > 15 * 1024 * 1024) {
+      setNotice("Image exceeds the 15MB limit.");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setNotice("Please select a valid image file (JPG, PNG, WebP).");
+      return;
+    }
+
+    setIsUploadingPacked(true);
+    setNotice("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to upload packaging photo");
+      }
+
+      const updateRes = await updateOrderPackedImageAction(active.id, data.url, [data.url]);
+      if (!updateRes.ok) {
+        throw new Error(updateRes.error || "Failed to save packaging photo to order");
+      }
+
+      setLocalPackedImages((prev) => ({
+        ...prev,
+        [active.id]: { url: data.url, urls: [data.url] },
+      }));
+      setNotice("Packaging proof photo uploaded successfully.");
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Packaging photo upload failed");
+    } finally {
+      setIsUploadingPacked(false);
+    }
+  };
+
+  const handleRemovePackedPhoto = async () => {
+    if (!active?.id) return;
+    startTransition(async () => {
+      const res = await updateOrderPackedImageAction(active.id, null, []);
+      if (res.ok) {
+        setLocalPackedImages((prev) => ({
+          ...prev,
+          [active.id]: { url: null, urls: [] },
+        }));
+        setNotice("Packaging photo removed.");
+      } else {
+        setNotice(res.error || "Failed to remove packaging photo");
+      }
+    });
+  };
 
   const act = (
     operation: () => Promise<{ ok: boolean; error?: string }>,
@@ -610,6 +695,42 @@ export function OrderConsole({
                       </span>
                     </div>
 
+                    {active.packedImageUrl && (
+                      <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-emerald-200/70 bg-white p-2.5 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={active.packedImageUrl}
+                            alt="Packaging proof"
+                            className="h-10 w-10 shrink-0 rounded-lg object-cover border border-neutral-200 cursor-pointer"
+                            onClick={() => {
+                              setPackedModalOpen(true);
+                              setPackedZoom(1);
+                              setPackedRotation(0);
+                            }}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                              Packaging Proof
+                            </p>
+                            <p className="text-xs font-bold text-neutral-800 truncate">
+                              Verified Photo on File
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPackedModalOpen(true);
+                            setPackedZoom(1);
+                            setPackedRotation(0);
+                          }}
+                          className="rounded-lg border border-[#dedbd0] bg-[#faf9f5] px-2.5 py-1 text-xs font-bold text-[#444] transition hover:bg-[#eae7dd]"
+                        >
+                          View
+                        </button>
+                      </div>
+                    )}
+
                     {active.customerPaymentStatus !== "cod_collected" &&
                       active.customerPaymentStatus !== "fully_paid" &&
                       (active.codAmount ?? 0) > 0 && (
@@ -633,12 +754,12 @@ export function OrderConsole({
                                     active.id,
                                     active.codAmount || 0,
                                   ),
-                                "Royal COD collection confirmed! Customer balance is now zero.",
+                                "COD collection confirmed! Customer balance is now zero.",
                               )
                             }
                             className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl bg-sky-700 py-2.5 text-xs font-bold text-white transition hover:bg-sky-800 disabled:opacity-40"
                           >
-                            <Coins size={14} /> Confirm Royal COD Collected
+                            <Coins size={14} /> Confirm COD Collected
                           </button>
                         </div>
                       )}
@@ -685,6 +806,109 @@ export function OrderConsole({
                 </div>
               ) : (
                 <>
+                  {/* 📸 Packaging Photo Section (Packed Stage before dispatch) */}
+                  <div className="mt-3.5 rounded-2xl border border-violet-200/80 bg-violet-50/40 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-violet-950">
+                        <Camera size={14} className="text-violet-700" />
+                        Packaging Proof Photo
+                      </span>
+                      {active.packedImageUrl ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                          <Check size={10} /> Photo Attached
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                          Photo Recommended
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] leading-relaxed text-[#77776f]">
+                      Capture or upload parcel photo before courier dispatch to verify package integrity and shipping labels.
+                    </p>
+
+                    {active.packedImageUrl ? (
+                      <div className="space-y-2">
+                        <div
+                          onClick={() => {
+                            setPackedModalOpen(true);
+                            setPackedZoom(1);
+                            setPackedRotation(0);
+                          }}
+                          className="group relative h-36 w-full cursor-pointer overflow-hidden rounded-xl border border-violet-200 bg-neutral-100 flex items-center justify-center transition hover:border-black shadow-2xs"
+                        >
+                          <img
+                            src={active.packedImageUrl}
+                            alt={`Packaging photo for ${active.orderCode || active.id}`}
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-black shadow-md">
+                              <ZoomIn size={12} /> Inspect Photo
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={pending || isUploadingPacked}
+                            onClick={() => packedFileInputRef.current?.click()}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-white py-2 text-xs font-bold text-violet-950 transition hover:bg-violet-100 disabled:opacity-40"
+                          >
+                            {isUploadingPacked ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <UploadCloud size={13} />
+                            )}
+                            <span>Replace Photo</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={pending || isUploadingPacked}
+                            onClick={() => handleRemovePackedPhoto()}
+                            className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-rose-700 transition hover:bg-rose-100 disabled:opacity-40"
+                            title="Remove packaging photo"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          disabled={pending || isUploadingPacked}
+                          onClick={() => packedFileInputRef.current?.click()}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white py-3.5 text-xs font-bold text-violet-950 transition hover:border-violet-500 hover:bg-violet-50 disabled:opacity-40"
+                        >
+                          {isUploadingPacked ? (
+                            <Loader2 size={15} className="animate-spin text-violet-600" />
+                          ) : (
+                            <UploadCloud size={15} className="text-violet-600" />
+                          )}
+                          <span>{isUploadingPacked ? "Uploading photo..." : "Upload Packaging Photo"}</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Hidden file input for packaging photo */}
+                    <input
+                      ref={packedFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          handleUploadPackedPhoto(e.target.files[0]);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </div>
+
                   <label
                     className="mt-3 block text-xs font-bold"
                     htmlFor="tracking-number"
@@ -868,6 +1092,132 @@ export function OrderConsole({
                   >
                     <Check size={14} className="mr-1 inline" /> Approve payment
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* Packaging Photo Zoom & Inspection Modal */}
+      {packedModalOpen && active.packedImageUrl && (
+        <ModalPortal
+          isOpen={Boolean(packedModalOpen && active.packedImageUrl)}
+          onClose={() => {
+            setPackedModalOpen(false);
+            setPackedZoom(1);
+            setPackedRotation(0);
+          }}
+        >
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-2 sm:p-4 md:p-6 backdrop-blur-sm transition-opacity"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Packaging proof photo for order ${active.orderCode || active.id}`}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setPackedModalOpen(false);
+                setPackedZoom(1);
+                setPackedRotation(0);
+              }
+            }}
+          >
+            <div className="relative flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#171815] text-white shadow-2xl">
+              {/* Modal Header */}
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 border-b border-white/10 bg-[#222420] p-3 sm:px-5 sm:py-3.5">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="rounded-lg bg-white/10 px-2.5 py-1 font-mono text-xs font-bold text-[#c7f36b]">
+                    {active.orderCode || active.id}
+                  </span>
+                  <span className="text-xs text-neutral-300">
+                    Packaging Proof Photo · {active.customer}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 sm:gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPackedZoom((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))}
+                    className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                    title="Zoom out"
+                  >
+                    <ZoomOut size={15} />
+                  </button>
+                  <span className="px-1.5 sm:px-2 font-mono text-xs text-neutral-300">
+                    {Math.round(packedZoom * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPackedZoom((z) => Math.min(3.5, Number((z + 0.25).toFixed(2))))}
+                    className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                    title="Zoom in"
+                  >
+                    <ZoomIn size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPackedZoom(1);
+                      setPackedRotation(0);
+                    }}
+                    className="rounded-lg bg-white/10 px-2 sm:px-2.5 py-1 text-xs font-semibold transition hover:bg-white/20"
+                    title="Reset zoom"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPackedRotation((r) => (r + 90) % 360)}
+                    className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                    title="Rotate 90 degrees"
+                  >
+                    <RotateCw size={15} />
+                  </button>
+                  <a
+                    href={active.packedImageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg bg-white/10 p-2 text-white transition hover:bg-white/20"
+                    title="Open original in new tab"
+                  >
+                    <ExternalLink size={15} />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPackedModalOpen(false);
+                      setPackedZoom(1);
+                      setPackedRotation(0);
+                    }}
+                    className="ml-1 sm:ml-2 rounded-lg bg-white/10 p-2 text-white transition hover:bg-rose-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Image Pan / Zoom Stage */}
+              <div className="relative flex min-h-[220px] sm:min-h-[380px] max-h-[62vh] flex-1 select-none items-center justify-center overflow-auto bg-[#10110e] p-3 sm:p-6">
+                <img
+                  src={active.packedImageUrl}
+                  alt="Packaging proof zoom"
+                  style={{
+                    transform: `scale(${packedZoom}) rotate(${packedRotation}deg)`,
+                    transition: "transform 0.15s ease-out",
+                  }}
+                  className="max-h-full max-w-full origin-center object-contain shadow-2xl"
+                />
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/10 bg-[#222420] p-3 sm:px-5 sm:py-3.5">
+                <p className="text-xs text-neutral-400">
+                  Fulfillment stage:{" "}
+                  <span className="font-bold uppercase text-white">{active.fulfillment}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+                    <Check size={14} /> Packaging Photo Verified
+                  </span>
                 </div>
               </div>
             </div>

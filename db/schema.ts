@@ -203,6 +203,8 @@ export const orders = pgTable(
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     isDigitalOnly: boolean("is_digital_only").notNull().default(false),
     packedWeightKg: numeric("packed_weight_kg", { precision: 8, scale: 2 }).notNull().default("1.00"),
+    packedImageUrl: text("packed_image_url"),
+    packedImageUrls: jsonb("packed_image_urls").$type<string[]>().default([]),
     expectedCourierCost: numeric("expected_courier_cost", { precision: 14, scale: 2 }).notNull().default("0"),
     actualCourierCost: numeric("actual_courier_cost", { precision: 14, scale: 2 }),
     requiredDeposit: numeric("required_deposit", { precision: 14, scale: 2 }).notNull().default("5000"),

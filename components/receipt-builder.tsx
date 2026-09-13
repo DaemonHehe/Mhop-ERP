@@ -361,7 +361,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
             </p>
             {(order.codAmount ?? 0) > 0 && !paymentComplete && (
               <p className="mt-1 text-[10px] text-sky-800">
-                Remaining Royal COD: <b>{number.format(order.codAmount!)} MMK</b>
+                Remaining COD: <b>{number.format(order.codAmount!)} MMK</b>
               </p>
             )}
           </div>
@@ -402,7 +402,7 @@ function VoucherReceipt({ order }: { order: ReceiptOrder }) {
               <>
                 <dt className="text-[#666a60]">Deposit paid</dt>
                 <dd>{number.format(order.paidAmount)} MMK</dd>
-                <dt className="font-semibold text-sky-800">Royal COD (On delivery)</dt>
+                <dt className="font-semibold text-sky-800">COD (On delivery)</dt>
                 <dd className="font-bold text-sky-900">{number.format(order.codAmount ?? order.outstandingBalance)} MMK</dd>
               </>
             ) : (
@@ -567,7 +567,7 @@ function ThermalReceipt({
               <span>{new Intl.NumberFormat("en-US").format(order.paidAmount)} MMK</span>
             </div>
             <div className="flex justify-between font-bold">
-              <span>ROYAL COD</span>
+              <span>COD</span>
               <span>{new Intl.NumberFormat("en-US").format(order.codAmount ?? order.outstandingBalance)} MMK</span>
             </div>
           </>

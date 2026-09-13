@@ -335,7 +335,7 @@ describe("Deposit + COD Orders and Royal Express Settlement", () => {
       expect(receiptText).toContain("10,000 MMK");
       expect(receiptText).toContain("245,000 MMK");
       expect(receiptText).toContain("စရန်ငွေ 10,000 MMK လက်ခံအတည်ပြုပြီးပါပြီခင်ဗျာ");
-      expect(receiptText).toContain("Royal Express COD (ပစ္စည်းရောက်မှ ပေးချေရန်)");
+      expect(receiptText).toContain("COD (ပစ္စည်းရောက်မှ ပေးချေရန်)");
     });
 
     it("generates final paid receipt when Royal Express COD is collected", () => {
@@ -385,9 +385,7 @@ describe("Deposit + COD Orders and Royal Express Settlement", () => {
       expect(alertText).toContain("Mawlamyine");
       expect(alertText).toContain("(Mon)");
       expect(alertText).toContain("Required Deposit: <b>10,000 MMK</b>");
-      expect(alertText).toContain("Royal COD to collect: <b>245,000 MMK</b>");
-      expect(alertText).toContain("Expected Royal Deduction: <b>4,500 MMK</b>");
-      expect(alertText).toContain("Expected Shop Transfer: <b>240,500 MMK</b>");
+      expect(alertText).toContain("COD to collect on delivery: <b>245,000 MMK</b>");
     });
   });
 

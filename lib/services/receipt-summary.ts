@@ -58,8 +58,8 @@ export function formatDepositRequestReceipt(
     `<b>အော်ဒါစုစုပေါင်း: ${formatMMK(order.totalAmount)}</b>`,
     "",
     `💳 <b>ယခုပေးချေရမည့် စရန်ငွေ: ${formatMMK(depositDue)}</b>`,
-    `ငွေလွှဲပြီးပါက Payment Slip ပုံနှင့် Order Code <code>${order.orderCode}</code> ကို ဤ Bot သို့ ပေးပို့ပါခင်ဗျာ။`,
-    "Admin အတည်ပြုပြီးပါက Royal Express COD ပါသော အဓိကပြေစာကို ပို့ပေးပါမည်။",
+    `Payment Slip ကို @Mhopassistant_bot သို့ Order Code <code>${order.orderCode}</code> နှင့်အတူ ပေးပို့ပါ ခင်ဗျာ၊`,
+    "Adminအတည်ပြုပြီးပါက အိမ်အရောက်ငွေချေ ရှင်းရမည့် အဓိကပြေစာကို ပို့ပေးပါမည်။",
   ];
 
   return lines.join("\n");
@@ -133,15 +133,15 @@ export function formatCustomerReceipt(order: ReceiptSummaryInput): string {
     lines.push("✨ <i>လူကြီးမင်း၏ ပေးချေမှု အောင်မြင်စွာ ပြီးဆုံးပြီး ဖြစ်ပါသည်ခင်ဗျာ။ အားပေးမှုကို အထူးပင် ကျေးဇူးတင်ရှိပါသည်။</i>");
   } else if (hasDeposit) {
     lines.push(`စရန်ငွေ (Required Deposit): ${formatMMK(order.requiredDeposit!)}`);
-    lines.push(`📦 <b>Royal Express COD (ပစ္စည်းရောက်မှ ပေးချေရန်): ${formatMMK(remainingCod)}</b>`);
+    lines.push(`📦 <b>COD (ပစ္စည်းရောက်မှ ပေးချေရန်): ${formatMMK(remainingCod)}</b>`);
     lines.push("");
 
     if (isDepositVerified) {
       lines.push(`✅ <b>စရန်ငွေ ${formatMMK(order.requiredDeposit!)} လက်ခံအတည်ပြုပြီးပါပြီခင်ဗျာ။</b>`);
-      lines.push(`ကျန်ရှိငွေ <b>${formatMMK(remainingCod)}</b> ကို Royal Express ပစ္စည်းရောက်ရှိချိန်တွင် ပေးချေပေးပါခင်ဗျာ။`);
+      lines.push(`ကျန်ရှိငွေ <b>${formatMMK(remainingCod)}</b> ကို ပစ္စည်းရောက်ရှိချိန်တွင် ပေးချေပေးပါခင်ဗျာ။`);
     } else {
       lines.push(`⏳ <b>စရန်ငွေ ${formatMMK(order.requiredDeposit!)} ပေးချေရန် လိုအပ်ပါသည်ခင်ဗျာ။</b>`);
-      lines.push(`(ကျန်ရှိငွေ <b>${formatMMK(remainingCod)}</b> ကို ပစ္စည်းရောက်မှ Royal Express သို့ ပေးချေရပါမည်)`);
+      lines.push(`(ကျန်ရှိငွေ <b>${formatMMK(remainingCod)}</b> ကို ပစ္စည်းရောက်မှ ပေးချေရပါမည်)`);
       lines.push("");
       lines.push("<b>စရန်ငွေ ပေးချေရန် အချက်အလက်များ—</b>");
 
@@ -160,7 +160,7 @@ export function formatCustomerReceipt(order: ReceiptSummaryInput): string {
       lines.push(paymentInfo);
       lines.push("");
       lines.push("📸 <b>Payment Slip ပေးပို့ရန်:</b>");
-      lines.push(`ငွေလွှဲပြီးပါက စရန်ငွေပြေစာ (Slip) ကို Order Code <code>${order.orderCode}</code> နှင့်အတူ ပေးပို့ပေးပါခင်ဗျာ။`);
+      lines.push(`Payment Slip ကို @Mhopassistant_bot သို့ Order Code <code>${order.orderCode}</code> နှင့်အတူ ပေးပို့ပါ ခင်ဗျာ၊ Adminအတည်ပြုပြီးပါက အိမ်အရောက်ငွေချေ ရှင်းရမည့် အဓိကပြေစာကို ပို့ပေးပါမည်။`);
     }
   } else {
     // Digital full payment orders (e.g. PUBG accounts)
@@ -185,8 +185,6 @@ export function formatManagerOrderAlert(order: ReceiptSummaryInput): string {
   const subtotal = order.subtotal ?? Math.max(0, order.totalAmount - order.shippingFee);
   const deposit = order.requiredDeposit ?? 0;
   const cod = order.codAmount ?? Math.max(0, order.totalAmount - deposit);
-  const expectedCourier = order.expectedCourierCost ?? 0;
-  const expectedTransfer = cod > 0 ? cod - expectedCourier : 0;
 
   lines.push(`🔔 <b>အော်ဒါအသစ် ရောက်ရှိပါသည် (New Order)</b>`);
   lines.push(`Order Code: <code>${order.orderCode}</code>`);
@@ -202,10 +200,7 @@ export function formatManagerOrderAlert(order: ReceiptSummaryInput): string {
   lines.push(`Total Amount: <b>${formatMMK(order.totalAmount)}</b>`);
   if (deposit > 0) {
     lines.push(`Required Deposit: <b>${formatMMK(deposit)}</b>`);
-    lines.push(`Royal COD to collect: <b>${formatMMK(cod)}</b>`);
-    if (expectedCourier > 0) {
-      lines.push(`Expected Royal Deduction: <b>${formatMMK(expectedCourier)}</b> | Expected Shop Transfer: <b>${formatMMK(expectedTransfer)}</b>`);
-    }
+    lines.push(`COD to collect on delivery: <b>${formatMMK(cod)}</b>`);
   }
   lines.push("");
   lines.push("<b>Items:</b>");

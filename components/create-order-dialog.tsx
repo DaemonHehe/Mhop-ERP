@@ -504,7 +504,7 @@ export function CreateOrderDialog({
               </span>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+            <div className="grid gap-2 sm:grid-cols-3 text-xs">
               <div className="flex justify-between rounded-lg bg-white p-2.5 border">
                 <span className="text-gray-600">Products Subtotal:</span>
                 <span className="font-bold">{formatMMK(productsSubtotal)}</span>
@@ -513,13 +513,6 @@ export function CreateOrderDialog({
               <div className="flex justify-between rounded-lg bg-white p-2.5 border">
                 <span className="text-gray-600">Customer Delivery Charge:</span>
                 <span className="font-bold">{formatMMK(effectiveDeliveryFee)}</span>
-              </div>
-
-              <div className="flex justify-between rounded-lg bg-white p-2.5 border">
-                <span className="text-gray-600">Expected Royal Deduction:</span>
-                <span className="font-bold text-rose-600">
-                  {formatMMK(customCourierCost ? Number(customCourierCost) : royalDelivery.expectedCourierCost)}
-                </span>
               </div>
 
               <div className="flex justify-between rounded-lg bg-white p-2.5 border font-bold">
@@ -547,7 +540,7 @@ export function CreateOrderDialog({
 
               <div>
                 <label className="text-xs font-bold text-[#333]">
-                  Customer Pays Royal COD on Delivery
+                  Customer Pays COD on Delivery
                 </label>
                 <div className="mt-1 flex h-9 items-center justify-end rounded-lg bg-white px-3 font-mono text-sm font-bold text-amber-700 border">
                   {formatMMK(codAmount)}

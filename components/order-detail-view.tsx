@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useRef, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ModalPortal } from "@/components/modal-portal";
 import {
   ArrowLeft,
+  Camera,
   CheckCircle2,
   Coins,
   Edit,
+  Loader2,
   Lock,
   Package,
   PackageCheck,
@@ -17,6 +19,7 @@ import {
   RotateCcw,
   ShieldCheck,
   Truck,
+  UploadCloud,
   User,
   X,
   ExternalLink,
@@ -41,6 +44,7 @@ import {
   recordRefundReversalAction,
   rejectPaymentAction,
   updateFulfillmentAction,
+  updateOrderPackedImageAction,
   verifyPaymentAction,
   reviewPayment,
   type InventoryItem,
@@ -109,6 +113,8 @@ export interface OrderDetailData {
   shippingCarrier?: string | null;
   trackingNumber?: string | null;
   paymentSlipUrl?: string | null;
+  packedImageUrl?: string | null;
+  packedImageUrls?: string[];
   paymentStatus?: string | null;
   packedWeightKg?: number | null;
   internalNotes?: string | null;
@@ -173,10 +179,71 @@ export function OrderDetailView({
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [serialInput, setSerialInput] = useState("");
   const [assigningSerial, setAssigningSerial] = useState(false);
+  const [localPackedImage, setLocalPackedImage] = useState<string | null>(order.packedImageUrl || null);
+  const [isUploadingPacked, setIsUploadingPacked] = useState(false);
+  const packedFileInputRef = useRef<HTMLInputElement>(null);
+  const [slipViewingTitle, setSlipViewingTitle] = useState("Customer Payment Slip");
 
   useEffect(() => {
     setTrackingInput(order.trackingNumber || "");
   }, [order.trackingNumber]);
+
+  useEffect(() => {
+    setLocalPackedImage(order.packedImageUrl || null);
+  }, [order.packedImageUrl]);
+
+  const handleUploadPackedPhoto = async (file: File) => {
+    if (file.size > 15 * 1024 * 1024) {
+      notify("Image exceeds the 15MB limit.", "error");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      notify("Please select a valid image file (JPG, PNG, WebP).", "error");
+      return;
+    }
+
+    setIsUploadingPacked(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to upload packaging photo");
+      }
+
+      const updateRes = await updateOrderPackedImageAction(order.id, data.url, [data.url]);
+      if (!updateRes.ok) {
+        throw new Error(updateRes.error || "Failed to save packaging photo to order");
+      }
+
+      setLocalPackedImage(data.url);
+      notify("Packaging proof photo uploaded successfully!", "success");
+      onRefresh?.();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Packaging photo upload failed", "error");
+    } finally {
+      setIsUploadingPacked(false);
+    }
+  };
+
+  const handleRemovePackedPhoto = async () => {
+    startTransition(async () => {
+      const res = await updateOrderPackedImageAction(order.id, null, []);
+      if (res.ok) {
+        setLocalPackedImage(null);
+        notify("Packaging proof photo removed.", "success");
+        onRefresh?.();
+      } else {
+        notify(res.error || "Failed to remove packaging photo", "error");
+      }
+    });
+  };
 
   // Close slip modal on ESC key
   useEffect(() => {
@@ -344,12 +411,6 @@ export function OrderDetailView({
 
   const shippingFee = order.shippingFee ?? 0;
   const subtotal = Math.max(0, totalAmount - shippingFee);
-  const expectedCourierCost =
-    (order.expectedCourierCost != null && order.expectedCourierCost > 0)
-      ? order.expectedCourierCost
-      : (!order.isDigitalOnly ? 4050 : 0);
-  const expectedRoyalTransfer = Math.max(0, codAmount - expectedCourierCost);
-  const deliveryMargin = shippingFee - expectedCourierCost;
 
   // Status badges
   const paymentStatusColor: Record<string, string> = {
@@ -589,42 +650,76 @@ export function OrderDetailView({
               )}
 
               {order.fulfillmentStatus === "packed" && (
-                order.isDigitalOnly ? (
-                  <button
-                    disabled={pending}
-                    onClick={() => handleFulfillment("dispatched")}
-                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40"
-                  >
-                    Complete Secure Handover
-                  </button>
-                ) : order.trackingNumber ? (
-                  <button
-                    disabled={pending}
-                    onClick={() => handleFulfillment("dispatched")}
-                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40"
-                  >
-                    Mark Dispatched to Royal Express ({order.trackingNumber})
-                  </button>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="text"
-                      value={trackingInput}
-                      onChange={(e) => setTrackingInput(e.target.value)}
-                      placeholder="Royal Tracking (e.g. REX-000000)"
-                      disabled={pending}
-                      className="h-9 w-52 sm:w-64 rounded-xl border border-sky-300 bg-white px-3 font-mono text-xs font-bold text-black outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 disabled:bg-neutral-100"
-                    />
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Quick packaging photo trigger */}
+                  {localPackedImage ? (
                     <button
-                      disabled={pending || !trackingInput.trim()}
-                      onClick={() => handleDispatchWithTracking()}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40 shadow-xs"
+                      type="button"
+                      onClick={() => {
+                        setSlipViewingUrl(localPackedImage);
+                        setSlipViewingTitle("Packaging Proof Photo");
+                        setSlipZoom(1);
+                        setSlipRotation(0);
+                        setSlipModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-900 hover:bg-violet-100 transition shadow-2xs"
                     >
-                      <Truck size={14} />
-                      <span>Save Tracking & Mark Dispatched</span>
+                      <Camera size={14} className="text-violet-700" />
+                      <span>Packaging Photo Attached</span>
                     </button>
-                  </div>
-                )
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isUploadingPacked || pending}
+                      onClick={() => packedFileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs disabled:opacity-50"
+                    >
+                      {isUploadingPacked ? (
+                        <Loader2 size={14} className="animate-spin text-amber-700" />
+                      ) : (
+                        <UploadCloud size={14} className="text-amber-700" />
+                      )}
+                      <span>{isUploadingPacked ? "Uploading Photo..." : "Upload Packing Photo"}</span>
+                    </button>
+                  )}
+
+                  {order.isDigitalOnly ? (
+                    <button
+                      disabled={pending}
+                      onClick={() => handleFulfillment("dispatched")}
+                      className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40"
+                    >
+                      Complete Secure Handover
+                    </button>
+                  ) : order.trackingNumber ? (
+                    <button
+                      disabled={pending}
+                      onClick={() => handleFulfillment("dispatched")}
+                      className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40"
+                    >
+                      Mark Dispatched to Royal Express ({order.trackingNumber})
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        value={trackingInput}
+                        onChange={(e) => setTrackingInput(e.target.value)}
+                        placeholder="Royal Tracking (e.g. REX-000000)"
+                        disabled={pending}
+                        className="h-9 w-52 sm:w-64 rounded-xl border border-sky-300 bg-white px-3 font-mono text-xs font-bold text-black outline-none focus:border-sky-600 focus:ring-1 focus:ring-sky-600 disabled:bg-neutral-100"
+                      />
+                      <button
+                        disabled={pending || !trackingInput.trim()}
+                        onClick={() => handleDispatchWithTracking()}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40 shadow-xs"
+                      >
+                        <Truck size={14} />
+                        <span>Save Tracking & Mark Dispatched</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               {order.fulfillmentStatus === "dispatched" && (
@@ -635,7 +730,7 @@ export function OrderDetailView({
                       onClick={handleConfirmCod}
                       className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-40"
                     >
-                      Confirm Royal COD Collected ({formatMMK(codAmount)})
+                      Confirm COD Collected ({formatMMK(codAmount)})
                     </button>
                   )}
                   <button
@@ -700,28 +795,28 @@ export function OrderDetailView({
             </p>
           </div>
 
-          {/* 3. Courier COD & Net Transfer */}
+          {/* 3. Courier COD */}
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-800">
-                3. Royal COD (On Delivery) · ကျန်ငွေ
+                3. COD (On Delivery) · ကျန်ငွေ
               </span>
               <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
-                You get {formatMMK(expectedRoyalTransfer)}
+                {codAmount > 0 ? "Collect on delivery" : "Fully settled"}
               </span>
             </div>
             <p className="mt-1 text-2xl font-black text-emerald-900">
               {formatMMK(codAmount)}
             </p>
             <p className="mt-1 text-xs text-emerald-800/80">
-              Royal fee: -{formatMMK(expectedCourierCost)} {deliveryMargin > 0 ? `(Deli margin: +${formatMMK(deliveryMargin)})` : ""}
+              Customer pays remaining balance to courier upon delivery
             </p>
           </div>
         </div>
       </div>
 
-      {/* Customer, Delivery & Payment Slip */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/* Customer, Delivery, Payment Slip & Packaging Proof */}
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         {/* Customer Information */}
         <div className="rounded-3xl border border-[#dedbd1] bg-white p-6 shadow-sm space-y-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-black flex items-center gap-2">
@@ -839,6 +934,7 @@ export function OrderDetailView({
                 <div
                   onClick={() => {
                     setSlipViewingUrl(`/api/orders/${order.id}/slip`);
+                    setSlipViewingTitle("Customer Payment Slip");
                     setSlipZoom(1);
                     setSlipRotation(0);
                     setSlipModalOpen(true);
@@ -862,6 +958,7 @@ export function OrderDetailView({
                     type="button"
                     onClick={() => {
                       setSlipViewingUrl(`/api/orders/${order.id}/slip`);
+                      setSlipViewingTitle("Customer Payment Slip");
                       setSlipZoom(1);
                       setSlipRotation(0);
                       setSlipModalOpen(true);
@@ -912,6 +1009,154 @@ export function OrderDetailView({
                 className="flex-1 rounded-xl bg-[#c7f36b] py-2 text-xs font-bold text-black transition hover:bg-[#b8e55e] disabled:opacity-50 shadow-xs"
               >
                 <Check size={13} className="inline mr-1" /> Approve Deposit
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Packaging Proof & Inspection Card */}
+        <div className="rounded-3xl border border-[#dedbd1] bg-white p-6 shadow-sm flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-black flex items-center gap-2">
+                <Camera size={16} /> Packaging Proof
+              </h2>
+              <span
+                className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
+                  localPackedImage
+                    ? "bg-emerald-100 text-emerald-800"
+                    : ["packed", "packing"].includes(order.fulfillmentStatus)
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-neutral-100 text-neutral-500"
+                }`}
+              >
+                {localPackedImage
+                  ? "Photo Attached"
+                  : ["packed", "packing"].includes(order.fulfillmentStatus)
+                    ? "Photo Pending"
+                    : "No Photo"}
+              </span>
+            </div>
+
+            {localPackedImage ? (
+              <div className="mt-3 space-y-2.5">
+                <div
+                  onClick={() => {
+                    setSlipViewingUrl(localPackedImage);
+                    setSlipViewingTitle("Packaging Proof Photo");
+                    setSlipZoom(1);
+                    setSlipRotation(0);
+                    setSlipModalOpen(true);
+                  }}
+                  className="group relative h-48 w-full cursor-pointer overflow-hidden rounded-2xl border border-[#dedbd0] bg-[#f8f7f2] flex items-center justify-center transition hover:border-black"
+                >
+                  <img
+                    src={localPackedImage}
+                    alt={`Packaging proof for order ${order.orderCode}`}
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black shadow-lg">
+                      <ZoomIn size={14} /> Click to zoom photo
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSlipViewingUrl(localPackedImage);
+                      setSlipViewingTitle("Packaging Proof Photo");
+                      setSlipZoom(1);
+                      setSlipRotation(0);
+                      setSlipModalOpen(true);
+                    }}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#dedbd0] bg-[#faf9f5] py-2 text-xs font-bold text-black transition hover:bg-[#eae8df]"
+                  >
+                    <ZoomIn size={14} /> Inspect & Zoom
+                  </button>
+                  <a
+                    href={localPackedImage}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center rounded-xl border border-[#dedbd0] bg-[#faf9f5] p-2 text-neutral-600 transition hover:bg-[#eae8df]"
+                    title="Open packaging image in new tab"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                  {order.fulfillmentStatus !== "cancelled" && (
+                    <button
+                      type="button"
+                      disabled={pending || isUploadingPacked}
+                      onClick={handleRemovePackedPhoto}
+                      className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 p-2 text-rose-600 transition hover:bg-rose-100 disabled:opacity-40"
+                      title="Remove packaging photo"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-[#faf9f5] p-5 text-center">
+                <div className="rounded-full bg-neutral-200/60 p-3 text-neutral-400">
+                  <Camera size={24} />
+                </div>
+                <p className="mt-2 text-xs font-bold text-neutral-700">
+                  No Packaging Photo
+                </p>
+                <p className="mt-1 text-[11px] text-neutral-500 max-w-[210px]">
+                  Attach a parcel or contents photo before dispatching to courier.
+                </p>
+                {order.fulfillmentStatus !== "cancelled" && (
+                  <button
+                    type="button"
+                    disabled={isUploadingPacked || pending}
+                    onClick={() => packedFileInputRef.current?.click()}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-black px-3.5 py-2 text-xs font-bold text-white hover:bg-neutral-800 disabled:opacity-50 transition"
+                  >
+                    {isUploadingPacked ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <UploadCloud size={13} />
+                    )}
+                    <span>{isUploadingPacked ? "Uploading..." : "Upload Photo"}</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={packedFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleUploadPackedPhoto(e.target.files[0]);
+                  e.target.value = "";
+                }
+              }}
+            />
+          </div>
+
+          {/* Bottom Quick Upload Action if photo exists and order is still in packing or packed */}
+          {localPackedImage && ["packing", "packed"].includes(order.fulfillmentStatus) && (
+            <div className="border-t pt-3 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isUploadingPacked || pending}
+                onClick={() => packedFileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-neutral-300 bg-[#faf9f5] py-2 text-xs font-bold text-black transition hover:bg-[#eae8df] disabled:opacity-50"
+              >
+                {isUploadingPacked ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <UploadCloud size={13} />
+                )}
+                <span>Replace Packaging Photo</span>
               </button>
             </div>
           )}
@@ -1222,7 +1467,7 @@ export function OrderDetailView({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={`Payment slip for order ${order.orderCode}`}
+            aria-label={`${slipViewingTitle} for order ${order.orderCode}`}
             onClick={(e) => e.stopPropagation()}
             className="relative flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-[#171815] text-white shadow-2xl animate-in zoom-in-95 duration-150"
           >
@@ -1233,7 +1478,7 @@ export function OrderDetailView({
                   {order.orderCode}
                 </span>
                 <span className="text-xs text-neutral-300">
-                  {order.customerName} · Total: {formatMMK(order.totalAmount)}
+                  {slipViewingTitle} · {order.customerName}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1312,58 +1557,87 @@ export function OrderDetailView({
               />
             </div>
 
-            {/* Modal Footer with Verification Actions */}
+            {/* Modal Footer */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#222420] px-5 py-3.5">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-neutral-400">Payment Status:</span>
-                <span className="font-bold uppercase tracking-wide text-white">
-                  {order.customerPaymentStatus?.replaceAll("_", " ") || "unpaid"}
-                </span>
-                {order.requiredDeposit > 0 && (
-                  <span className="text-neutral-400">
-                    · Deposit Required: <strong className="text-[#c7f36b]">{formatMMK(order.requiredDeposit)}</strong>
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {["unpaid", "deposit_pending"].includes(order.customerPaymentStatus) && (
-                  <>
+              {slipViewingTitle === "Packaging Proof Photo" ? (
+                <>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-neutral-400">Fulfillment Status:</span>
+                    <span className="font-bold uppercase tracking-wide text-white">
+                      {order.fulfillmentStatus}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+                      <Check size={14} /> Packaging Photo Verified
+                    </span>
                     <button
                       type="button"
-                      disabled={pending}
                       onClick={() => {
-                        handleReviewOrderPayment("rejected");
                         setSlipModalOpen(false);
+                        setSlipZoom(1);
+                        setSlipRotation(0);
                       }}
-                      className="rounded-xl border border-rose-400/40 bg-rose-950/40 px-3.5 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-900/60 disabled:opacity-50"
+                      className="rounded-xl bg-white/10 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-white/20"
                     >
-                      <X size={13} className="inline mr-1" /> Reject Slip
+                      Close
                     </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-neutral-400">Payment Status:</span>
+                    <span className="font-bold uppercase tracking-wide text-white">
+                      {order.customerPaymentStatus?.replaceAll("_", " ") || "unpaid"}
+                    </span>
+                    {order.requiredDeposit > 0 && (
+                      <span className="text-neutral-400">
+                        · Deposit Required: <strong className="text-[#c7f36b]">{formatMMK(order.requiredDeposit)}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {["unpaid", "deposit_pending"].includes(order.customerPaymentStatus) && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => {
+                            handleReviewOrderPayment("rejected");
+                            setSlipModalOpen(false);
+                          }}
+                          className="rounded-xl border border-rose-400/40 bg-rose-950/40 px-3.5 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-900/60 disabled:opacity-50"
+                        >
+                          <X size={13} className="inline mr-1" /> Reject Slip
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => {
+                            handleReviewOrderPayment("verified");
+                            setSlipModalOpen(false);
+                          }}
+                          className="rounded-xl bg-[#c7f36b] px-4 py-2 text-xs font-bold text-black transition hover:bg-[#b8e55e] disabled:opacity-50 shadow-md"
+                        >
+                          <Check size={13} className="inline mr-1" /> Approve & Move to Packing
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
-                      disabled={pending}
                       onClick={() => {
-                        handleReviewOrderPayment("verified");
                         setSlipModalOpen(false);
+                        setSlipZoom(1);
+                        setSlipRotation(0);
                       }}
-                      className="rounded-xl bg-[#c7f36b] px-4 py-2 text-xs font-bold text-black transition hover:bg-[#b8e55e] disabled:opacity-50 shadow-md"
+                      className="rounded-xl bg-white/10 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-white/20"
                     >
-                      <Check size={13} className="inline mr-1" /> Approve & Move to Packing
+                      Close
                     </button>
-                  </>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSlipModalOpen(false);
-                    setSlipZoom(1);
-                    setSlipRotation(0);
-                  }}
-                  className="rounded-xl bg-white/10 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-white/20"
-                >
-                  Close
-                </button>
-              </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>,

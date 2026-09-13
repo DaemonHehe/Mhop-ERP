@@ -449,13 +449,11 @@ export function CheckoutForm({
                 💡 စရန်ငွေ{" "}
                 <strong>{formatMMK(completedOrder.requiredDeposit)}</strong> ကို
                 အထက်ပါ အကောင့်တစ်ခုခုသို့ လွှဲပြီးပါက{" "}
-                <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို Order Code{" "}
-                <strong>{completedOrder.orderCode}</strong> နှင့်အတူ Telegram
-                Bot သို့ ပေးပို့ပေးပါခင်ဗျာ။ စရန်ငွေ စစ်ဆေးအတည်ပြုပြီးသည်နှင့်
-                Royal Express ဖြင့် ထုတ်ပိုးပို့ဆောင်ပေးမည်ဖြစ်ပြီး ကျန်ငွေ{" "}
-                <strong>{formatMMK(completedOrder.codAmount)}</strong> ကို
-                ပစ္စည်းရောက်ရှိချိန်တွင် Royal Express courier သို့
-                ပေးချေနိုင်ပါသည်။
+                <strong>Payment Slip (ငွေလွှဲပြေစာပုံ)</strong> ကို{" "}
+                <strong>@Mhopassistant_bot</strong> သို့ Order Code{" "}
+                <strong>{completedOrder.orderCode}</strong> နှင့်အတူ ပေးပို့ပါ
+                ခင်ဗျာ၊ Admin အတည်ပြုပြီးပါက အိမ်အရောက်ငွေချေ ရှင်းရမည့်
+                အဓိကပြေစာကို ပို့ပေးပါမည်။
               </>
             )}
           </div>

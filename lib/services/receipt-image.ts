@@ -197,9 +197,9 @@ export async function renderDepositRequestReceiptImage(
     </g>
 
     <g transform="translate(${PAD}, ${footerY})">
-      <text x="0" y="18" class="txt" font-size="10" font-weight="900" fill="#20221d">စရန်ငွေလွှဲပြီး Payment Slip ပေးပို့ပါခင်ဗျာ။</text>
-      <text x="0" y="36" class="txt" font-size="8.5" fill="#6b7066">The main receipt and Royal COD amount will be</text>
-      <text x="0" y="50" class="txt" font-size="8.5" fill="#6b7066">sent after admin approval.</text>
+      <text x="0" y="18" class="txt" font-size="9" font-weight="900" fill="#20221d">Payment Slip ကို @Mhopassistant_bot သို့ ပေးပို့ပါ ခင်ဗျာ၊</text>
+      <text x="0" y="36" class="txt" font-size="8.5" fill="#565a51">Adminအတည်ပြုပြီးပါက အိမ်အရောက်ငွေချေ</text>
+      <text x="0" y="50" class="txt" font-size="8.5" fill="#565a51">ရှင်းရမည့် အဓိကပြေစာကို ပို့ပေးပါမည်။</text>
       <g transform="translate(${CONTENT_W - 64}, 42)">${qrSvg}</g>
       <text x="0" y="78" class="txt" font-size="9" font-weight="700" fill="#20221d">Telegram ${xml(clientConfig.receipt.telegram)}</text>
       <text x="0" y="96" class="mono" font-size="8.5" fill="#6b7066">${xml(order.orderCode)}</text>
@@ -460,7 +460,7 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
           <rect x="0" y="48" width="116" height="20" rx="10" fill="${depositPaid > 0 ? "#e0f2fe" : "#fff0cc"}"/>
           <text x="58" y="62" text-anchor="middle" class="txt" font-size="8.5" font-weight="900" fill="${depositPaid > 0 ? "#0369a1" : "#74530b"}" letter-spacing="0.8">${depositPaid > 0 ? "DEPOSIT VERIFIED" : "DEPOSIT PENDING"}</text>
           <text x="0" y="86" class="txt" font-size="11" fill="#666a60">Deposit Paid: <tspan font-weight="700" fill="#252820">${depositPaid.toLocaleString()} MMK</tspan></text>
-          <text x="0" y="104" class="txt" font-size="10" font-weight="700" fill="#0369a1">Pay Royal COD: ${remainingCod.toLocaleString()} MMK</text>
+          <text x="0" y="104" class="txt" font-size="10" font-weight="700" fill="#0369a1">Pay COD: ${remainingCod.toLocaleString()} MMK</text>
         `
               : `
           <rect x="0" y="48" width="80" height="20" rx="10" fill="#fff0cc"/>
@@ -500,7 +500,7 @@ export async function renderCustomerReceiptImage(order: ReceiptSummaryInput) {
             <text x="0" y="90" class="txt" font-size="9.5" fill="#666a60">Verified Deposit</text>
             <text x="288" y="90" text-anchor="end" class="txt" font-size="9.5" font-weight="700" fill="#1f211d">${depositPaid.toLocaleString()} MMK</text>
 
-            <text x="0" y="108" class="txt" font-size="9.5" font-weight="700" fill="#0369a1">Royal COD on Delivery</text>
+            <text x="0" y="108" class="txt" font-size="9.5" font-weight="700" fill="#0369a1">COD on Delivery</text>
             <text x="288" y="108" text-anchor="end" class="txt" font-size="9.5" font-weight="900" fill="#0369a1">${remainingCod.toLocaleString()} MMK</text>
 
             <text x="0" y="126" class="txt" font-size="10.5" font-weight="900" fill="#1f211d">Balance due</text>
