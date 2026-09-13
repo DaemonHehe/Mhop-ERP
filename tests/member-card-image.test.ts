@@ -2,10 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   renderMemberCardImage,
   formatCardNumber,
+  extractShortCode,
 } from "@/lib/services/member-card-image";
 import { getCardTier } from "@/lib/loyalty";
 
 describe("Member Card Image Generator", () => {
+  it("extracts 4-digit short member code correctly", () => {
+    expect(extractShortCode(null)).toBe("1234");
+    expect(extractShortCode("MH-CUST-1042")).toBe("1042");
+    expect(extractShortCode("MH-CUST-8888")).toBe("8888");
+    expect(extractShortCode("09971234567")).toBe("4567");
+    expect(extractShortCode("MH-VIP-0001")).toBe("0001");
+  });
+
   it("formats card numbers correctly into 4-segment luxury style", () => {
     expect(formatCardNumber(null)).toBe("MH • 7720 • 9104 • 8821");
     expect(formatCardNumber("cust-1234-abcd-5678")).toMatch(/^MH • /);

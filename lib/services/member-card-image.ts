@@ -50,97 +50,57 @@ interface TierTheme {
   title: string;
   subtitle: string;
   burmeseName: string;
-  bgStops: Array<{ offset: string; color: string }>;
+  bgStops: [string, string, string];
   accentColor: string;
-  accentGradient: [string, string];
-  foilColor: string;
-  chipBase: [string, string];
-  chipLines: string;
-  borderGradient: [string, string];
-  pillBg: string;
-  pillBorder: string;
+  foilGrad: [string, string, string];
+  borderGrad: [string, string];
+  glowColor: string;
   perksText: string;
 }
 
 const TIER_THEMES: Record<CardTier, TierTheme> = {
   classic: {
     title: "CLASSIC",
-    subtitle: "MH OP PRIVILEGE CLUB",
+    subtitle: "VIP PRIVILEGE",
     burmeseName: "အသင်းဝင် (Classic)",
-    bgStops: [
-      { offset: "0%", color: "#060c1b" },
-      { offset: "35%", color: "#0d1b38" },
-      { offset: "70%", color: "#16274d" },
-      { offset: "100%", color: "#081023" },
-    ],
+    bgStops: ["#070d18", "#111e35", "#091020"],
     accentColor: "#93c5fd",
-    accentGradient: ["#bfdbfe", "#ffffff"],
-    foilColor: "#ffffff",
-    chipBase: ["#fbbf24", "#d97706"],
-    chipLines: "#92400e",
-    borderGradient: ["rgba(191, 219, 254, 0.45)", "rgba(59, 130, 246, 0.15)"],
-    pillBg: "rgba(8, 16, 36, 0.72)",
-    pillBorder: "rgba(147, 197, 253, 0.3)",
-    perksText: "EARN 1 PT PER 1,000 MMK",
+    foilGrad: ["#bfdbfe", "#ffffff", "#93c5fd"],
+    borderGrad: ["rgba(147, 197, 253, 0.65)", "rgba(59, 130, 246, 0.25)"],
+    glowColor: "#3b82f6",
+    perksText: "EARN 1 PT / 1,000 MMK",
   },
   silver: {
     title: "SILVER",
-    subtitle: "MH OP VIP PRIVILEGE",
+    subtitle: "VIP PRIVILEGE",
     burmeseName: "ငွေအဆင့် VIP (Silver)",
-    bgStops: [
-      { offset: "0%", color: "#161c24" },
-      { offset: "30%", color: "#2d3748" },
-      { offset: "65%", color: "#475569" },
-      { offset: "100%", color: "#1a212b" },
-    ],
+    bgStops: ["#0e131b", "#1e2634", "#101520"],
     accentColor: "#e2e8f0",
-    accentGradient: ["#ffffff", "#cbd5e1"],
-    foilColor: "#f8fafc",
-    chipBase: ["#cbd5e1", "#94a3b8"],
-    chipLines: "#475569",
-    borderGradient: ["rgba(255, 255, 255, 0.5)", "rgba(148, 163, 184, 0.2)"],
-    pillBg: "rgba(22, 28, 36, 0.75)",
-    pillBorder: "rgba(226, 232, 240, 0.35)",
+    foilGrad: ["#ffffff", "#e2e8f0", "#94a3b8"],
+    borderGrad: ["rgba(255, 255, 255, 0.75)", "rgba(148, 163, 184, 0.3)"],
+    glowColor: "#94a3b8",
     perksText: "FREE DELIVERY ACROSS MYANMAR",
   },
   gold: {
     title: "GOLD",
-    subtitle: "MH OP VIP PRIVILEGE",
+    subtitle: "ELITE VIP PRIVILEGE",
     burmeseName: "ရွှေအဆင့် VIP (Gold)",
-    bgStops: [
-      { offset: "0%", color: "#1e1405" },
-      { offset: "30%", color: "#3d2b0b" },
-      { offset: "65%", color: "#593f10" },
-      { offset: "100%", color: "#241806" },
-    ],
+    bgStops: ["#150f05", "#2c1e09", "#181105"],
     accentColor: "#fef08a",
-    accentGradient: ["#fef08a", "#ffffff"],
-    foilColor: "#fef9c3",
-    chipBase: ["#fde047", "#ca8a04"],
-    chipLines: "#854d0e",
-    borderGradient: ["rgba(254, 240, 138, 0.65)", "rgba(202, 138, 4, 0.25)"],
-    pillBg: "rgba(30, 20, 5, 0.75)",
-    pillBorder: "rgba(253, 224, 71, 0.4)",
+    foilGrad: ["#fef08a", "#ffffff", "#eab308"],
+    borderGrad: ["rgba(254, 240, 138, 0.85)", "rgba(234, 179, 8, 0.35)"],
+    glowColor: "#eab308",
     perksText: "FREE DELIVERY + 5% DISCOUNT",
   },
   platinum: {
     title: "PLATINUM",
-    subtitle: "MH OP ELITE VIP",
+    subtitle: "ROYAL VIP PRIVILEGE",
     burmeseName: "ပလက်တီနမ် VIP (Platinum)",
-    bgStops: [
-      { offset: "0%", color: "#0c0f15" },
-      { offset: "35%", color: "#18202d" },
-      { offset: "70%", color: "#263245" },
-      { offset: "100%", color: "#0e131b" },
-    ],
+    bgStops: ["#07090e", "#131924", "#090c13"],
     accentColor: "#cbd5e1",
-    accentGradient: ["#ffffff", "#94a3b8"],
-    foilColor: "#f1f5f9",
-    chipBase: ["#e2e8f0", "#94a3b8"],
-    chipLines: "#334155",
-    borderGradient: ["rgba(241, 245, 249, 0.45)", "rgba(148, 163, 184, 0.18)"],
-    pillBg: "rgba(12, 16, 22, 0.78)",
-    pillBorder: "rgba(203, 213, 225, 0.35)",
+    foilGrad: ["#ffffff", "#e2e8f0", "#7dd3fc"],
+    borderGrad: ["rgba(255, 255, 255, 0.85)", "rgba(56, 189, 248, 0.4)"],
+    glowColor: "#38bdf8",
     perksText: "FREE DELIVERY + 10% DISCOUNT",
   },
 };
@@ -171,8 +131,40 @@ export function formatCardNumber(rawId?: string | null): string {
 }
 
 /**
+ * Extract 4-digit card number for prominent display (e.g. "1234" from "MH-CUST-1234" or phone):
+ */
+export function extractShortCode(rawId?: string | null): string {
+  if (!rawId) return "1234";
+  const clean = rawId.replace(/[^a-zA-Z0-9]/g, "");
+  const numMatch = clean.match(/(\d{4})$/);
+  if (numMatch) return numMatch[1];
+  const anyNums = clean.match(/\d+/g)?.join("") || "";
+  if (anyNums.length >= 4) return anyNums.slice(-4);
+  if (anyNums.length > 0) return anyNums.padStart(4, "0");
+  return "1234";
+}
+
+let cachedWarriorUri: string | null = null;
+function getWarriorDataUri(): string {
+  if (cachedWarriorUri) return cachedWarriorUri;
+  const candidatePaths = [
+    path.join(process.cwd(), "assets", "images", "taksin-horse.jpg"),
+    path.join(process.cwd(), "public", "images", "taksin-horse.jpg"),
+  ];
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      const buf = fs.readFileSync(p);
+      cachedWarriorUri = `data:image/jpeg;base64,${buf.toString("base64")}`;
+      return cachedWarriorUri;
+    }
+  }
+  return "";
+}
+
+/**
  * Renders a high-resolution, luxury tiered VIP Membership Card (1000 × 630 px)
- * with zero corner clipping artifacts, realistic studio lighting, and minimal typography.
+ * featuring the iconic King Taksin warrior on horseback with dynamic lighting,
+ * official brand wordmarks, and prominent member digits matching user design.
  */
 export async function renderMemberCardImage(
   input: MemberCardInput = {},
@@ -186,10 +178,11 @@ export async function renderMemberCardImage(
     .toUpperCase()
     .slice(0, 26);
 
-  const cardNumber = formatCardNumber(
-    input.customerCode || input.memberId || input.phone,
-  );
+  const rawIdentifier = input.customerCode || input.memberId || input.phone;
+  const cardNumber = formatCardNumber(rawIdentifier);
+  const shortCode = extractShortCode(rawIdentifier);
   const since = input.sinceYear || "2025";
+  const warriorUri = getWarriorDataUri();
 
   // Official MH OP Monogram Paths from public/mhop-logo-transparent.svg
   const mhPath =
@@ -207,69 +200,75 @@ export async function renderMemberCardImage(
 
       <!-- Background Linear Gradient -->
       <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        ${theme.bgStops.map((s) => `<stop offset="${s.offset}" stop-color="${s.color}"/>`).join("\n")}
+        <stop offset="0%" stop-color="${theme.bgStops[0]}"/>
+        <stop offset="50%" stop-color="${theme.bgStops[1]}"/>
+        <stop offset="100%" stop-color="${theme.bgStops[2]}"/>
       </linearGradient>
 
-      <!-- Ambient Light Radial Glow (Top-Right) -->
-      <radialGradient id="radialGlow" cx="80%" cy="20%" r="65%">
-        <stop offset="0%" stop-color="${theme.accentColor}" stop-opacity="0.18"/>
-        <stop offset="50%" stop-color="${theme.accentColor}" stop-opacity="0.04"/>
-        <stop offset="100%" stop-color="${theme.accentColor}" stop-opacity="0"/>
-      </radialGradient>
+      <!-- Feathered Mask for Seamless Image Blending -->
+      <mask id="featherMask">
+        <linearGradient id="hFade" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#000000"/>
+          <stop offset="20%" stop-color="#ffffff"/>
+          <stop offset="80%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#000000"/>
+        </linearGradient>
+        <rect x="220" y="0" width="560" height="630" fill="url(#hFade)"/>
+      </mask>
 
-      <!-- Secondary Soft Glow (Bottom-Left) -->
-      <radialGradient id="softGlow2" cx="20%" cy="85%" r="55%">
-        <stop offset="0%" stop-color="${theme.accentColor}" stop-opacity="0.12"/>
-        <stop offset="100%" stop-color="${theme.accentColor}" stop-opacity="0"/>
-      </radialGradient>
-
-      <!-- Diagonal Glass Sheen Reflection -->
-      <linearGradient id="sheen" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.10"/>
-        <stop offset="35%" stop-color="#ffffff" stop-opacity="0.03"/>
-        <stop offset="65%" stop-color="#ffffff" stop-opacity="0"/>
+      <!-- Top and Bottom Vignette Overlays to guarantee 100% text readability -->
+      <linearGradient id="topBottomVignette" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="${theme.bgStops[0]}" stop-opacity="0.92"/>
+        <stop offset="24%" stop-color="${theme.bgStops[0]}" stop-opacity="0.2"/>
+        <stop offset="68%" stop-color="${theme.bgStops[2]}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${theme.bgStops[2]}" stop-opacity="0.96"/>
       </linearGradient>
 
       <!-- Metallic Foil Gradient for Typography -->
       <linearGradient id="foilGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stop-color="${theme.accentGradient[0]}"/>
-        <stop offset="50%" stop-color="#ffffff"/>
-        <stop offset="100%" stop-color="${theme.accentGradient[1]}"/>
+        <stop offset="0%" stop-color="${theme.foilGrad[0]}"/>
+        <stop offset="50%" stop-color="${theme.foilGrad[1]}"/>
+        <stop offset="100%" stop-color="${theme.foilGrad[2]}"/>
       </linearGradient>
 
       <!-- Card Edge Bevel Gradient -->
       <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="${theme.borderGradient[0]}"/>
-        <stop offset="100%" stop-color="${theme.borderGradient[1]}"/>
+        <stop offset="0%" stop-color="${theme.borderGrad[0]}"/>
+        <stop offset="100%" stop-color="${theme.borderGrad[1]}"/>
       </linearGradient>
 
-      <!-- EMV Chip Gradient -->
-      <linearGradient id="chipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="${theme.chipBase[0]}"/>
-        <stop offset="100%" stop-color="${theme.chipBase[1]}"/>
-      </linearGradient>
+      <!-- Atmospheric Radial Aura -->
+      <radialGradient id="auraGlow" cx="50%" cy="25%" r="55%">
+        <stop offset="0%" stop-color="${theme.glowColor}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${theme.glowColor}" stop-opacity="0"/>
+      </radialGradient>
 
-      <!-- Subtle Text Shadow -->
-      <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-        <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.45"/>
+      <!-- Drop Shadow Filter -->
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.85"/>
       </filter>
     </defs>
 
     <style>
-      .card-title {
+      .brand-title {
         font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-weight: 900;
         letter-spacing: 5px;
       }
-      .card-subtitle {
+      .brand-sub {
         font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-weight: 700;
-        letter-spacing: 2.5px;
+        letter-spacing: 2.2px;
       }
-      .card-number {
-        font-family: 'Noto Sans', monospace;
-        font-weight: 700;
+      .tier-title {
+        font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-weight: 900;
         letter-spacing: 6px;
+      }
+      .card-digits {
+        font-family: 'Noto Sans', monospace;
+        font-weight: 900;
+        letter-spacing: 8px;
       }
       .card-name {
         font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -279,123 +278,86 @@ export async function renderMemberCardImage(
       .card-meta {
         font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-weight: 700;
-        letter-spacing: 2px;
-      }
-      .card-points {
-        font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-weight: 900;
-        letter-spacing: 1px;
+        letter-spacing: 1.8px;
       }
     </style>
 
-    <!-- 1. Card Base Surface (Edge-to-edge luxury card, no background canvas) -->
+    <!-- 1. Card Base Surface -->
     <rect width="1000" height="630" rx="36" fill="url(#bgGrad)"/>
 
     <!-- 2. Internal Card Elements (Clipped inside rounded card boundary) -->
     <g clip-path="url(#cardClip)">
-      <!-- Lighting Atmosphere -->
-      <rect width="1000" height="630" fill="url(#radialGlow)"/>
-      <rect width="1000" height="630" fill="url(#softGlow2)"/>
+      <!-- Atmospheric Ambient Aura -->
+      <rect width="1000" height="630" fill="url(#auraGlow)"/>
 
-      <!-- Diagonal Glass Sheen Reflection -->
-      <polygon points="0,0 420,0 200,630 0,630" fill="url(#sheen)"/>
+      <!-- Hero Artwork: King Taksin on Rearing Horse with Feathered Blending Mask -->
+      ${
+        warriorUri
+          ? `<g mask="url(#featherMask)">
+        <image href="${warriorUri}" x="250" y="8" width="500" height="618" preserveAspectRatio="xMidYMid meet"/>
+      </g>`
+          : ""
+      }
 
-      <!-- Subtle Watermark Emblem (Background seal, ultra-discreet) -->
-      <g transform="translate(580, 110) scale(0.40)" opacity="0.045" fill="${theme.foilColor}">
-        <path d="${mhPath}" fill-rule="evenodd"/>
-        <path d="${opPath}" fill-rule="evenodd"/>
-      </g>
+      <!-- Top and Bottom Contrast Vignette Overlays -->
+      <rect width="1000" height="630" fill="url(#topBottomVignette)"/>
 
-      <!-- 3. Top Header Left: Brand Emblem & Wordmark -->
-      <g transform="translate(64, 58)">
-        <g transform="translate(0, 2) scale(0.045)" fill="url(#foilGrad)">
+      <!-- 3. Top Header Left: MH OP Brand Emblem & Wordmark -->
+      <g transform="translate(64, 52)">
+        <g transform="translate(0, 3) scale(0.046)" fill="url(#foilGrad)" filter="url(#shadow)">
           <path d="${mhPath}" fill-rule="evenodd"/>
           <path d="${opPath}" fill-rule="evenodd"/>
         </g>
-        <text x="56" y="24" class="card-title" font-size="21" fill="url(#foilGrad)">
+        <text x="58" y="26" class="brand-title" font-size="25" fill="url(#foilGrad)" filter="url(#shadow)">
           MH OP
         </text>
-        <text x="56" y="38" class="card-subtitle" font-size="8.5" fill="${theme.accentColor}" fill-opacity="0.8">
-          VIP MEMBERSHIP
+        <text x="58" y="42" class="brand-sub" font-size="9" fill="${theme.accentColor}" fill-opacity="0.85">
+          VIP PRIVILEGE CLUB
         </text>
       </g>
 
       <!-- 4. Top Header Right: Card Tier Designation -->
-      <g transform="translate(936, 58)" text-anchor="end">
-        <text x="0" y="24" class="card-title" font-size="22" fill="url(#foilGrad)" filter="url(#shadow)">
-          ${theme.title}
+      <g transform="translate(936, 52)" text-anchor="end">
+        <text x="0" y="26" class="tier-title" font-size="26" fill="url(#foilGrad)" filter="url(#shadow)">
+          ${xml(theme.title)}
         </text>
-        <text x="0" y="38" class="card-subtitle" font-size="8.5" fill="${theme.accentColor}" fill-opacity="0.8">
-          PRIVILEGE CLIENT
-        </text>
-      </g>
-
-      <!-- 5. EMV Smart Chip & Contactless Waves -->
-      <g transform="translate(64, 144)">
-        <!-- Precision Smart Chip -->
-        <rect x="0" y="0" width="58" height="44" rx="8" fill="url(#chipGrad)" stroke="rgba(255,255,255,0.4)" stroke-width="1" filter="url(#shadow)"/>
-        <!-- Chip Circuit Trace -->
-        <rect x="16" y="10" width="26" height="24" rx="3" fill="none" stroke="${theme.chipLines}" stroke-width="0.9"/>
-        <line x1="0" y1="22" x2="16" y2="22" stroke="${theme.chipLines}" stroke-width="0.9"/>
-        <line x1="42" y1="22" x2="58" y2="22" stroke="${theme.chipLines}" stroke-width="0.9"/>
-        <line x1="29" y1="0" x2="29" y2="10" stroke="${theme.chipLines}" stroke-width="0.9"/>
-        <line x1="29" y1="34" x2="29" y2="44" stroke="${theme.chipLines}" stroke-width="0.9"/>
-
-        <!-- Contactless Radio Wave Icon -->
-        <g transform="translate(80, 7)" stroke="${theme.accentColor}" stroke-opacity="0.75" stroke-width="2" stroke-linecap="round" fill="none">
-          <path d="M 0,8 A 12,12 0 0,1 0,22"/>
-          <path d="M 4,4 A 18,18 0 0,1 4,26"/>
-          <path d="M 8,0 A 24,24 0 0,1 8,30"/>
-        </g>
-      </g>
-
-      <!-- 6. Card Number (Embossed Customer ID Display) -->
-      <g transform="translate(64, 350)">
-        <text x="0" y="0" class="card-number" font-size="26" fill="url(#foilGrad)" filter="url(#shadow)">
-          ${xml(cardNumber)}
+        <text x="0" y="42" class="brand-sub" font-size="9" fill="${theme.accentColor}" fill-opacity="0.85">
+          ${xml(theme.subtitle)}
         </text>
       </g>
 
-      <!-- 7. Member Details (Bottom-Left) -->
-      <g transform="translate(64, 442)">
-        <text x="0" y="0" class="card-meta" font-size="8.5" fill="${theme.accentColor}" fill-opacity="0.75">
+      <!-- 5. Bottom-Left: Member Details & Perks -->
+      <g transform="translate(64, 510)">
+        <text x="0" y="0" class="card-meta" font-size="8.5" fill="${theme.accentColor}" fill-opacity="0.8">
           CARDHOLDER
         </text>
-        <text x="0" y="30" class="card-name" font-size="25" fill="#ffffff" filter="url(#shadow)">
+        <text x="0" y="32" class="card-name" font-size="24" fill="#ffffff" filter="url(#shadow)">
           ${xml(displayName)}
         </text>
-
-        <!-- Validity & Registration Year -->
-        <g transform="translate(0, 60)">
-          <text x="0" y="0" class="card-meta" font-size="9" fill="${theme.accentColor}" fill-opacity="0.8">
-            STATUS: <tspan fill="#ffffff" font-weight="800">ACTIVE VIP</tspan> · VALID: <tspan fill="#ffffff" font-weight="800">NEVER EXPIRES</tspan> · SINCE ${xml(since)}
-          </text>
-        </g>
+        <text x="0" y="58" class="card-meta" font-size="9" fill="${theme.accentColor}" fill-opacity="0.85">
+          ${points.toLocaleString()} PTS · ${xml(theme.perksText)}
+        </text>
+        <text x="0" y="76" class="card-meta" font-size="8" fill="#ffffff" fill-opacity="0.6">
+          STATUS: ACTIVE VIP · SINCE ${xml(since)}
+        </text>
       </g>
 
-      <!-- 8. Minimalist Points Balance Badge (Bottom-Right) -->
-      <g transform="translate(692, 432)">
-        <rect x="0" y="0" width="244" height="92" rx="18" fill="${theme.pillBg}" stroke="${theme.pillBorder}" stroke-width="1.2" filter="url(#shadow)"/>
-        
-        <!-- Label -->
-        <text x="20" y="26" class="card-meta" font-size="8.5" fill="${theme.accentColor}" fill-opacity="0.8">
-          AVAILABLE BALANCE
+      <!-- 6. Bottom-Right: 4-Digit Member ID (as drawn in user sketch: "1234") -->
+      <g transform="translate(936, 508)" text-anchor="end">
+        <text x="0" y="0" class="card-meta" font-size="8.5" fill="${theme.accentColor}" fill-opacity="0.8">
+          MEMBER NUMBER
         </text>
-
-        <!-- Points Value -->
-        <text x="20" y="62" class="card-points" font-size="30" fill="url(#foilGrad)" filter="url(#shadow)">
-          ${points.toLocaleString()} <tspan font-size="16" font-weight="700" fill="${theme.accentColor}">PTS</tspan>
+        <text x="0" y="46" class="card-digits" font-size="48" fill="url(#foilGrad)" filter="url(#shadow)">
+          ${xml(shortCode)}
         </text>
-
-        <!-- Perks Subtitle -->
-        <text x="20" y="80" class="card-meta" font-size="7.5" fill="#ffffff" fill-opacity="0.9" letter-spacing="1">
-          ✨ ${theme.perksText}
+        <text x="0" y="70" class="card-meta" font-size="8.5" fill="${theme.accentColor}" fill-opacity="0.75" letter-spacing="3">
+          ${xml(cardNumber)}
         </text>
       </g>
     </g>
 
-    <!-- 9. Outer Metallic Hairline Bevel Edge -->
-    <rect x="1.5" y="1.5" width="997" height="627" rx="34.5" fill="none" stroke="url(#borderGrad)" stroke-width="1.5"/>
+    <!-- 7. Outer Precision Metallic Bevel Border -->
+    <rect x="1.5" y="1.5" width="997" height="627" rx="34.5" fill="none" stroke="url(#borderGrad)" stroke-width="1.8"/>
   </svg>
   `;
 
